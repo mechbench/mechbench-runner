@@ -7,6 +7,7 @@
       "Bash(git mv *)",
       "Bash(git rm *)",
       "Bash(git commit -m *)",
+      "Bash(git commit -F *)",
       "Bash(git push)",
       "Bash(git push *)",
       "Bash(git pull)",
@@ -23,6 +24,7 @@
       "Bash(git -C * mv *)",
       "Bash(git -C * rm *)",
       "Bash(git -C * commit -m *)",
+      "Bash(git -C * commit -F *)",
       "Bash(git -C * push)",
       "Bash(git -C * push *)",
       "Bash(git -C * pull)",
@@ -65,6 +67,9 @@
       "Bash(rm -rf .venv)",
       "Bash(rm -rf *.egg-info)",
       "Bash(rm -rf mechbench_experiments.egg-info)",
+      "Bash(rm /tmp/*)",
+      "Bash(rm -f /tmp/*)",
+      "Bash(cp * *)",
 
       "Bash(pip install -e *)",
       "Bash(pip install -r *)",
@@ -83,16 +88,24 @@
       "Bash(python experiments/*)",
       "Bash(python benchmark.py)",
       "Bash(python benchmark.py *)",
+      "Bash(python /tmp/*.py)",
+      "Bash(python /tmp/*.py *)",
       "Bash(.venv/bin/python -m mechbench_core.*)",
       "Bash(.venv/bin/python -m mechbench_core)",
       "Bash(.venv/bin/python experiments/*)",
       "Bash(.venv/bin/python benchmark.py)",
       "Bash(.venv/bin/python benchmark.py *)",
+      "Bash(.venv/bin/python /tmp/*.py)",
+      "Bash(.venv/bin/python /tmp/*.py *)",
+      "Bash(node /tmp/*.js)",
+      "Bash(node /tmp/*.mjs)",
 
       "Edit(/Users/benji/dev/mechbench/**)",
       "Write(/Users/benji/dev/mechbench/**)",
       "Read(/Users/benji/dev/mechbench/**)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Write(//tmp/**)",
+      "Edit(//tmp/**)"
     ]
   }
 }
