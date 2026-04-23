@@ -1,0 +1,54 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source .venv/bin/activate)",
+
+      "Bash(git add *)",
+      "Bash(git mv *)",
+      "Bash(git rm *)",
+      "Bash(git commit -m *)",
+      "Bash(git push)",
+      "Bash(git push *)",
+      "Bash(git pull)",
+      "Bash(git pull *)",
+      "Bash(git fetch)",
+      "Bash(git fetch *)",
+      "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(git restore *)",
+      "Bash(git stash)",
+      "Bash(git stash *)",
+
+      "Bash(git -C * add *)",
+      "Bash(git -C * mv *)",
+      "Bash(git -C * rm *)",
+      "Bash(git -C * commit -m *)",
+      "Bash(git -C * push)",
+      "Bash(git -C * push *)",
+      "Bash(git -C * pull)",
+      "Bash(git -C * pull *)",
+      "Bash(git -C * fetch)",
+      "Bash(git -C * fetch *)",
+      "Bash(git -C * checkout *)",
+      "Bash(git -C * switch *)",
+
+      "Bash(mkdir -p *)",
+      "Bash(rmdir *)",
+      "Bash(rm -rf .venv)",
+      "Bash(rm -rf *.egg-info)",
+      "Bash(rm -rf mechbench_experiments.egg-info)",
+
+      "Bash(pip install -e *)",
+      "Bash(pip install -r *)",
+      "Bash(pip install --upgrade pip)",
+      "Bash(pip uninstall -y *)",
+      "Bash(pip freeze)",
+      "Bash(pip list)",
+      "Bash(.venv/bin/python -m pip install *)",
+      "Bash(.venv/bin/python -m pip install --upgrade pip)",
+      "Bash(.venv/bin/python -m pip freeze)",
+      "Bash(.venv/bin/python -m pip list)",
+      "Bash(.venv/bin/python -m pip uninstall -y *)"
+    ]
+  }
+}
