@@ -20,13 +20,11 @@ import traceback
 from types import FrameType
 from typing import Any
 
+from mechbench_schema import dump_canonical
+
 from .api_client import ApiClient, ApiError
 from .config import Config
-from .experiment_runner import (
-    ExperimentRunner,
-    ExperimentSpec,
-    canonical_json,
-)
+from .experiment_runner import ExperimentRunner, ExperimentSpec
 
 BACKOFF_MAX_SECONDS = 30.0
 
@@ -95,10 +93,10 @@ class JobRunner:
         spec = ExperimentSpec(kind=kind, prompt=prompt, model_id=model_id)
         payload = self._runner.run(spec)
 
-        canonical = canonical_json(payload.model_dump(mode="json"))
-        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-        api.complete_job(job_id, canonical, f"sha256:{digest}")
-        print(f"[agent] {job_id} done ({len(canonical)} bytes)")
+        cbor_bytes = dump_canonical(payload)
+        digest = hashlib.sha256(cbor_bytes).hexdigest()
+        api.complete_job_cbor(job_id, cbor_bytes, f"sha256:{digest}")
+        print(f"[agent] {job_id} done ({len(cbor_bytes)} CBOR bytes)")
 
     def _report_error(
         self, api: ApiClient, job: dict[str, Any], exc: Exception
@@ -106,9 +104,9 @@ class JobRunner:
         job_id = job.get("id")
         if not job_id:
             return
-        err_canonical = canonical_json({"error": str(exc)})
-        err_digest = hashlib.sha256(err_canonical.encode("utf-8")).hexdigest()
+        err_bytes = dump_canonical({"error": str(exc)})
+        err_digest = hashlib.sha256(err_bytes).hexdigest()
         try:
-            api.complete_job(job_id, err_canonical, f"sha256:{err_digest}")
+            api.complete_job_cbor(job_id, err_bytes, f"sha256:{err_digest}")
         except Exception:  # noqa: BLE001 — best-effort
             print(f"[agent] failed to report error for {job_id}")

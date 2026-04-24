@@ -51,10 +51,26 @@ class ApiClient:
         self._raise_for_status(res)
         return res.json()
 
-    def complete_job(
+    def complete_job_cbor(
+        self, job_id: str, cbor_bytes: bytes, content_hash: str
+    ) -> None:
+        """Post canonical-CBOR bytes to `POST /jobs/:id/complete` with
+        content-type application/cbor and X-Content-Hash header. The
+        content-addressed path (task 000186)."""
+        res = self._client.post(
+            f"/jobs/{job_id}/complete",
+            content=cbor_bytes,
+            headers={
+                "content-type": "application/cbor",
+                "x-content-hash": content_hash,
+            },
+        )
+        self._raise_for_status(res)
+
+    def complete_job_json(
         self, job_id: str, result_json: str, content_hash: str
     ) -> None:
-        """Post canonical JSON bytes + sha256 to `POST /jobs/:id/complete`."""
+        """Legacy JSON path. Kept for the 000181 deprecation window."""
         res = self._client.post(
             f"/jobs/{job_id}/complete",
             json={"resultJson": result_json, "contentHash": content_hash},
