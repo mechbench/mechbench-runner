@@ -2,7 +2,6 @@
   "permissions": {
     "allow": [
       "Bash(source .venv/bin/activate)",
-
       "Bash(git add *)",
       "Bash(git mv *)",
       "Bash(git rm *)",
@@ -20,7 +19,6 @@
       "Bash(git stash)",
       "Bash(git stash *)",
       "Bash(git reset HEAD *)",
-
       "Bash(git -C * add *)",
       "Bash(git -C * mv *)",
       "Bash(git -C * rm *)",
@@ -35,7 +33,6 @@
       "Bash(git -C * checkout *)",
       "Bash(git -C * switch *)",
       "Bash(git -C * reset HEAD *)",
-
       "Bash(git -C * status)",
       "Bash(git -C * status *)",
       "Bash(git -C * log)",
@@ -63,7 +60,6 @@
       "Bash(git -C * for-each-ref *)",
       "Bash(git -C * worktree list)",
       "Bash(git -C * stash list)",
-
       "Bash(mkdir -p *)",
       "Bash(rmdir *)",
       "Bash(rm -rf .venv)",
@@ -74,7 +70,6 @@
       "Bash(rm /tmp/*)",
       "Bash(rm -f /tmp/*)",
       "Bash(cp * *)",
-
       "Bash(pip install -e *)",
       "Bash(pip install -r *)",
       "Bash(pip install --upgrade pip)",
@@ -86,7 +81,6 @@
       "Bash(.venv/bin/python -m pip freeze)",
       "Bash(.venv/bin/python -m pip list)",
       "Bash(.venv/bin/python -m pip uninstall -y *)",
-
       "Bash(python -m mechbench_core.*)",
       "Bash(python -m mechbench_core)",
       "Bash(python experiments/*)",
@@ -107,7 +101,6 @@
       "Bash(node /tmp/*.mjs)",
       "Bash(ts-node /tmp/*.ts)",
       "Bash(npx ts-node /tmp/*.ts)",
-
       "Bash(npm run *)",
       "Bash(npm test)",
       "Bash(npm test *)",
@@ -141,7 +134,6 @@
       "Bash(npm explain *)",
       "Bash(npm doctor)",
       "Bash(npm config get *)",
-
       "Bash(npx tsc)",
       "Bash(npx tsc *)",
       "Bash(npx vite)",
@@ -153,7 +145,6 @@
       "Bash(npx vitest)",
       "Bash(npx vitest *)",
       "Bash(npx playwright *)",
-
       "Bash(tsc)",
       "Bash(tsc *)",
       "Bash(vite)",
@@ -164,23 +155,31 @@
       "Bash(prettier *)",
       "Bash(vitest)",
       "Bash(vitest *)",
-
       "Bash(curl http://localhost:*)",
       "Bash(curl -s http://localhost:*)",
       "Bash(curl -sI http://localhost:*)",
       "Bash(curl -v http://localhost:*)",
       "Bash(curl http://127.0.0.1:*)",
       "Bash(curl -s http://127.0.0.1:*)",
-
       "Bash(kill *)",
       "Bash(wait *)",
-
       "Edit(/Users/benji/dev/mechbench/**)",
       "Write(/Users/benji/dev/mechbench/**)",
       "Read(/Users/benji/dev/mechbench/**)",
       "Read(//tmp/**)",
       "Write(//tmp/**)",
-      "Edit(//tmp/**)"
+      "Edit(//tmp/**)",
+      "Bash(set)",
+      "Bash(set *)",
+      "Bash(source *)",
+      "Bash(curl -s -X POST http://localhost:*)",
+      "Bash(curl -X POST http://localhost:*)",
+      "Bash(curl -s -X POST http://127.0.0.1:*)",
+      "Bash(curl -X POST http://127.0.0.1:*)",
+      "Bash(curl -s -X GET http://localhost:*)",
+      "Bash(curl -s -X GET http://127.0.0.1:*)",
+      "Bash(npx drizzle-kit generate)",
+      "Bash(npx drizzle-kit generate *)"
     ]
   }
 }
