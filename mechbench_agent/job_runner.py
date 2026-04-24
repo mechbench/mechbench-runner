@@ -1,0 +1,114 @@
+"""Job-runner subsystem: poll mechbench-api, execute, report back.
+
+Ports `mechbench-experiments/bin/run_local_agent.py` into the agent
+package. Operationally the same loop — claim a job via
+`GET /jobs/next`, execute in-process, post result bytes with their
+sha256 — but now running under `mechbench-agent run` as a supported
+subcommand rather than a throwaway `bin/` script.
+
+Intentionally synchronous and single-tenant. Concurrency,
+heartbeats, and remote dispatch are deferred (see epic 000178's
+Not-in-scope list and mechbench-remote's own scope).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import signal
+import time
+import traceback
+from types import FrameType
+from typing import Any
+
+from .api_client import ApiClient, ApiError
+from .config import Config
+from .experiment_runner import (
+    ExperimentRunner,
+    ExperimentSpec,
+    canonical_json,
+)
+
+BACKOFF_MAX_SECONDS = 30.0
+
+
+class JobRunner:
+    def __init__(self, config: Config) -> None:
+        self.config = config
+        self._shutdown = False
+        self._runner = ExperimentRunner()
+
+    def install_sigint_handler(self) -> None:
+        def _handler(_signum: int, _frame: FrameType | None) -> None:
+            self._shutdown = True
+            print("\n[agent] SIGINT received; exiting after current job.")
+
+        signal.signal(signal.SIGINT, _handler)
+
+    def run(self) -> None:
+        self.install_sigint_handler()
+        print("[agent] loading model (first call is slow)...")
+        # Warm the model so the first claimed job doesn't pay cold-start cost.
+        self._runner._model_loaded()  # noqa: SLF001 — intentional warm-up
+        print("[agent] model loaded; polling.")
+
+        with ApiClient(self.config) as api:
+            backoff = self.config.poll_interval_seconds
+            while not self._shutdown:
+                try:
+                    job = api.claim_next_job()
+                except ApiError as e:
+                    print(f"[agent] /jobs/next error ({e}); "
+                          f"retrying in {backoff:.0f}s")
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, BACKOFF_MAX_SECONDS)
+                    continue
+                except Exception as e:  # noqa: BLE001 — surface + keep looping
+                    print(f"[agent] API unreachable ({e}); "
+                          f"retrying in {backoff:.0f}s")
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, BACKOFF_MAX_SECONDS)
+                    continue
+
+                backoff = self.config.poll_interval_seconds
+
+                if job is None:
+                    time.sleep(self.config.poll_interval_seconds)
+                    continue
+
+                try:
+                    self._handle(api, job)
+                except Exception as exc:  # noqa: BLE001 — report + continue
+                    traceback.print_exc()
+                    self._report_error(api, job, exc)
+
+    def _handle(self, api: ApiClient, job: dict[str, Any]) -> None:
+        job_id = job["id"]
+        kind = job["experimentKind"]
+        spec_dict = job.get("spec") or {}
+        prompt = spec_dict.get("prompt")
+        model_id = spec_dict.get("modelId") or self.config.default_model_id
+
+        if not isinstance(prompt, str) or not prompt:
+            raise ValueError(f"job {job_id}: spec.prompt missing or empty")
+
+        print(f"[agent] running {job_id} kind={kind} prompt={prompt!r}")
+        spec = ExperimentSpec(kind=kind, prompt=prompt, model_id=model_id)
+        payload = self._runner.run(spec)
+
+        canonical = canonical_json(payload.model_dump(mode="json"))
+        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        api.complete_job(job_id, canonical, f"sha256:{digest}")
+        print(f"[agent] {job_id} done ({len(canonical)} bytes)")
+
+    def _report_error(
+        self, api: ApiClient, job: dict[str, Any], exc: Exception
+    ) -> None:
+        job_id = job.get("id")
+        if not job_id:
+            return
+        err_canonical = canonical_json({"error": str(exc)})
+        err_digest = hashlib.sha256(err_canonical.encode("utf-8")).hexdigest()
+        try:
+            api.complete_job(job_id, err_canonical, f"sha256:{err_digest}")
+        except Exception:  # noqa: BLE001 — best-effort
+            print(f"[agent] failed to report error for {job_id}")

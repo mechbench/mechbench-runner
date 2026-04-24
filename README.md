@@ -1,20 +1,111 @@
 # mechbench-agent
 
-The agent-facing surface for [mechbench](https://github.com/mechbench/mechbench). Exposes `mechbench-core` primitives as agent-callable tools (MCP) plus a structured-summary / JSON-query interface for agents that don't speak MCP.
+The agent-facing surface for the [mechbench](https://github.com/mechbench/mechbench) family. Exposes `mechbench-core` primitives as [Model Context Protocol](https://modelcontextprotocol.io) tools, and hosts a job-runner that executes UI-queued experiments from the `mechbench-api` job queue.
 
-**Status:** scoped but not yet populated. See the meta repo for the family overview, philosophy, and current roadmap. Task backlog for this repo lives at [`mechbench/tasks/mechbench-agent/`](https://github.com/mechbench/mechbench/tree/main/tasks/mechbench-agent) once tasks are filed.
+**Status:** scaffolded per task [`000185`](https://github.com/mechbench/mechbench/blob/main/tasks/mechbench-agent/). Three MCP tools (`run_experiment`, `get_result`, `list_experiments`); job-runner loop verified against the e2e trace from epic 000178. Supersedes the throwaway `bin/run_local_agent.py` shim in `mechbench-experiments`.
 
-## Planned scope
+## What this repo is for
 
-- MCP server wrapping `mechbench-core` primitives.
-- REST endpoints (`GET /summary`, `POST /query`) for non-MCP clients.
-- Structured emission of dense numerical results via `mechbench-schema` types.
+Two adjacent surfaces for different callers:
 
-## Out of scope
+1. **MCP server.** An LLM agent (Claude, others) connects via MCP stdio and calls mechbench primitives as structured tools. Tool bodies run in-process against `mechbench-core`.
+2. **Job-runner.** Polls `mechbench-api`'s `/jobs/next` for UI-queued experiments, runs them, posts results back. Same compute path as the MCP `run_experiment` tool; different *trigger*.
 
-- The human-facing visualization layer (→ `mechbench-ui`).
-- The compute engine itself (→ `mechbench-core`).
-- Remote-compute orchestration (→ `mechbench-remote`).
+Both modes share one binary (`mechbench-agent`) with subcommands; they share the loaded model, API client, and experiment runner. Splitting into separate processes is a later operational decision — see "Open design questions" below.
+
+## Architectural decisions (task 000185)
+
+- **Python.** `mechbench-core` is Python; delegating to Python via RPC or subprocess-shell from a TS agent adds a layer that pays no dividends in v0. The MCP Python SDK is mature.
+- **One binary, two subcommands.** `mechbench-agent mcp` launches the MCP server over stdio; `mechbench-agent run` starts the job-runner loop. They share `ExperimentRunner` (owns the loaded Gemma model) and `ApiClient`.
+- **Agent authenticates to `mechbench-api` with a dedicated API key**, not a user's personal session. Export `MECHBENCH_API_KEY` (mint one at `/settings/api-keys`, or via `POST /auth/api-keys`). Matches the pattern from the e2e trace.
+- **MCP `run_experiment` runs in-process**, not queued through `mechbench-api`. The MCP caller wants the answer; we are the compute target. Job-queue round-tripping exists for the *UI-triggered* path (job-runner subcommand).
+- **stdio transport only.** SSE / HTTP-SSE transports earn their seat once remote MCP deploy matters (deferred).
+
+## Install
+
+```bash
+git clone https://github.com/mechbench/mechbench-agent.git
+cd mechbench-agent
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+```
+
+Requires Apple Silicon (MLX backend from `mechbench-core`).
+
+## Usage
+
+### MCP server
+
+Launch as a stdio MCP server — connect from Claude Desktop via `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "mechbench": {
+      "command": "/abs/path/to/mechbench-agent/.venv/bin/mechbench-agent",
+      "args": ["mcp"],
+      "env": {
+        "MECHBENCH_API_URL": "http://localhost:3000",
+        "MECHBENCH_API_KEY": "mbk_..."
+      }
+    }
+  }
+}
+```
+
+Three tools appear in Claude:
+
+| tool | description |
+|---|---|
+| `run_experiment` | Run a layer-ablation experiment in-process on a prompt; return per-layer damage. |
+| `get_result` | Fetch a cached payload from `mechbench-api` by MechbenchPath. |
+| `list_experiments` | List the caller's queued / running / completed jobs. |
+
+### Job-runner
+
+Polls `mechbench-api` for UI-queued jobs. Same compute path as `run_experiment`; different trigger.
+
+```bash
+export MECHBENCH_API_URL=http://localhost:3000
+export MECHBENCH_API_KEY=mbk_...
+mechbench-agent run
+```
+
+Ctrl-C exits cleanly. API-unreachable is retried with exponential backoff capped at 30 s.
+
+### In-process smoke test
+
+```bash
+mechbench-agent smoke            # quick: list_experiments + get_result
+mechbench-agent smoke --full     # adds run_experiment (42 forwards, ~1-2 min)
+```
+
+## Configuration
+
+All via env vars:
+
+| var | default | purpose |
+|---|---|---|
+| `MECHBENCH_API_URL` | `http://localhost:3000` | mechbench-api base URL. |
+| `MECHBENCH_API_KEY` | *(required)* | Bearer API key the agent authenticates with. |
+| `MECHBENCH_POLL_INTERVAL_SECONDS` | `2.0` | Job-runner poll cadence. |
+| `MECHBENCH_DEFAULT_MODEL_ID` | `mlx-community/gemma-4-E4B-it-bf16` | Fallback model id when a job spec omits it. |
+
+## Relationship to other mechbench repos
+
+- **`mechbench-core`** — imported directly. `Model`, `Ablate`, hook-aware forward.
+- **`mechbench-schema`** — produces `LayerAblationPayload` etc. as typed results.
+- **`mechbench-api`** — the agent's only platform dependency. All workspace state (jobs, cache reads) goes through it.
+- **`mechbench-ui`** — no coupling. UI queues jobs; the job-runner consumes them.
+- **`mechbench-experiments`** — `bin/run_local_agent.py` was the throwaway precursor; this repo supersedes it.
+- **`mechbench-remote`** — out of scope. Remote-GPU dispatch is a later concern; the agent is local-first.
+
+## Open design questions (deferred)
+
+- **One binary or two processes?** Current answer: one binary, two subcommands. Revisit if MCP-caller frequency vs. job-runner throughput diverges enough to want independent scaling.
+- **Structured-summary interface.** The family's philosophy doc describes a read-side surface where agents consume JSON summaries of findings / experiments. Currently implicit in `list_experiments` + `get_result`. A richer summary layer (`GET /summary`, `POST /query`) is still on the table but unbuilt.
+- **Agent-specific observability.** Rate limits, per-tool metrics, audit trail. Deferred until a second agent-family consumer exists.
 
 ## License
 
