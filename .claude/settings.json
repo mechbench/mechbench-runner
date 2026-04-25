@@ -179,7 +179,24 @@
       "Bash(curl -s -X GET http://localhost:*)",
       "Bash(curl -s -X GET http://127.0.0.1:*)",
       "Bash(npx drizzle-kit generate)",
-      "Bash(npx drizzle-kit generate *)"
+      "Bash(npx drizzle-kit generate *)",
+      "Bash(pkill -f *)",
+      "Bash(pkill -9 -f *)",
+      "Bash(kill -9 *)",
+      "Bash(./bin/seed-dev)",
+      "Bash(./bin/local-up)",
+      "Bash(./bin/local-down)",
+      "Bash(brew services start *)",
+      "Bash(brew services stop *)",
+      "Bash(brew services list)",
+      "Bash(npx drizzle-kit migrate)",
+      "Bash(npx drizzle-kit migrate *)",
+      "Bash(npx drizzle-kit studio)",
+      "Bash(chmod +x bin/*)",
+      "Bash(curl -s -X DELETE http://localhost:*)",
+      "Bash(curl -X DELETE http://localhost:*)",
+      "Bash(curl -s -X DELETE http://127.0.0.1:*)",
+      "Bash(curl -X DELETE http://127.0.0.1:*)"
     ]
   }
 }
