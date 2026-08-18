@@ -54,6 +54,71 @@ class ExperimentRunner:
             return self._run_decision_distribution(spec)
         raise ValueError(f"unsupported experimentKind: {spec.kind!r}")
 
+    def _expand_top_outcomes(self, model, tok, ids, cfg) -> dict[str, Any]:
+        """Best-first expansion of complete outcomes from the decision
+        token: follow high-probability branches only, terminate each at
+        the first token containing a terminator string, and report the
+        exact probability of each completed outcome (the product of its
+        token conditionals). Returns the true top-K of the full rollout
+        distribution without sampling, plus a mass accounting so the
+        coverage is explicit."""
+        import heapq
+
+        top_k = int(cfg.get("top_k", 10))
+        max_tokens = int(cfg.get("max_tokens", 8))
+        max_forwards = int(cfg.get("max_forwards", 128))
+        branch_floor = float(cfg.get("floor", 1e-3))
+        terminators = cfg.get("terminators", ['"'])
+
+        # Heap of (-logp, partial token list). Completed outcomes collect
+        # separately with exact probabilities.
+        heap: list[tuple[float, list[int]]] = [(0.0, [])]
+        completed: list[tuple[float, str]] = []
+        forwards = 0
+        pruned_mass = 0.0
+        while heap and forwards < max_forwards:
+            neg_lp, partial = heapq.heappop(heap)
+            # Optimality: if the best remaining partial cannot beat the
+            # K-th completed outcome, the top-K is final.
+            if (len(completed) >= top_k
+                    and -neg_lp <= completed[top_k - 1][0]):
+                heapq.heappush(heap, (neg_lp, partial))
+                break
+            r = model.run(mx.array([list(ids) + partial]))
+            forwards += 1
+            last = r.last_logits.reshape(-1, r.last_logits.shape[-1])[-1]
+            lp = np.array((last.astype(mx.float32)
+                           - mx.logsumexp(last.astype(mx.float32))))
+            probs = np.exp(lp.astype(np.float64))
+            order = np.argsort(-probs)
+            for t in order[:50]:
+                p_child = float(probs[t])
+                total = float(np.exp(-neg_lp)) * p_child
+                if total < branch_floor:
+                    pruned_mass += float(np.exp(-neg_lp)) * p_child
+                    continue
+                piece = tok.decode([int(t)])
+                if any(term in piece for term in terminators):
+                    text = tok.decode(partial).strip()
+                    if text:
+                        completed.append((total, text))
+                        completed.sort(key=lambda x: -x[0])
+                elif len(partial) < max_tokens:
+                    heapq.heappush(
+                        heap,
+                        (neg_lp - float(np.log(max(p_child, 1e-300))),
+                         partial + [int(t)]))
+        frontier_mass = float(sum(np.exp(-h[0]) for h in heap))
+        return {
+            "top_outcomes": [
+                {"text": text, "p": round(p, 5)}
+                for p, text in completed[:top_k]
+            ],
+            "completed_mass": round(float(sum(p for p, _ in completed)), 4),
+            "frontier_mass_bound": round(frontier_mass, 4),
+            "forwards_used": forwards,
+        }
+
     def _run_decision_distribution(self, spec: ExperimentSpec) -> Any:
         """Exact decision-token distributions for a battery of prompt
         conditions (the ai-randomness reformulation: one forward pass
@@ -87,6 +152,10 @@ class ExperimentRunner:
                     for t in order[:10]
                 ],
             }
+            rollout = cond.get("rollout")
+            if rollout:
+                entry["rollout"] = self._expand_top_outcomes(
+                    model, tok, ids, rollout)
             outcomes = cond.get("outcomes")
             if outcomes:
                 masses = {}
