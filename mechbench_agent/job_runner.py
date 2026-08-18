@@ -83,15 +83,18 @@ class JobRunner:
         job_id = job["id"]
         kind = job["experimentKind"]
         spec_dict = job.get("spec") or {}
-        prompt = spec_dict.get("prompt")
+        prompt = spec_dict.get("prompt") or ""
         model_id = spec_dict.get("modelId") or self.config.default_model_id
 
-        if not isinstance(prompt, str) or not prompt:
+        if kind == "layer_ablation" and not prompt:
             raise ValueError(f"job {job_id}: spec.prompt missing or empty")
 
-        print(f"[agent] running {job_id} kind={kind} prompt={prompt!r}")
-        spec = ExperimentSpec(kind=kind, prompt=prompt, model_id=model_id)
+        print(f"[agent] running {job_id} kind={kind}")
+        spec = ExperimentSpec(kind=kind, prompt=prompt, model_id=model_id,
+                              extra=spec_dict)
         payload = self._runner.run(spec)
+        if hasattr(payload, "model_dump"):
+            payload = payload.model_dump(mode="json")
 
         cbor_bytes = dump_canonical(payload)
         digest = hashlib.sha256(cbor_bytes).hexdigest()

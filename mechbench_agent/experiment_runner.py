@@ -31,24 +31,86 @@ class ExperimentSpec:
     kind: str
     prompt: str
     model_id: str
+    # Kind-specific spec payload (decision_distribution: conditions list).
+    extra: dict[str, Any] | None = None
 
 
 class ExperimentRunner:
     def __init__(self) -> None:
         self._model: Model | None = None
+        self._model_id: str | None = None
 
-    def _model_loaded(self) -> Model:
-        if self._model is None:
-            self._model = Model.load()
+    def _model_loaded(self, model_id: str | None = None) -> Model:
+        # One model in memory at a time; swapping ids reloads.
+        if self._model is None or (model_id and model_id != self._model_id):
+            self._model = Model.load(model_id) if model_id else Model.load()
+            self._model_id = model_id
         return self._model
 
-    def run(self, spec: ExperimentSpec) -> LayerAblationPayload:
-        if spec.kind != "layer_ablation":
-            raise ValueError(
-                f"unsupported experimentKind: {spec.kind!r} "
-                "(only 'layer_ablation' is wired in v0)"
-            )
-        return self._run_layer_ablation(spec.prompt, spec.model_id)
+    def run(self, spec: ExperimentSpec) -> Any:
+        if spec.kind == "layer_ablation":
+            return self._run_layer_ablation(spec.prompt, spec.model_id)
+        if spec.kind == "decision_distribution":
+            return self._run_decision_distribution(spec)
+        raise ValueError(f"unsupported experimentKind: {spec.kind!r}")
+
+    def _run_decision_distribution(self, spec: ExperimentSpec) -> Any:
+        """Exact decision-token distributions for a battery of prompt
+        conditions (the ai-randomness reformulation: one forward pass
+        per condition instead of thousands of sampled rollouts)."""
+        from datetime import datetime, timezone
+
+        import mechbench_schema as ms
+        from mechbench_core import __version__ as core_version
+        from mechbench_core.distill import encode, render_chat, suffix_tokens
+
+        model = self._model_loaded(spec.model_id)
+        tok = model.tokenizer
+        results = []
+        for cond in (spec.extra or {}).get("conditions", []):
+            rendered = render_chat(tok, cond.get("system", ""),
+                                   cond["user"], cond.get("prefill", ""))
+            ids = encode(tok, rendered)
+            r = model.run(mx.array([ids]))
+            last = r.last_logits.reshape(-1, r.last_logits.shape[-1])[-1]
+            lp = np.array((last.astype(mx.float32)
+                           - mx.logsumexp(last.astype(mx.float32))))
+            probs = np.exp(lp.astype(np.float64))
+            order = np.argsort(-probs)
+            nz = probs[probs > 0]
+            entry: dict[str, Any] = {
+                "id": cond["id"],
+                "entropy_bits": round(float(-(nz * np.log2(nz)).sum()), 4),
+                "top_tokens": [
+                    {"token": tok.decode([int(t)]),
+                     "p": round(float(probs[t]), 5)}
+                    for t in order[:10]
+                ],
+            }
+            outcomes = cond.get("outcomes")
+            if outcomes:
+                masses = {}
+                for o in outcomes:
+                    t0 = suffix_tokens(tok, rendered, ids, o)[0]
+                    masses[o] = round(float(probs[t0]), 5)
+                entry["outcome_mass"] = masses
+                entry["outcomes_total_mass"] = round(sum(masses.values()), 5)
+            results.append(entry)
+
+        prov = ms.Provenance(
+            created_at=datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"),
+            produced_by=ms.ToolInfo(tool="mechbench-agent",
+                                    version=core_version),
+            inputs=[],
+            params_fingerprint=ms.fingerprint_params(spec.extra or {}),
+            schema_version=ms.__version__,
+        )
+        return ms.Emitted(provenance=prov, payload={
+            "kind": "decision_distribution",
+            "model": spec.model_id,
+            "conditions": results,
+        })
 
     def _run_layer_ablation(
         self, prompt: str, model_id: str
