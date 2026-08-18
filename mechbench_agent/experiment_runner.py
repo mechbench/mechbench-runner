@@ -134,6 +134,17 @@ class ExperimentRunner:
         from mechbench_core import __version__ as core_version
         from mechbench_core.distill import encode, render_chat, suffix_tokens
 
+        import os
+
+        from mechbench_core.distill import (
+            expand_top_outcomes_cached, prefill_decision,
+        )
+
+        # Prefix caching (000253): one prompt encode per condition serves
+        # the decision read and every expansion forward. The uncached
+        # path stays behind MECHBENCH_NO_PREFIX_CACHE=1 for A/B checks.
+        use_cache = os.environ.get("MECHBENCH_NO_PREFIX_CACHE") != "1"
+
         model = self._model_loaded(spec.model_id)
         tok = model.tokenizer
         results = []
@@ -142,10 +153,15 @@ class ExperimentRunner:
             rendered = render_chat(tok, cond.get("system", ""),
                                    cond["user"], cond.get("prefill", ""))
             ids = encode(tok, rendered)
-            r = model.run(mx.array([ids]))
-            last = r.last_logits.reshape(-1, r.last_logits.shape[-1])[-1]
-            lp = np.array((last.astype(mx.float32)
-                           - mx.logsumexp(last.astype(mx.float32))))
+            prefill = None
+            if use_cache:
+                prefill = prefill_decision(model, ids)
+                lp = np.array(prefill[1] - mx.logsumexp(prefill[1]))
+            else:
+                r = model.run(mx.array([ids]))
+                last = r.last_logits.reshape(-1, r.last_logits.shape[-1])[-1]
+                lp = np.array((last.astype(mx.float32)
+                               - mx.logsumexp(last.astype(mx.float32))))
             probs = np.exp(lp.astype(np.float64))
             order = np.argsort(-probs)
             nz = probs[probs > 0]
@@ -160,8 +176,11 @@ class ExperimentRunner:
             }
             rollout = cond.get("rollout")
             if rollout:
-                entry["rollout"] = self._expand_top_outcomes(
-                    model, tok, ids, rollout)
+                entry["rollout"] = (
+                    expand_top_outcomes_cached(
+                        model, tok, ids, rollout, prefill=prefill)
+                    if use_cache
+                    else self._expand_top_outcomes(model, tok, ids, rollout))
             outcomes = cond.get("outcomes")
             if outcomes:
                 masses = {}
