@@ -51,6 +51,15 @@ class ApiClient:
         self._raise_for_status(res)
         return res.json()
 
+    def report_progress(self, job_id: str, num: int, den: int) -> None:
+        """PATCH `/jobs/:id/progress` (task 000252). Best-effort by
+        contract: callers should tolerate failures — progress display
+        degrades to the plain status chip, never blocks the job."""
+        res = self._client.patch(
+            f"/jobs/{job_id}/progress", json={"num": num, "den": den}
+        )
+        self._raise_for_status(res)
+
     def complete_job_cbor(
         self, job_id: str, cbor_bytes: bytes, content_hash: str
     ) -> None:

@@ -47,11 +47,15 @@ class ExperimentRunner:
             self._model_id = model_id
         return self._model
 
-    def run(self, spec: ExperimentSpec) -> Any:
+    def run(self, spec: ExperimentSpec, on_progress=None) -> Any:
+        """Execute a job spec. `on_progress(done, total)` is invoked
+        after each unit of work for kinds that have a natural unit
+        (decision_distribution: one condition); it must be cheap and
+        may be None."""
         if spec.kind == "layer_ablation":
             return self._run_layer_ablation(spec.prompt, spec.model_id)
         if spec.kind == "decision_distribution":
-            return self._run_decision_distribution(spec)
+            return self._run_decision_distribution(spec, on_progress)
         raise ValueError(f"unsupported experimentKind: {spec.kind!r}")
 
     def _expand_top_outcomes(self, model, tok, ids, cfg) -> dict[str, Any]:
@@ -119,7 +123,8 @@ class ExperimentRunner:
             "forwards_used": forwards,
         }
 
-    def _run_decision_distribution(self, spec: ExperimentSpec) -> Any:
+    def _run_decision_distribution(self, spec: ExperimentSpec,
+                                   on_progress=None) -> Any:
         """Exact decision-token distributions for a battery of prompt
         conditions (the ai-randomness reformulation: one forward pass
         per condition instead of thousands of sampled rollouts)."""
@@ -132,7 +137,8 @@ class ExperimentRunner:
         model = self._model_loaded(spec.model_id)
         tok = model.tokenizer
         results = []
-        for cond in (spec.extra or {}).get("conditions", []):
+        conditions = (spec.extra or {}).get("conditions", [])
+        for i, cond in enumerate(conditions):
             rendered = render_chat(tok, cond.get("system", ""),
                                    cond["user"], cond.get("prefill", ""))
             ids = encode(tok, rendered)
@@ -165,6 +171,8 @@ class ExperimentRunner:
                 entry["outcome_mass"] = masses
                 entry["outcomes_total_mass"] = round(sum(masses.values()), 5)
             results.append(entry)
+            if on_progress:
+                on_progress(i + 1, len(conditions))
 
         prov = ms.Provenance(
             created_at=datetime.now(timezone.utc).strftime(

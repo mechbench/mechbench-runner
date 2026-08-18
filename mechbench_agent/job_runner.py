@@ -92,7 +92,18 @@ class JobRunner:
         print(f"[agent] running {job_id} kind={kind}")
         spec = ExperimentSpec(kind=kind, prompt=prompt, model_id=model_id,
                               extra=spec_dict)
-        payload = self._runner.run(spec)
+
+        def on_progress(done: int, total: int) -> None:
+            # Throttle: report every 5th unit and the final one. Progress
+            # is cosmetic — a failed PATCH must never fail the job.
+            if done % 5 != 0 and done != total:
+                return
+            try:
+                api.report_progress(job_id, done, total)
+            except Exception as e:  # noqa: BLE001 — best-effort by design
+                print(f"[agent] progress report failed ({e}); continuing")
+
+        payload = self._runner.run(spec, on_progress=on_progress)
         if hasattr(payload, "model_dump"):
             payload = payload.model_dump(mode="json")
 
