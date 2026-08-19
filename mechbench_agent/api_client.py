@@ -61,6 +61,13 @@ class ApiClient:
         )
         self._raise_for_status(res)
 
+    def fail_job(self, job_id: str, message: str) -> None:
+        """POST `/jobs/:id/fail` — mark a claimed job (and its run)
+        failed with the error message. Failures are failed, not done."""
+        res = self._client.post(f"/jobs/{job_id}/fail",
+                                json={"message": message[:2000]})
+        self._raise_for_status(res)
+
     def complete_job_cbor(
         self, job_id: str, cbor_bytes: bytes, content_hash: str
     ) -> None:

@@ -119,9 +119,7 @@ class JobRunner:
         job_id = job.get("id")
         if not job_id:
             return
-        err_bytes = dump_canonical({"error": str(exc)})
-        err_digest = hashlib.sha256(err_bytes).hexdigest()
         try:
-            api.complete_job_cbor(job_id, err_bytes, f"sha256:{err_digest}")
+            api.fail_job(job_id, str(exc))
         except Exception:  # noqa: BLE001 — best-effort
-            print(f"[agent] failed to report error for {job_id}")
+            print(f"[agent] failed to report failure for {job_id}")

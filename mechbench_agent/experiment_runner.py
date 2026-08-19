@@ -363,6 +363,8 @@ class ExperimentRunner:
             elif block == "~canonical/ops/decision-read/1":
                 results[nid] = self._block_decision_read(
                     inputs, params, on_item=None)
+            elif block == "~canonical/ops/generate/1":
+                results[nid] = self._block_generate(inputs, params)
             else:
                 raise ValueError(f"unknown block: {block!r}")
             if result_base:
@@ -396,6 +398,75 @@ class ExperimentRunner:
             schema_version=ms.__version__,
         )
         return ms.Emitted(payload=payload, provenance=prov)
+
+    def _block_generate(self, inputs, params) -> Any:
+        """The Generate model block: per condition record, sample n
+        completions into a text-fidelity DocumentCollection. Range
+        rule (epic 000258 amendment 4): each sample's rng derives from
+        (seed, record id, index), indices [start, start+n) — growing a
+        corpus is the same node over a later range plus Union. The
+        prompt is prefilled once per record and the KV cache copied
+        per sample."""
+        import hashlib as _hashlib
+
+        import numpy as _np
+
+        from mechbench_core.distill import encode, prefill_decision, render_chat
+        from mechbench_core.generate import sample_completion_cached
+
+        model = self._model_loaded(params.get("model"))
+        tok = model.tokenizer
+        records = inputs.get("records") or []
+        if isinstance(records, dict):
+            records = records.get("conditions") or records.get("records") or []
+        f_system = params.get("system_field", "system")
+        f_user = params.get("user_field", "user")
+        n = int(params.get("n", 1))
+        start = int(params.get("start", 0))
+        seed = params.get("seed", 0)
+        temperature = float(params.get("temperature", 0.9))
+        top_p = float(params.get("top_p", 0.95))
+        max_tokens = int(params.get("max_tokens", 256))
+
+        items = []
+        for rec in records:
+            if f_user not in rec:
+                raise ValueError(
+                    f"generate: record {rec.get('id')!r} has no "
+                    f"{f_user!r} field")
+            rendered = render_chat(tok, rec.get(f_system, ""),
+                                   rec[f_user], "")
+            ids = encode(tok, rendered)
+            prefill = prefill_decision(model, ids)
+            for k in range(start, start + n):
+                digest = _hashlib.sha256(
+                    f"{seed}:{rec['id']}:{k}".encode()).digest()
+                rng = _np.random.default_rng(
+                    int.from_bytes(digest[:8], "little"))
+                text = sample_completion_cached(
+                    model, ids, max_tokens=max_tokens,
+                    temperature=temperature, top_p=top_p, rng=rng,
+                    prefill=prefill)
+                items.append({
+                    "id": f"{rec['id']}-s{k}",
+                    "kind": "~canonical/kinds/text",
+                    "text": text,
+                    "metadata": {
+                        "coords": {**rec.get("coords", {}), "sample": k},
+                        "sampling": {"temperature": temperature,
+                                     "top_p": top_p, "seed": seed,
+                                     "index": k},
+                        "model": params.get("model"),
+                    },
+                })
+        return {
+            "kind": "document_collection",
+            "name": params.get("name", "generated"),
+            "description": params.get("description", ""),
+            "fidelity": "text",
+            "item_kind": "~canonical/kinds/text",
+            "items": items,
+        }
 
     def _block_decision_read(self, inputs, params, on_item=None) -> Any:
         """The decision-read model block: per condition record, the
