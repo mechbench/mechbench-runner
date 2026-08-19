@@ -408,9 +408,23 @@ class ExperimentRunner:
 
         terminals = [nid for nid in nodes
                      if not any(e["from"]["node"] == nid for e in edges)]
+
+        def sanitize(v, at):
+            """Manifests reference binary, never embed it: bytes are
+            replaced by a stub pointing at the node object that holds
+            the real payload."""
+            if isinstance(v, bytes):
+                return {"$binary": {"bytes": len(v), "stored_at": at}}
+            if isinstance(v, dict):
+                return {k: sanitize(x, at) for k, x in v.items()}
+            if isinstance(v, list):
+                return [sanitize(x, at) for x in v]
+            return v
+
         payload = {
             "kind": "pipeline_result",
-            "outputs": {nid: results[nid] for nid in terminals},
+            "outputs": {nid: sanitize(results[nid], node_paths.get(nid, ""))
+                         for nid in terminals},
             "nodes_executed": order,
             "node_paths": node_paths,
         }
