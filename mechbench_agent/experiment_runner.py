@@ -325,13 +325,24 @@ class ExperimentRunner:
             if on_progress:
                 on_progress(done_units, total_units)
 
+        # Per-node emission (arc B second half): every node's output
+        # becomes a bench object under the job's result namespace, with
+        # lineage inputs = its upstream nodes' paths and operation =
+        # the block ref. The protocol graph and the lineage graph are
+        # then the same graph, by construction.
+        from mechbench_core import bench
+
+        result_base = extra.get("resultPath")
+        node_paths: dict[str, str] = {}
+
         for nid in order:
             node = nodes[nid]
             block = node["block"]
             params = resolve_params(node.get("params"))
+            in_edges = [e for e in edges if e["to"]["node"] == nid]
             inputs = {
                 e["to"]["port"]: results[e["from"]["node"]]
-                for e in edges if e["to"]["node"] == nid
+                for e in in_edges
             }
             if block in PURE_BLOCKS:
                 results[nid] = PURE_BLOCKS[block](inputs, params)
@@ -340,6 +351,16 @@ class ExperimentRunner:
                     inputs, params, on_item=None)
             else:
                 raise ValueError(f"unknown block: {block!r}")
+            if result_base:
+                out = bench.emit(
+                    f"{result_base}/{nid}",
+                    results[nid],
+                    inputs=[node_paths[e["from"]["node"]]
+                            for e in in_edges],
+                    operation=block,
+                    params=params,
+                )
+                node_paths[nid] = out["path"]
             bump()
 
         terminals = [nid for nid in nodes
@@ -348,6 +369,7 @@ class ExperimentRunner:
             "kind": "pipeline_result",
             "outputs": {nid: results[nid] for nid in terminals},
             "nodes_executed": order,
+            "node_paths": node_paths,
         }
         prov = ms.Provenance(
             created_at=datetime.now(timezone.utc).strftime(

@@ -91,7 +91,8 @@ class JobRunner:
 
         print(f"[agent] running {job_id} kind={kind}")
         spec = ExperimentSpec(kind=kind, prompt=prompt, model_id=model_id,
-                              extra=spec_dict)
+                              extra={**spec_dict,
+                                     "resultPath": job.get("resultPath")})
 
         def on_progress(done: int, total: int) -> None:
             # Throttle: report every 5th unit and the final one. Progress
