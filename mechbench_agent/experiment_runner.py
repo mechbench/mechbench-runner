@@ -55,160 +55,12 @@ class ExperimentRunner:
         if spec.kind == "layer_ablation":
             return self._run_layer_ablation(spec.prompt, spec.model_id)
         if spec.kind == "decision_distribution":
-            return self._run_decision_distribution(spec, on_progress)
+            return self._legacy_decision_distribution(spec, on_progress)
         if spec.kind == "pipeline":
             return self._run_pipeline(spec, on_progress)
         raise ValueError(f"unsupported experimentKind: {spec.kind!r}")
 
-    def _expand_top_outcomes(self, model, tok, ids, cfg) -> dict[str, Any]:
-        """Best-first expansion of complete outcomes from the decision
-        token: follow high-probability branches only, terminate each at
-        the first token containing a terminator string, and report the
-        exact probability of each completed outcome (the product of its
-        token conditionals). Returns the true top-K of the full rollout
-        distribution without sampling, plus a mass accounting so the
-        coverage is explicit."""
-        import heapq
 
-        top_k = int(cfg.get("top_k", 10))
-        max_tokens = int(cfg.get("max_tokens", 8))
-        max_forwards = int(cfg.get("max_forwards", 128))
-        branch_floor = float(cfg.get("floor", 1e-3))
-        terminators = cfg.get("terminators", ['"'])
-
-        # Heap of (-logp, partial token list). Completed outcomes collect
-        # separately with exact probabilities.
-        heap: list[tuple[float, list[int]]] = [(0.0, [])]
-        completed: list[tuple[float, str]] = []
-        forwards = 0
-        pruned_mass = 0.0
-        while heap and forwards < max_forwards:
-            neg_lp, partial = heapq.heappop(heap)
-            # Optimality: if the best remaining partial cannot beat the
-            # K-th completed outcome, the top-K is final.
-            if (len(completed) >= top_k
-                    and -neg_lp <= completed[top_k - 1][0]):
-                heapq.heappush(heap, (neg_lp, partial))
-                break
-            r = model.run(mx.array([list(ids) + partial]))
-            forwards += 1
-            last = r.last_logits.reshape(-1, r.last_logits.shape[-1])[-1]
-            lp = np.array((last.astype(mx.float32)
-                           - mx.logsumexp(last.astype(mx.float32))))
-            probs = np.exp(lp.astype(np.float64))
-            order = np.argsort(-probs)
-            for t in order[:50]:
-                p_child = float(probs[t])
-                total = float(np.exp(-neg_lp)) * p_child
-                if total < branch_floor:
-                    pruned_mass += float(np.exp(-neg_lp)) * p_child
-                    continue
-                piece = tok.decode([int(t)])
-                if any(term in piece for term in terminators):
-                    text = tok.decode(partial).strip()
-                    if text:
-                        completed.append((total, text))
-                        completed.sort(key=lambda x: -x[0])
-                elif len(partial) < max_tokens:
-                    heapq.heappush(
-                        heap,
-                        (neg_lp - float(np.log(max(p_child, 1e-300))),
-                         partial + [int(t)]))
-        frontier_mass = float(sum(np.exp(-h[0]) for h in heap))
-        return {
-            "top_outcomes": [
-                {"text": text, "p": round(p, 5)}
-                for p, text in completed[:top_k]
-            ],
-            "completed_mass": round(float(sum(p for p, _ in completed)), 4),
-            "frontier_mass_bound": round(frontier_mass, 4),
-            "forwards_used": forwards,
-        }
-
-    def _run_decision_distribution(self, spec: ExperimentSpec,
-                                   on_progress=None) -> Any:
-        """Exact decision-token distributions for a battery of prompt
-        conditions (the ai-randomness reformulation: one forward pass
-        per condition instead of thousands of sampled rollouts)."""
-        from datetime import datetime, timezone
-
-        import mechbench_schema as ms
-        from mechbench_core import __version__ as core_version
-        from mechbench_core.distill import encode, render_chat, suffix_tokens
-
-        import os
-
-        from mechbench_core.distill import (
-            expand_top_outcomes_cached, prefill_decision,
-        )
-
-        # Prefix caching (000253): one prompt encode per condition serves
-        # the decision read and every expansion forward. The uncached
-        # path stays behind MECHBENCH_NO_PREFIX_CACHE=1 for A/B checks.
-        use_cache = os.environ.get("MECHBENCH_NO_PREFIX_CACHE") != "1"
-
-        model = self._model_loaded(spec.model_id)
-        tok = model.tokenizer
-        results = []
-        conditions = (spec.extra or {}).get("conditions", [])
-        for i, cond in enumerate(conditions):
-            rendered = render_chat(tok, cond.get("system", ""),
-                                   cond["user"], cond.get("prefill", ""))
-            ids = encode(tok, rendered)
-            prefill = None
-            if use_cache:
-                prefill = prefill_decision(model, ids)
-                lp = np.array(prefill[1] - mx.logsumexp(prefill[1]))
-            else:
-                r = model.run(mx.array([ids]))
-                last = r.last_logits.reshape(-1, r.last_logits.shape[-1])[-1]
-                lp = np.array((last.astype(mx.float32)
-                               - mx.logsumexp(last.astype(mx.float32))))
-            probs = np.exp(lp.astype(np.float64))
-            order = np.argsort(-probs)
-            nz = probs[probs > 0]
-            entry: dict[str, Any] = {
-                "id": cond["id"],
-                "entropy_bits": round(float(-(nz * np.log2(nz)).sum()), 4),
-                "top_tokens": [
-                    {"token": tok.decode([int(t)]),
-                     "p": round(float(probs[t]), 5)}
-                    for t in order[:10]
-                ],
-            }
-            rollout = cond.get("rollout")
-            if rollout:
-                entry["rollout"] = (
-                    expand_top_outcomes_cached(
-                        model, tok, ids, rollout, prefill=prefill)
-                    if use_cache
-                    else self._expand_top_outcomes(model, tok, ids, rollout))
-            outcomes = cond.get("outcomes")
-            if outcomes:
-                masses = {}
-                for o in outcomes:
-                    t0 = suffix_tokens(tok, rendered, ids, o)[0]
-                    masses[o] = round(float(probs[t0]), 5)
-                entry["outcome_mass"] = masses
-                entry["outcomes_total_mass"] = round(sum(masses.values()), 5)
-            results.append(entry)
-            if on_progress:
-                on_progress(i + 1, len(conditions))
-
-        prov = ms.Provenance(
-            created_at=datetime.now(timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"),
-            produced_by=ms.ToolInfo(tool="mechbench-agent",
-                                    version=core_version),
-            inputs=[],
-            params_fingerprint=ms.fingerprint_params(spec.extra or {}),
-            schema_version=ms.__version__,
-        )
-        return ms.Emitted(provenance=prov, payload={
-            "kind": "decision_distribution",
-            "model": spec.model_id,
-            "conditions": results,
-        })
 
     def _run_layer_ablation(
         self, prompt: str, model_id: str
@@ -254,6 +106,40 @@ class ExperimentRunner:
             ),
         )
 
+
+    def _legacy_decision_distribution(self, spec: ExperimentSpec,
+                                      on_progress=None) -> Any:
+        """The pre-protocol decision_distribution kind, kept as a thin
+        shim over the decision-read block (superseded-code cleanup,
+        2026-08-19): same spec in, same payload shape out, one
+        implementation."""
+        from datetime import datetime, timezone
+
+        import mechbench_schema as ms
+        from mechbench_core import __version__ as core_version
+
+        extra = spec.extra or {}
+        conditions = extra.get("conditions", [])
+        result = self._run_model_block(
+            self._block_decision_read,
+            {"conditions": conditions},
+            {"model": spec.model_id},
+            on_item=None, on_start=None)
+        prov = ms.Provenance(
+            created_at=datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"),
+            produced_by=ms.ToolInfo(tool="mechbench-agent",
+                                    version=core_version),
+            inputs=[],
+            params_fingerprint=ms.fingerprint_params(
+                {k: v for k, v in extra.items() if k != "resultPath"}),
+            schema_version=ms.__version__,
+        )
+        return ms.Emitted(
+            payload={"kind": "decision_distribution",
+                     "model": spec.model_id,
+                     "conditions": result["conditions"]},
+            provenance=prov)
 
     def _run_pipeline(self, spec: ExperimentSpec, on_progress=None) -> Any:
         """Execute a protocol graph (epic 000258, arc B): topological
