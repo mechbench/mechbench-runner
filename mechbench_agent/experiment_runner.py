@@ -381,13 +381,16 @@ class ExperimentRunner:
             elif block == "~canonical/ops/lens-trajectory/1":
                 results[nid] = self._block_lens(
                     inputs, params, on_item=on_item, on_start=expand)
+            elif block == "~canonical/ops/finetune/lora/1":
+                results[nid] = self._block_finetune_lora(
+                    inputs, params, on_item=on_item, on_start=expand)
             elif block == "~canonical/ops/score/1":
                 input_paths = {
                     e["to"]["port"]: node_paths.get(e["from"]["node"], "")
                     for e in in_edges
                 }
-                results[nid] = self._block_score(
-                    inputs, params, input_paths,
+                results[nid] = self._run_model_block(
+                    self._block_score, inputs, params, input_paths,
                     on_item=on_item, on_start=expand)
             else:
                 raise ValueError(f"unknown block: {block!r}")
@@ -528,6 +531,155 @@ class ExperimentRunner:
             "fidelity": fidelity,
             "item_kind": "~canonical/kinds/text",
             "items": items,
+        }
+
+    def _run_model_block(self, fn, inputs, params, *args, **kwargs):
+        """Model-block wrapper: load the bound model, fuse an adapter
+        when one arrives (input port `adapter` or params.adapter), run
+        the block, restore. Blocks themselves stay adapter-unaware —
+        their own _model_loaded call returns the same fused instance."""
+        model = self._model_loaded(params.get("model"))
+        with self._adapter_fused(model, inputs, params):
+            return fn(inputs, params, *args, **kwargs)
+
+    def _adapter_fused(self, model, inputs, params):
+        """Context manager: when the block has an adapter (input port
+        `adapter`, or params.adapter already $fetch-resolved to an
+        adapter payload), write its safetensors bytes to a temp file,
+        fuse onto the model, and restore on exit. Returns the fuse
+        handle or None."""
+        import contextlib
+        import os
+        import tempfile
+
+        from mechbench_core.lora import fuse, load_adapter, restore
+
+        @contextlib.contextmanager
+        def _cm():
+            payload = inputs.get("adapter") or params.get("adapter")
+            if not payload:
+                yield None
+                return
+            if not isinstance(payload, dict) or "data" not in payload:
+                raise ValueError(
+                    "adapter must be an adapter object payload with "
+                    "safetensors bytes under 'data'")
+            lora_cfg = payload.get("lora") or {}
+            scale = float(params.get(
+                "adapter_scale",
+                lora_cfg.get("alpha", 16) / lora_cfg.get("rank", 8)))
+            fd, path = tempfile.mkstemp(suffix=".safetensors")
+            os.close(fd)
+            try:
+                with open(path, "wb") as f:
+                    f.write(payload["data"])
+                handle = fuse(model.lm, load_adapter(path), scale=scale)
+                try:
+                    yield handle
+                finally:
+                    restore(model.lm, handle)
+            finally:
+                os.unlink(path)
+        return _cm()
+
+    def _block_finetune_lora(self, inputs, params, on_item=None,
+                             on_start=None) -> Any:
+        """The finetune/lora block (epic 000259): Regime D soft-target
+        training as an artifact-producing operation. Consumes training
+        prompt records (and optionally anchor records with an answer
+        field); produces an ADAPTER OBJECT — safetensors bytes plus
+        config — whose lineage is the training's methods section.
+
+        The training mutates the in-process model via apply_lora; after
+        saving the adapter the runner's model is force-reloaded so
+        downstream blocks (and later jobs) see a clean base."""
+        import os
+        import tempfile
+
+        from mechbench_core.distill import render_chat
+        from mechbench_core.finetune import (
+            build_anchor_items, build_target_items, target_map_from_spec,
+            train_soft_ce,
+        )
+        from mechbench_core.lora import apply_lora, save_adapter
+
+        model = self._model_loaded(params.get("model"))
+        tok = model.tokenizer
+
+        records = inputs.get("records") or []
+        if isinstance(records, dict):
+            records = records.get("conditions") or records.get("records") or []
+        f_system = params.get("system_field", "system")
+        f_user = params.get("user_field", "user")
+        f_prefill = params.get("prefill_field", "prefill")
+
+        def rendered_of(rec):
+            return render_chat(tok, rec.get(f_system, ""),
+                               rec[f_user], rec.get(f_prefill, ""))
+
+        target_spec = params.get("target")
+        if not target_spec:
+            raise ValueError("finetune/lora: params.target is required")
+        target = target_map_from_spec(target_spec)
+        closer = params.get("closer", " }")
+        marginals, continuations = build_target_items(
+            tok, target, [rendered_of(r) for r in records], closer=closer)
+
+        anchor_records = inputs.get("anchors") or []
+        if isinstance(anchor_records, dict):
+            anchor_records = (anchor_records.get("conditions")
+                              or anchor_records.get("records") or [])
+        f_answer = params.get("answer_field", "answer")
+        anchors = build_anchor_items(
+            tok, [(rendered_of(r), r[f_answer]) for r in anchor_records])
+
+        lora_cfg = params.get("lora") or {}
+        rank = int(lora_cfg.get("rank", 8))
+        alpha = float(lora_cfg.get("alpha", 16))
+        steps = int(params.get("steps", 250))
+        lr = float(params.get("lr", 1e-4))
+        seed = int(params.get("seed", 7))
+        batch = params.get("batch") or {"target": 3, "anchor": 1,
+                                         "continuation": 2}
+
+        n_lora = apply_lora(model.lm, rank, alpha)
+        if on_start:
+            on_start(steps)
+        final_loss = train_soft_ce(
+            model.lm,
+            {"target": marginals, "anchor": anchors,
+             "continuation": continuations},
+            batch, steps=steps, lr=lr, seed=seed,
+            on_step=(lambda s, l: on_item()) if on_item else None)
+
+        fd, path = tempfile.mkstemp(suffix=".safetensors")
+        os.close(fd)
+        try:
+            save_adapter(model.lm, path)
+            with open(path, "rb") as f:
+                data = f.read()
+        finally:
+            os.unlink(path)
+
+        # The in-process model now carries LoRA wrappers; evict it so
+        # every later block starts from a clean base.
+        self._model = None
+        self._model_id = None
+
+        return {
+            "kind": "adapter",
+            "format": "safetensors",
+            "base_model": params.get("model"),
+            "lora": {"rank": rank, "alpha": alpha,
+                      "scale": alpha / rank,
+                      "params": n_lora},
+            "train": {"steps": steps, "lr": lr, "seed": seed,
+                       "batch": batch, "final_loss": round(final_loss, 4),
+                       "n_prompts": len(records),
+                       "n_anchors": len(anchor_records),
+                       "closer": closer,
+                       "target": target_spec},
+            "data": data,
         }
 
     def _block_lens(self, inputs, params, on_item=None,
