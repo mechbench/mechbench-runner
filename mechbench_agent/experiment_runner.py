@@ -185,6 +185,8 @@ class ExperimentRunner:
                 if name not in bindings:
                     raise ValueError(f"unbound hole: {v}")
                 return bindings[name]
+            if isinstance(v, dict) and set(v.keys()) == {"$hf_dataset"}:
+                return resolve_hf_dataset(resolve_value(v["$hf_dataset"]))
             if isinstance(v, dict) and "$fetch" in v                     and set(v.keys()) <= {"$fetch", "sha256"}:
                 from mechbench_core import bench
                 ref = resolve_value(v["$fetch"])
