@@ -623,7 +623,7 @@ class ExperimentRunner:
         model = self._model_loaded(params.get("model"))
         tok = model.tokenizer
 
-        records = inputs.get("records") or []
+        records = inputs.get("records") or params.get("records") or []
         if isinstance(records, dict):
             records = records.get("conditions") or records.get("records") or []
         f_system = params.get("system_field", "system")
@@ -642,7 +642,7 @@ class ExperimentRunner:
         marginals, continuations = build_target_items(
             tok, target, [rendered_of(r) for r in records], closer=closer)
 
-        anchor_records = inputs.get("anchors") or []
+        anchor_records = inputs.get("anchors") or params.get("anchors") or []
         if isinstance(anchor_records, dict):
             anchor_records = (anchor_records.get("conditions")
                               or anchor_records.get("records") or [])
@@ -852,7 +852,10 @@ class ExperimentRunner:
 
         model = self._model_loaded(params.get("model"))
         tok = model.tokenizer
-        conditions = inputs.get("conditions") or []
+        conditions = inputs.get("conditions") or params.get("conditions") or []
+        if isinstance(conditions, dict):
+            conditions = (conditions.get("conditions")
+                          or conditions.get("records") or [])
         if on_start:
             on_start(len(conditions))
         rollout = params.get("rollout")
@@ -891,9 +894,13 @@ class ExperimentRunner:
             if rollout:
                 entry["rollout"] = expand_top_outcomes_cached(
                     model, tok, ids, rollout, prefill=prefill)
-            if outcomes:
+            # Per-record outcome sets override the block-level param —
+            # heterogeneous batteries (d6 vs coin vs open-ended) carry
+            # their outcomes as data.
+            cond_outcomes = cond.get("outcomes", outcomes)
+            if cond_outcomes:
                 masses = {}
-                for o in outcomes:
+                for o in cond_outcomes:
                     t0 = suffix_tokens(tok, rendered, ids, o)[0]
                     masses[o] = round(float(probs[t0]), 5)
                 entry["outcome_mass"] = masses
