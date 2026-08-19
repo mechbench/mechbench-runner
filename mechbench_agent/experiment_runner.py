@@ -400,10 +400,21 @@ class ExperimentRunner:
         conditions = inputs.get("conditions") or []
         rollout = params.get("rollout")
         outcomes = params.get("outcomes")
+        # The consumed field names are params, not convention (Benji's
+        # composer-legibility review): a Template producing `question`
+        # wires user_field: "question" instead of renaming its output.
+        f_system = params.get("system_field", "system")
+        f_user = params.get("user_field", "user")
+        f_prefill = params.get("prefill_field", "prefill")
         out = []
         for cond in conditions:
-            rendered = render_chat(tok, cond.get("system", ""),
-                                   cond["user"], cond.get("prefill", ""))
+            if f_user not in cond:
+                raise ValueError(
+                    f"decision-read: record {cond.get('id')!r} has no "
+                    f"{f_user!r} field (fields present: "
+                    f"{sorted(k for k in cond if k not in ('id', 'coords'))})")
+            rendered = render_chat(tok, cond.get(f_system, ""),
+                                   cond[f_user], cond.get(f_prefill, ""))
             ids = encode(tok, rendered)
             prefill = prefill_decision(model, ids)
             lp = np.array(prefill[1] - mx.logsumexp(prefill[1]))
