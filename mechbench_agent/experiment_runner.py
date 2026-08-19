@@ -326,18 +326,30 @@ class ExperimentRunner:
         if len(order) != len(nodes):
             raise ValueError("pipeline graph has a cycle")
 
-        # Progress units: model-read nodes count per condition.
+        # Progress: one unit per node, but model blocks expand the
+        # denominator to their item count on entry and tick per item —
+        # the board's bar moves per condition/story, not per node.
         results: dict[str, Any] = {}
-        total_units = 0
-        for nid in order:
-            total_units += 1
+        total_units = len(order)
         done_units = 0
+
+        def report():
+            if on_progress:
+                on_progress(done_units, total_units)
 
         def bump(n=1):
             nonlocal done_units
             done_units += n
-            if on_progress:
-                on_progress(done_units, total_units)
+            report()
+
+        def expand(n_items):
+            nonlocal total_units
+            if n_items > 1:
+                total_units += n_items - 1
+                report()
+
+        def on_item():
+            bump(1)
 
         # Per-node emission (arc B second half): every node's output
         # becomes a bench object under the job's result namespace, with
@@ -362,17 +374,21 @@ class ExperimentRunner:
                 results[nid] = PURE_BLOCKS[block](inputs, params)
             elif block == "~canonical/ops/decision-read/1":
                 results[nid] = self._block_decision_read(
-                    inputs, params, on_item=None)
+                    inputs, params, on_item=on_item, on_start=expand)
             elif block == "~canonical/ops/generate/1":
-                results[nid] = self._block_generate(inputs, params)
+                results[nid] = self._block_generate(
+                    inputs, params, on_item=on_item, on_start=expand)
             elif block == "~canonical/ops/lens-trajectory/1":
-                results[nid] = self._block_lens(inputs, params)
+                results[nid] = self._block_lens(
+                    inputs, params, on_item=on_item, on_start=expand)
             elif block == "~canonical/ops/score/1":
                 input_paths = {
                     e["to"]["port"]: node_paths.get(e["from"]["node"], "")
                     for e in in_edges
                 }
-                results[nid] = self._block_score(inputs, params, input_paths)
+                results[nid] = self._block_score(
+                    inputs, params, input_paths,
+                    on_item=on_item, on_start=expand)
             else:
                 raise ValueError(f"unknown block: {block!r}")
             if result_base:
@@ -407,7 +423,8 @@ class ExperimentRunner:
         )
         return ms.Emitted(payload=payload, provenance=prov)
 
-    def _block_generate(self, inputs, params) -> Any:
+    def _block_generate(self, inputs, params, on_item=None,
+                        on_start=None) -> Any:
         """The Generate model block: per condition record, sample n
         completions into a text-fidelity DocumentCollection. Range
         rule (epic 000258 amendment 4): each sample's rng derives from
@@ -441,6 +458,8 @@ class ExperimentRunner:
 
         from mechbench_core.generate import offsets_by_cumulative_decode
 
+        if on_start:
+            on_start(len(records) * n)
         items = []
         for rec in records:
             if f_user not in rec:
@@ -500,6 +519,8 @@ class ExperimentRunner:
                         ],
                     }]
                 items.append(item)
+                if on_item:
+                    on_item()
         return {
             "kind": "document_collection",
             "name": params.get("name", "generated"),
@@ -509,7 +530,8 @@ class ExperimentRunner:
             "items": items,
         }
 
-    def _block_lens(self, inputs, params) -> Any:
+    def _block_lens(self, inputs, params, on_item=None,
+                    on_start=None) -> Any:
         """The LensTrajectory model block: per condition record, the
         logit-lens trajectory at the final position — every layer's
         residual projected through the head, recording top-1 token, its
@@ -532,6 +554,8 @@ class ExperimentRunner:
         f_prefill = params.get("prefill_field", "prefill")
         n_layers = len(model.lm.model.layers)
 
+        if on_start:
+            on_start(len(records))
         items = []
         for rec in records:
             if f_user not in rec:
@@ -569,6 +593,8 @@ class ExperimentRunner:
                 "metadata": {"coords": dict(rec.get("coords", {})),
                               "layers": layers},
             })
+            if on_item:
+                on_item()
         return {
             "kind": "document_collection",
             "name": params.get("name", "lens-trajectories"),
@@ -578,7 +604,8 @@ class ExperimentRunner:
             "items": items,
         }
 
-    def _block_score(self, inputs, params, input_paths=None) -> Any:
+    def _block_score(self, inputs, params, input_paths=None,
+                     on_item=None, on_start=None) -> Any:
         """The Score model block: per-token surprisal (bits) under the
         scoring model, over a TRACE-fidelity collection — the 019
         backfill's rows-only scorer as a registered block. Values cover
@@ -602,6 +629,8 @@ class ExperimentRunner:
             coll = fetched.get("payload", fetched)
             coll_path = str(ref)
         items = coll.get("items") or []
+        if on_start:
+            on_start(len(items))
         values = []
         for it in items:
             trace = it.get("trace")
@@ -624,6 +653,8 @@ class ExperimentRunner:
                                "token_end": j + 2},
                     "value": round(float(sv), 3),
                 })
+            if on_item:
+                on_item()
         return {
             "kind": "annotation_layer",
             "name": params.get("name", "surprisal"),
@@ -637,7 +668,8 @@ class ExperimentRunner:
             "values": values,
         }
 
-    def _block_decision_read(self, inputs, params, on_item=None) -> Any:
+    def _block_decision_read(self, inputs, params, on_item=None,
+                             on_start=None) -> Any:
         """The decision-read model block: per condition record, the
         exact decision-token distribution (prefix-cached) and optional
         best-first outcome expansion. Records keep their coords — the
@@ -652,6 +684,8 @@ class ExperimentRunner:
         model = self._model_loaded(params.get("model"))
         tok = model.tokenizer
         conditions = inputs.get("conditions") or []
+        if on_start:
+            on_start(len(conditions))
         rollout = params.get("rollout")
         outcomes = params.get("outcomes")
         # The consumed field names are params, not convention (Benji's
