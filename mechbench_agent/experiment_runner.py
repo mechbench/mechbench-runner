@@ -282,17 +282,31 @@ class ExperimentRunner:
         nodes = {n["id"]: n for n in graph.get("nodes", [])}
         edges = graph.get("edges", [])
 
+        def resolve_value(v):
+            """Recursive param resolution. Two forms beyond literals:
+            "$name"            -> the run binding `name` (a string).
+            {"$fetch": ref}    -> the bench object at `ref` (itself
+                                  hole-resolvable), payload unwrapped —
+                                  protocols consuming datasets by
+                                  reference (epic 000258 amendment 3)."""
+            if isinstance(v, str) and v.startswith("$"):
+                name = v[1:]
+                if name not in bindings:
+                    raise ValueError(f"unbound hole: {v}")
+                return bindings[name]
+            if isinstance(v, dict) and set(v.keys()) == {"$fetch"}:
+                from mechbench_core import bench
+                ref = resolve_value(v["$fetch"])
+                fetched = bench.fetch(ref)
+                return fetched.get("payload", fetched)
+            if isinstance(v, dict):
+                return {k: resolve_value(x) for k, x in v.items()}
+            if isinstance(v, list):
+                return [resolve_value(x) for x in v]
+            return v
+
         def resolve_params(params):
-            out = {}
-            for k, v in (params or {}).items():
-                if isinstance(v, str) and v.startswith("$"):
-                    name = v[1:]
-                    if name not in bindings:
-                        raise ValueError(f"unbound hole: {v}")
-                    out[k] = bindings[name]
-                else:
-                    out[k] = v
-            return out
+            return {k: resolve_value(v) for k, v in (params or {}).items()}
 
         # Topological order (Kahn). The API validated acyclicity, but a
         # runner never trusts its inputs to be well-formed.
