@@ -93,6 +93,10 @@ class JobRunner:
         spec = ExperimentSpec(kind=kind, prompt=prompt, model_id=model_id,
                               extra={**spec_dict,
                                      "resultPath": job.get("resultPath")})
+        # Secret lifecycle (000266): claim-delivered credentials are
+        # held in memory, passed explicitly, and disposed in the
+        # finally below — never env, never specs, never logs.
+        secrets = job.get("integrations") or {}
 
         def on_progress(done: int, total: int) -> None:
             # Throttle: report every 5th unit and the final one. Progress
@@ -104,14 +108,19 @@ class JobRunner:
             except Exception as e:  # noqa: BLE001 — best-effort by design
                 print(f"[agent] progress report failed ({e}); continuing")
 
-        payload = self._runner.run(spec, on_progress=on_progress)
-        if hasattr(payload, "model_dump"):
-            payload = payload.model_dump(mode="json")
+        try:
+            payload = self._runner.run(spec, on_progress=on_progress,
+                                       secrets=secrets)
+            if hasattr(payload, "model_dump"):
+                payload = payload.model_dump(mode="json")
 
-        cbor_bytes = dump_canonical(payload)
-        digest = hashlib.sha256(cbor_bytes).hexdigest()
-        api.complete_job_cbor(job_id, cbor_bytes, f"sha256:{digest}")
-        print(f"[agent] {job_id} done ({len(cbor_bytes)} CBOR bytes)")
+            cbor_bytes = dump_canonical(payload)
+            digest = hashlib.sha256(cbor_bytes).hexdigest()
+            api.complete_job_cbor(job_id, cbor_bytes, f"sha256:{digest}")
+            print(f"[agent] {job_id} done ({len(cbor_bytes)} CBOR bytes)")
+        finally:
+            secrets.clear()
+            job.pop("integrations", None)
 
     def _report_error(
         self, api: ApiClient, job: dict[str, Any], exc: Exception
@@ -119,7 +128,9 @@ class JobRunner:
         job_id = job.get("id")
         if not job_id:
             return
+        import re as _re
+        message = _re.sub(r"hf_[A-Za-z0-9]{8,}", "hf_[redacted]", str(exc))
         try:
-            api.fail_job(job_id, str(exc))
+            api.fail_job(job_id, message)
         except Exception:  # noqa: BLE001 — best-effort
             print(f"[agent] failed to report failure for {job_id}")

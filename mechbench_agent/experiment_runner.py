@@ -47,7 +47,8 @@ class ExperimentRunner:
             self._model_id = model_id
         return self._model
 
-    def run(self, spec: ExperimentSpec, on_progress=None) -> Any:
+    def run(self, spec: ExperimentSpec, on_progress=None,
+            secrets=None) -> Any:
         """Execute a job spec. `on_progress(done, total)` is invoked
         after each unit of work for kinds that have a natural unit
         (decision_distribution: one condition); it must be cheap and
@@ -57,7 +58,7 @@ class ExperimentRunner:
         if spec.kind == "decision_distribution":
             return self._legacy_decision_distribution(spec, on_progress)
         if spec.kind == "pipeline":
-            return self._run_pipeline(spec, on_progress)
+            return self._run_pipeline(spec, on_progress, secrets=secrets)
         raise ValueError(f"unsupported experimentKind: {spec.kind!r}")
 
 
@@ -141,7 +142,8 @@ class ExperimentRunner:
                      "conditions": result["conditions"]},
             provenance=prov)
 
-    def _run_pipeline(self, spec: ExperimentSpec, on_progress=None) -> Any:
+    def _run_pipeline(self, spec: ExperimentSpec, on_progress=None,
+                      secrets=None) -> Any:
         """Execute a protocol graph (epic 000258, arc B): topological
         order over the nodes, pure blocks resolved from the core
         registry, model blocks executed in-process with the prefix
@@ -216,6 +218,7 @@ class ExperimentRunner:
             requested revision, arrow fingerprint, rows)."""
             from datasets import load_dataset
 
+            hf_token = (secrets or {}).get("hf", {}).get("token")
             repo = spec["repo"]
             split = spec.get("split", "train")
             config = spec.get("config")
@@ -225,6 +228,8 @@ class ExperimentRunner:
             kwargs = {"split": split}
             if revision:
                 kwargs["revision"] = revision
+            if hf_token:
+                kwargs["token"] = hf_token
             ds = (load_dataset(repo, config, **kwargs) if config
                   else load_dataset(repo, **kwargs))
             n = min(int(limit), len(ds)) if limit else len(ds)
@@ -262,6 +267,9 @@ class ExperimentRunner:
             kwargs = {"allow_patterns": ["adapter_*", "*.json"]}
             if revision:
                 kwargs["revision"] = revision
+            hf_token = (secrets or {}).get("hf", {}).get("token")
+            if hf_token:
+                kwargs["token"] = hf_token
             local = snapshot_download(repo, **kwargs)
             commit = local.rstrip("/").rsplit("/", 1)[-1]
             payload = peft_import(local)
