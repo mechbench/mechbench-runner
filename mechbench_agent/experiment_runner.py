@@ -168,28 +168,55 @@ class ExperimentRunner:
         nodes = {n["id"]: n for n in graph.get("nodes", [])}
         edges = graph.get("edges", [])
 
+        # What actually resolved (task 000260): every $fetch's content
+        # hash and every model ref's snapshot commit, recorded into the
+        # result manifest — reproducibility by record; pins opt into
+        # strictness.
+        resolved: dict[str, dict] = {"objects": {}, "models": {}}
+
         def resolve_value(v):
-            """Recursive param resolution. Two forms beyond literals:
-            "$name"            -> the run binding `name` (a string).
-            {"$fetch": ref}    -> the bench object at `ref` (itself
-                                  hole-resolvable), payload unwrapped —
-                                  protocols consuming datasets by
-                                  reference (epic 000258 amendment 3)."""
+            """Recursive param resolution. Forms beyond literals:
+            "$name"                    -> the run binding (a string).
+            {"$fetch": ref}            -> the bench object's payload.
+            {"$fetch": ref, "sha256":} -> same, verified against the
+                                          pinned content hash."""
             if isinstance(v, str) and v.startswith("$"):
                 name = v[1:]
                 if name not in bindings:
                     raise ValueError(f"unbound hole: {v}")
                 return bindings[name]
-            if isinstance(v, dict) and set(v.keys()) == {"$fetch"}:
+            if isinstance(v, dict) and "$fetch" in v                     and set(v.keys()) <= {"$fetch", "sha256"}:
                 from mechbench_core import bench
                 ref = resolve_value(v["$fetch"])
-                fetched = bench.fetch(ref)
-                return fetched.get("payload", fetched)
+                fetched, meta = bench.fetch(ref, with_meta=True)
+                got = (meta or {}).get("content_hash") or ""
+                resolved["objects"][str(ref)] = got
+                want = v.get("sha256")
+                if want and not got.endswith(str(want)):
+                    raise ValueError(
+                        f"pinned object {ref!r} resolved to {got!r}, "
+                        f"expected sha256 {want!r}")
+                return fetched.get("payload", fetched)                     if isinstance(fetched, dict) else fetched
             if isinstance(v, dict):
                 return {k: resolve_value(x) for k, x in v.items()}
             if isinstance(v, list):
                 return [resolve_value(x) for x in v]
             return v
+
+        def record_model(ref):
+            if not isinstance(ref, str) or ref in resolved["models"]:
+                return
+            from mechbench_core.hub import (
+                parse_model_ref, resolve_cached_revision,
+            )
+            try:
+                repo, rev = parse_model_ref(ref)
+                resolved["models"][ref] = {
+                    "repo": repo, "pinned": rev,
+                    "commit": resolve_cached_revision(repo, rev)}
+            except Exception:  # noqa: BLE001 — recording is best-effort
+                resolved["models"][ref] = {"repo": ref, "pinned": None,
+                                            "commit": None}
 
         def resolve_params(params):
             return {k: resolve_value(v) for k, v in (params or {}).items()}
@@ -251,6 +278,8 @@ class ExperimentRunner:
             node = nodes[nid]
             block = node["block"]
             params = resolve_params(node.get("params"))
+            if "model" in params:
+                record_model(params.get("model"))
             in_edges = [e for e in edges if e["to"]["node"] == nid]
             inputs = {
                 e["to"]["port"]: results[e["from"]["node"]]
@@ -316,6 +345,7 @@ class ExperimentRunner:
                          for nid in terminals},
             "nodes_executed": order,
             "node_paths": node_paths,
+            "resolved": resolved,
         }
         prov = ms.Provenance(
             created_at=datetime.now(timezone.utc).strftime(
