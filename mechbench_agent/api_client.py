@@ -45,7 +45,8 @@ class ApiClient:
 
     def claim_next_job(self) -> dict[str, Any] | None:
         """Call `GET /jobs/next`. Returns None on 204 (no work)."""
-        res = self._client.get("/jobs/next")
+        res = self._client.get(
+            "/jobs/next", params={"capabilities": "mlx-local,pure"})
         if res.status_code == 204:
             return None
         self._raise_for_status(res)

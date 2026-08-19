@@ -56,6 +56,8 @@ class ExperimentRunner:
             return self._run_layer_ablation(spec.prompt, spec.model_id)
         if spec.kind == "decision_distribution":
             return self._run_decision_distribution(spec, on_progress)
+        if spec.kind == "pipeline":
+            return self._run_pipeline(spec, on_progress)
         raise ValueError(f"unsupported experimentKind: {spec.kind!r}")
 
     def _expand_top_outcomes(self, model, tok, ids, cfg) -> dict[str, Any]:
@@ -251,6 +253,164 @@ class ExperimentRunner:
                 median=[round(float(v), 4) for v in damage],
             ),
         )
+
+
+    def _run_pipeline(self, spec: ExperimentSpec, on_progress=None) -> Any:
+        """Execute a protocol graph (epic 000258, arc B): topological
+        order over the nodes, pure blocks resolved from the core
+        registry, model blocks executed in-process with the prefix
+        cache. v1 restrictions: single output per node (edges' port
+        names select inputs but every node produces one value) and the
+        whole graph runs in this one job — multi-job planning is the
+        planner's future concern, not the executor's.
+
+        Params may reference bindings: any string param "$name"
+        resolves to spec bindings[name]."""
+        from datetime import datetime, timezone
+
+        import mechbench_schema as ms
+        from mechbench_core import __version__ as core_version
+        from mechbench_core.blocks import PURE_BLOCKS
+        from mechbench_core.distill import (
+            encode, expand_top_outcomes_cached, prefill_decision,
+            render_chat,
+        )
+
+        extra = spec.extra or {}
+        graph = extra.get("graph") or {}
+        bindings = extra.get("bindings") or {}
+        nodes = {n["id"]: n for n in graph.get("nodes", [])}
+        edges = graph.get("edges", [])
+
+        def resolve_params(params):
+            out = {}
+            for k, v in (params or {}).items():
+                if isinstance(v, str) and v.startswith("$"):
+                    name = v[1:]
+                    if name not in bindings:
+                        raise ValueError(f"unbound hole: {v}")
+                    out[k] = bindings[name]
+                else:
+                    out[k] = v
+            return out
+
+        # Topological order (Kahn). The API validated acyclicity, but a
+        # runner never trusts its inputs to be well-formed.
+        indeg = {nid: 0 for nid in nodes}
+        for e in edges:
+            indeg[e["to"]["node"]] += 1
+        order = [nid for nid, d in indeg.items() if d == 0]
+        i = 0
+        while i < len(order):
+            for e in edges:
+                if e["from"]["node"] == order[i]:
+                    t = e["to"]["node"]
+                    indeg[t] -= 1
+                    if indeg[t] == 0:
+                        order.append(t)
+            i += 1
+        if len(order) != len(nodes):
+            raise ValueError("pipeline graph has a cycle")
+
+        # Progress units: model-read nodes count per condition.
+        results: dict[str, Any] = {}
+        total_units = 0
+        for nid in order:
+            total_units += 1
+        done_units = 0
+
+        def bump(n=1):
+            nonlocal done_units
+            done_units += n
+            if on_progress:
+                on_progress(done_units, total_units)
+
+        for nid in order:
+            node = nodes[nid]
+            block = node["block"]
+            params = resolve_params(node.get("params"))
+            inputs = {
+                e["to"]["port"]: results[e["from"]["node"]]
+                for e in edges if e["to"]["node"] == nid
+            }
+            if block in PURE_BLOCKS:
+                results[nid] = PURE_BLOCKS[block](inputs, params)
+            elif block == "~canonical/ops/decision-read/1":
+                results[nid] = self._block_decision_read(
+                    inputs, params, on_item=None)
+            else:
+                raise ValueError(f"unknown block: {block!r}")
+            bump()
+
+        terminals = [nid for nid in nodes
+                     if not any(e["from"]["node"] == nid for e in edges)]
+        payload = {
+            "kind": "pipeline_result",
+            "outputs": {nid: results[nid] for nid in terminals},
+            "nodes_executed": order,
+        }
+        prov = ms.Provenance(
+            created_at=datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"),
+            produced_by=ms.ToolInfo(tool="mechbench-agent",
+                                    version=core_version),
+            inputs=[],
+            params_fingerprint=ms.fingerprint_params(
+                {"graph": graph, "bindings": bindings}),
+            schema_version=ms.__version__,
+        )
+        return ms.Emitted(payload=payload, provenance=prov)
+
+    def _block_decision_read(self, inputs, params, on_item=None) -> Any:
+        """The decision-read model block: per condition record, the
+        exact decision-token distribution (prefix-cached) and optional
+        best-first outcome expansion. Records keep their coords — the
+        whole point of the Grid split."""
+        import numpy as np
+
+        from mechbench_core.distill import (
+            encode, expand_top_outcomes_cached, prefill_decision,
+            render_chat, suffix_tokens,
+        )
+
+        model = self._model_loaded(params.get("model"))
+        tok = model.tokenizer
+        conditions = inputs.get("conditions") or []
+        rollout = params.get("rollout")
+        outcomes = params.get("outcomes")
+        out = []
+        for cond in conditions:
+            rendered = render_chat(tok, cond.get("system", ""),
+                                   cond["user"], cond.get("prefill", ""))
+            ids = encode(tok, rendered)
+            prefill = prefill_decision(model, ids)
+            lp = np.array(prefill[1] - mx.logsumexp(prefill[1]))
+            probs = np.exp(lp.astype(np.float64))
+            order_ = np.argsort(-probs)
+            nz = probs[probs > 0]
+            entry: dict[str, Any] = {
+                "id": cond["id"],
+                "coords": dict(cond.get("coords", {})),
+                "entropy_bits": round(float(-(nz * np.log2(nz)).sum()), 4),
+                "top_tokens": [
+                    {"token": tok.decode([int(t)]),
+                     "p": round(float(probs[t]), 5)}
+                    for t in order_[:10]
+                ],
+            }
+            if rollout:
+                entry["rollout"] = expand_top_outcomes_cached(
+                    model, tok, ids, rollout, prefill=prefill)
+            if outcomes:
+                masses = {}
+                for o in outcomes:
+                    t0 = suffix_tokens(tok, rendered, ids, o)[0]
+                    masses[o] = round(float(probs[t0]), 5)
+                entry["outcome_mass"] = masses
+            out.append(entry)
+            if on_item:
+                on_item()
+        return {"kind": "decision_read", "conditions": out}
 
 
 def _last_logp(logits: mx.array) -> np.ndarray:
