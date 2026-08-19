@@ -185,6 +185,8 @@ class ExperimentRunner:
                 if name not in bindings:
                     raise ValueError(f"unbound hole: {v}")
                 return bindings[name]
+            if isinstance(v, dict) and set(v.keys()) == {"$hf_adapter"}:
+                return resolve_hf_adapter(resolve_value(v["$hf_adapter"]))
             if isinstance(v, dict) and set(v.keys()) == {"$hf_dataset"}:
                 return resolve_hf_dataset(resolve_value(v["$hf_dataset"]))
             if isinstance(v, dict) and "$fetch" in v                     and set(v.keys()) <= {"$fetch", "sha256"}:
@@ -245,6 +247,29 @@ class ExperimentRunner:
                 "fingerprint": getattr(ds, "_fingerprint", None),
                 "rows_total": len(ds), "rows_used": n}
             return {"kind": "record_set", "records": records}
+
+        def resolve_hf_adapter(spec):
+            """{"$hf_adapter": {repo, revision?}} -> an adapter object
+            payload imported from a hub PEFT LoRA repo. Token plumbing
+            arrives with 000264 (huggingface_hub token= kwarg); the
+            resolved snapshot commit is recorded."""
+            from huggingface_hub import snapshot_download
+
+            from mechbench_core.peft import peft_import
+
+            repo = spec["repo"]
+            revision = spec.get("revision")
+            kwargs = {"allow_patterns": ["adapter_*", "*.json"]}
+            if revision:
+                kwargs["revision"] = revision
+            local = snapshot_download(repo, **kwargs)
+            commit = local.rstrip("/").rsplit("/", 1)[-1]
+            payload = peft_import(local)
+            resolved.setdefault("adapters", {})[
+                f"{repo}@{revision}" if revision else repo] = {
+                "repo": repo, "revision": revision, "commit": commit,
+                "target_modules": payload["lora"]["target_modules"]}
+            return payload
 
         def record_model(ref):
             if not isinstance(ref, str) or ref in resolved["models"]:
@@ -612,13 +637,15 @@ class ExperimentRunner:
         lora_cfg = params.get("lora") or {}
         rank = int(lora_cfg.get("rank", 8))
         alpha = float(lora_cfg.get("alpha", 16))
+        target_modules = tuple(lora_cfg.get("target_modules")
+                               or ("q_proj", "v_proj"))
         steps = int(params.get("steps", 250))
         lr = float(params.get("lr", 1e-4))
         seed = int(params.get("seed", 7))
         batch = params.get("batch") or {"target": 3, "anchor": 1,
                                          "continuation": 2}
 
-        n_lora = apply_lora(model.lm, rank, alpha)
+        n_lora = apply_lora(model.lm, rank, alpha, targets=target_modules)
         if on_start:
             on_start(steps)
         final_loss = train_soft_ce(
@@ -648,6 +675,7 @@ class ExperimentRunner:
             "base_model": params.get("model"),
             "lora": {"rank": rank, "alpha": alpha,
                       "scale": alpha / rank,
+                      "target_modules": list(target_modules),
                       "params": n_lora},
             "train": {"steps": steps, "lr": lr, "seed": seed,
                        "batch": batch, "final_loss": round(final_loss, 4),
