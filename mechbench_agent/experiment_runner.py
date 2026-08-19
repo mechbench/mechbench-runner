@@ -365,6 +365,8 @@ class ExperimentRunner:
                     inputs, params, on_item=None)
             elif block == "~canonical/ops/generate/1":
                 results[nid] = self._block_generate(inputs, params)
+            elif block == "~canonical/ops/lens-trajectory/1":
+                results[nid] = self._block_lens(inputs, params)
             elif block == "~canonical/ops/score/1":
                 input_paths = {
                     e["to"]["port"]: node_paths.get(e["from"]["node"], "")
@@ -504,6 +506,75 @@ class ExperimentRunner:
             "description": params.get("description", ""),
             "fidelity": fidelity,
             "item_kind": "~canonical/kinds/text",
+            "items": items,
+        }
+
+    def _block_lens(self, inputs, params) -> Any:
+        """The LensTrajectory model block: per condition record, the
+        logit-lens trajectory at the final position — every layer's
+        residual projected through the head, recording top-1 token, its
+        probability, and entropy (the commitment-funnel instrument,
+        020's lens_rows as a registered block). Output items are
+        lens-trajectory/2, so collections render as overlaid funnel
+        curves."""
+        import numpy as _np
+
+        from mechbench_core import Capture
+        from mechbench_core.distill import encode, render_chat
+
+        model = self._model_loaded(params.get("model"))
+        tok = model.tokenizer
+        records = inputs.get("records") or []
+        if isinstance(records, dict):
+            records = records.get("conditions") or records.get("records") or []
+        f_system = params.get("system_field", "system")
+        f_user = params.get("user_field", "user")
+        f_prefill = params.get("prefill_field", "prefill")
+        n_layers = len(model.lm.model.layers)
+
+        items = []
+        for rec in records:
+            if f_user not in rec:
+                raise ValueError(
+                    f"lens: record {rec.get('id')!r} has no {f_user!r} field")
+            rendered = render_chat(tok, rec.get(f_system, ""),
+                                   rec[f_user], rec.get(f_prefill, ""))
+            ids = encode(tok, rendered)
+            r = model.run(
+                mx.array([ids]),
+                interventions=[Capture.residual(layers=range(n_layers))])
+            layers = []
+            for i in range(n_layers):
+                row = model.project_to_logits(
+                    r.cache[f"blocks.{i}.resid_post"])[0, -1, :]
+                z = _np.array(row.astype(mx.float32)).astype(_np.float64)
+                z -= z.max()
+                pr = _np.exp(z) / _np.exp(z).sum()
+                top = int(_np.argmax(pr))
+                nz = pr[pr > 0]
+                layers.append({
+                    "layer": i,
+                    "top1": tok.decode([top]),
+                    "p": round(float(pr[top]), 4),
+                    "entropy_bits": round(
+                        float(-(nz * _np.log2(nz)).sum()), 3),
+                })
+            final = layers[-1]
+            items.append({
+                "id": rec["id"],
+                "kind": "~canonical/kinds/lens-trajectory/2",
+                "text": f"Lens trajectory, {rec['id']}: final-layer "
+                        f"top1={final['top1']!r} (p={final['p']}, "
+                        f"H={final['entropy_bits']} bits).",
+                "metadata": {"coords": dict(rec.get("coords", {})),
+                              "layers": layers},
+            })
+        return {
+            "kind": "document_collection",
+            "name": params.get("name", "lens-trajectories"),
+            "description": params.get("description", ""),
+            "fidelity": "text",
+            "item_kind": "~canonical/kinds/lens-trajectory/2",
             "items": items,
         }
 
