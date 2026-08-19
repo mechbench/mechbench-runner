@@ -373,14 +373,17 @@ class ExperimentRunner:
             if block in PURE_BLOCKS:
                 results[nid] = PURE_BLOCKS[block](inputs, params)
             elif block == "~canonical/ops/decision-read/1":
-                results[nid] = self._block_decision_read(
-                    inputs, params, on_item=on_item, on_start=expand)
+                results[nid] = self._run_model_block(
+                    self._block_decision_read, inputs, params,
+                    on_item=on_item, on_start=expand)
             elif block == "~canonical/ops/generate/1":
-                results[nid] = self._block_generate(
-                    inputs, params, on_item=on_item, on_start=expand)
+                results[nid] = self._run_model_block(
+                    self._block_generate, inputs, params,
+                    on_item=on_item, on_start=expand)
             elif block == "~canonical/ops/lens-trajectory/1":
-                results[nid] = self._block_lens(
-                    inputs, params, on_item=on_item, on_start=expand)
+                results[nid] = self._run_model_block(
+                    self._block_lens, inputs, params,
+                    on_item=on_item, on_start=expand)
             elif block == "~canonical/ops/finetune/lora/1":
                 results[nid] = self._block_finetune_lora(
                     inputs, params, on_item=on_item, on_start=expand)
