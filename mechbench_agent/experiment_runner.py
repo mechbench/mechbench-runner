@@ -365,6 +365,12 @@ class ExperimentRunner:
                     inputs, params, on_item=None)
             elif block == "~canonical/ops/generate/1":
                 results[nid] = self._block_generate(inputs, params)
+            elif block == "~canonical/ops/score/1":
+                input_paths = {
+                    e["to"]["port"]: node_paths.get(e["from"]["node"], "")
+                    for e in in_edges
+                }
+                results[nid] = self._block_score(inputs, params, input_paths)
             else:
                 raise ValueError(f"unknown block: {block!r}")
             if result_base:
@@ -427,6 +433,11 @@ class ExperimentRunner:
         temperature = float(params.get("temperature", 0.9))
         top_p = float(params.get("top_p", 0.95))
         max_tokens = int(params.get("max_tokens", 256))
+        fidelity = params.get("fidelity", "text")
+        if fidelity not in ("text", "trace"):
+            raise ValueError(f"generate: unsupported fidelity {fidelity!r}")
+
+        from mechbench_core.generate import offsets_by_cumulative_decode
 
         items = []
         for rec in records:
@@ -443,11 +454,11 @@ class ExperimentRunner:
                     f"{seed}:{rec['id']}:{k}".encode()).digest()
                 rng = _np.random.default_rng(
                     int.from_bytes(digest[:8], "little"))
-                text = sample_completion_cached(
+                text, out_ids = sample_completion_cached(
                     model, ids, max_tokens=max_tokens,
                     temperature=temperature, top_p=top_p, rng=rng,
-                    prefill=prefill)
-                items.append({
+                    prefill=prefill, return_ids=True)
+                item = {
                     "id": f"{rec['id']}-s{k}",
                     "kind": "~canonical/kinds/text",
                     "text": text,
@@ -458,14 +469,101 @@ class ExperimentRunner:
                                      "index": k},
                         "model": params.get("model"),
                     },
-                })
+                }
+                if fidelity == "trace":
+                    full_ids = list(ids) + list(out_ids)
+                    offs, full_text = offsets_by_cumulative_decode(
+                        tok, full_ids)
+                    item["trace"] = {
+                        "token_ids": [int(t) for t in full_ids],
+                        "tokenizer": str(params.get("model")),
+                        "text": full_text,
+                        "offsets": [[int(a), int(b)] for a, b in offs],
+                        "generation_spans": [{
+                            "token_start": len(ids),
+                            "token_end": len(full_ids),
+                            "model": params.get("model"),
+                            "temperature": temperature,
+                            "top_p": top_p,
+                            "seed": k,
+                        }],
+                    }
+                    item["segmentations"] = [{
+                        "schema_name": "envelope",
+                        "segments": [
+                            {"role": "prompt", "token_start": 0,
+                             "token_end": len(ids)},
+                            {"role": "body", "token_start": len(ids),
+                             "token_end": len(full_ids)},
+                        ],
+                    }]
+                items.append(item)
         return {
             "kind": "document_collection",
             "name": params.get("name", "generated"),
             "description": params.get("description", ""),
-            "fidelity": "text",
+            "fidelity": fidelity,
             "item_kind": "~canonical/kinds/text",
             "items": items,
+        }
+
+    def _block_score(self, inputs, params, input_paths=None) -> Any:
+        """The Score model block: per-token surprisal (bits) under the
+        scoring model, over a TRACE-fidelity collection — the 019
+        backfill's rows-only scorer as a registered block. Values cover
+        every position (prompt and envelope included): surprisal of
+        token i given tokens < i. Output is a numeric AnnotationLayer
+        whose anchors are token spans, rendered by the DocBrowser as an
+        overlay on the collection it scores."""
+        import numpy as _np
+
+        model = self._model_loaded(params.get("model"))
+        coll = inputs.get("collection")
+        coll_path = (input_paths or {}).get("collection", "")
+        if coll is None:
+            ref = params.get("collection_path")
+            if not ref:
+                raise ValueError(
+                    "score: no collection input edge and no "
+                    "collection_path param")
+            from mechbench_core import bench
+            fetched = bench.fetch(str(ref))
+            coll = fetched.get("payload", fetched)
+            coll_path = str(ref)
+        items = coll.get("items") or []
+        values = []
+        for it in items:
+            trace = it.get("trace")
+            if not trace:
+                raise ValueError(
+                    f"score: item {it.get('id')!r} has no trace — Score "
+                    "requires a trace-fidelity collection (set the "
+                    "Generate block's fidelity to 'trace')")
+            ids = trace["token_ids"]
+            h = model.trunk_hidden(mx.array([ids]))
+            rows = model.head_logits(h[:, :-1, :]).astype(mx.float32)
+            tgt = mx.array(ids[1:])
+            lp = (mx.take_along_axis(rows[0], tgt[:, None], axis=-1)[:, 0]
+                  - mx.logsumexp(rows[0], axis=-1))
+            surp = -_np.array(lp) / _np.log(2.0)
+            for j, sv in enumerate(surp.tolist()):
+                values.append({
+                    "anchor": {"item_id": it["id"],
+                               "token_start": j + 1,
+                               "token_end": j + 2},
+                    "value": round(float(sv), 3),
+                })
+        return {
+            "kind": "annotation_layer",
+            "name": params.get("name", "surprisal"),
+            "description": params.get(
+                "description",
+                "Per-token surprisal (bits); values cover every position "
+                "including prompt and envelope tokens."),
+            "collection": coll_path,
+            "value_type": "numeric",
+            "required_fidelity": "trace",
+            "values": values,
         }
 
     def _block_decision_read(self, inputs, params, on_item=None) -> Any:
