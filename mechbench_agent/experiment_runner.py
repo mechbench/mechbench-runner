@@ -203,6 +203,47 @@ class ExperimentRunner:
                 return [resolve_value(x) for x in v]
             return v
 
+        def resolve_hf_dataset(spec):
+            """{"$hf_dataset": {repo, split, config?, revision?, limit?,
+            columns?: {id?, coords?: [...]}}} -> a record stream shaped
+            like our own: {id, coords, values} per row, columns as
+            values (Template substitutes them), declared coords
+            columns lifted into coords. Resolution recorded (repo,
+            requested revision, arrow fingerprint, rows)."""
+            from datasets import load_dataset
+
+            repo = spec["repo"]
+            split = spec.get("split", "train")
+            config = spec.get("config")
+            revision = spec.get("revision")
+            limit = spec.get("limit")
+            colmap = spec.get("columns") or {}
+            kwargs = {"split": split}
+            if revision:
+                kwargs["revision"] = revision
+            ds = (load_dataset(repo, config, **kwargs) if config
+                  else load_dataset(repo, **kwargs))
+            n = min(int(limit), len(ds)) if limit else len(ds)
+            id_col = colmap.get("id")
+            coord_cols = list(colmap.get("coords") or [])
+            records = []
+            for i in range(n):
+                row = ds[i]
+                rid = str(row[id_col]) if id_col else f"{split}-{i}"
+                coords = {c: str(row[c]) for c in coord_cols}
+                values = {k: str(v) for k, v in row.items()
+                          if k not in coord_cols}
+                records.append({"id": rid,
+                                 "coords": {"split": split, **coords},
+                                 "values": values})
+            key = f"{repo}@{revision}" if revision else repo
+            resolved.setdefault("datasets", {})[key] = {
+                "repo": repo, "config": config, "split": split,
+                "revision": revision,
+                "fingerprint": getattr(ds, "_fingerprint", None),
+                "rows_total": len(ds), "rows_used": n}
+            return {"kind": "record_set", "records": records}
+
         def record_model(ref):
             if not isinstance(ref, str) or ref in resolved["models"]:
                 return
