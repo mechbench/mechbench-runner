@@ -378,6 +378,12 @@ class ExperimentRunner:
             elif block == "~canonical/ops/finetune/lora/1":
                 results[nid] = self._block_finetune_lora(
                     inputs, params, on_item=on_item, on_start=expand)
+            elif block == "~canonical/ops/eval/suite/1":
+                results[nid] = self._run_model_block(
+                    self._block_eval_suite, inputs, params,
+                    on_item=on_item, on_start=expand)
+            elif block == "~canonical/ops/eval/hf-metric/1":
+                results[nid] = self._block_eval_hf_metric(inputs, params)
             elif block == "~canonical/ops/score/1":
                 input_paths = {
                     e["to"]["port"]: node_paths.get(e["from"]["node"], "")
@@ -590,6 +596,131 @@ class ExperimentRunner:
             finally:
                 os.unlink(path)
         return _cm()
+
+    def _block_eval_suite(self, inputs, params, on_item=None,
+                          on_start=None):
+        """~canonical/ops/eval/suite/1 — the lm-eval-harness bridge
+        (task 000256): run standard benchmark tasks against the bound
+        model THROUGH OUR OWN Model (lm_bridge.MechbenchLM), so
+        revision pinning, VLM-shaped checkpoints, and adapter fusion
+        (the standard `adapter` input port) all come free. Publishes a
+        metric table whose rows carry (task, metric, variant) coords —
+        composable straight into union/paired-delta for
+        base-vs-adapter deltas.
+
+        Harness versions ride in the description: prompt templates
+        change across lm-eval releases, so the version IS part of the
+        measurement.
+        """
+        import lm_eval
+
+        from mechbench_core.blocks import suite_metric_records
+
+        from .lm_bridge import MechbenchLM
+
+        tasks = list(params.get("tasks") or [])
+        if not tasks:
+            raise ValueError("eval/suite needs params.tasks (list of "
+                             "lm-eval task names)")
+        limit = params.get("limit")
+        num_fewshot = params.get("num_fewshot")
+        variant = str(params.get("variant", "base"))
+        seed = int(params.get("seed", 0))
+
+        model = self._model_loaded(params.get("model"))
+        wrapper = MechbenchLM(model)
+
+        if on_start:
+            on_start(len(tasks))
+        results_all: dict = {}
+        nsamples_all: dict = {}
+        for i, task in enumerate(tasks):
+            out = lm_eval.simple_evaluate(
+                model=wrapper,
+                tasks=[task],
+                num_fewshot=num_fewshot,
+                limit=limit,
+                random_seed=seed,
+                numpy_random_seed=seed,
+                torch_random_seed=None,
+                fewshot_random_seed=seed,
+            )
+            results_all.update(out["results"])
+            nsamples_all.update(out.get("n-samples") or {})
+            if on_item:
+                on_item()
+
+        recs = suite_metric_records(results_all, nsamples_all,
+                                    variant=variant)
+        columns = [{"name": "id", "dtype": "string"},
+                   {"name": "task", "dtype": "string"},
+                   {"name": "metric", "dtype": "string"},
+                   {"name": "variant", "dtype": "string"},
+                   {"name": "value", "dtype": "number"},
+                   {"name": "stderr", "dtype": "number"},
+                   {"name": "n", "dtype": "number"}]
+        rows = [{"id": r["id"], **r["coords"],
+                 "value": r.get("value"), "stderr": r.get("stderr"),
+                 "n": r.get("n"), "coords": r["coords"]}
+                for r in recs]
+        import mlx_lm
+
+        return {"kind": "metric_table",
+                "name": params.get("name", f"suite-{variant}"),
+                "description": (
+                    f"lm-eval {lm_eval.__version__} via MechbenchLM "
+                    f"(mlx_lm {mlx_lm.__version__} unused for load); "
+                    f"tasks={','.join(tasks)} limit={limit} "
+                    f"fewshot={num_fewshot}"),
+                "row_axis": "task-metric",
+                "columns": columns,
+                "rows": rows}
+
+    def _block_eval_hf_metric(self, inputs, params):
+        """~canonical/ops/eval/hf-metric/1 — the HuggingFace
+        `evaluate` metric layer (task 000256): score prediction/
+        reference fields on a record stream with any hub metric
+        (accuracy, exact_match, f1, bleu, ...) instead of
+        reimplementing them."""
+        import evaluate
+
+        from mechbench_core.blocks import _records
+
+        metric_name = params.get("metric")
+        if not metric_name:
+            raise ValueError("eval/hf-metric needs params.metric")
+        pf = params.get("prediction_field", "prediction")
+        rf = params.get("reference_field", "reference")
+        variant = str(params.get("variant", "base"))
+        recs = _records(inputs.get("records") or params.get("records"))
+        preds = [r.get(pf) for r in recs]
+        refs = [r.get(rf) for r in recs]
+        metric = evaluate.load(metric_name)
+        out = metric.compute(predictions=preds, references=refs,
+                             **(params.get("kwargs") or {}))
+        rows = []
+        for k in sorted(out or {}):
+            v = out[k]
+            if isinstance(v, (int, float)):
+                rows.append({"id": f"{metric_name}:{k}:{variant}",
+                             "metric": k, "variant": variant,
+                             "value": float(v), "n": len(recs),
+                             "coords": {"metric": k,
+                                        "variant": variant}})
+        return {"kind": "metric_table",
+                "name": params.get("name", f"hf-{metric_name}"),
+                "description": (
+                    f"huggingface evaluate {evaluate.__version__}: "
+                    f"{metric_name} over {len(recs)} records "
+                    f"({pf} vs {rf})"),
+                "row_axis": "metric",
+                "columns": [
+                    {"name": "id", "dtype": "string"},
+                    {"name": "metric", "dtype": "string"},
+                    {"name": "variant", "dtype": "string"},
+                    {"name": "value", "dtype": "number"},
+                    {"name": "n", "dtype": "number"}],
+                "rows": rows}
 
     def _block_finetune_lora(self, inputs, params, on_item=None,
                              on_start=None) -> Any:

@@ -45,8 +45,12 @@ class JobRunner:
     def run(self) -> None:
         self.install_sigint_handler()
         print("[agent] loading model (first call is slow)...")
-        # Warm the model so the first claimed job doesn't pay cold-start cost.
-        self._runner._model_loaded()  # noqa: SLF001 — intentional warm-up
+        # Warm the model so the first claimed job doesn't pay cold-start
+        # cost — the CONFIGURED default (MECHBENCH_DEFAULT_MODEL_ID, which
+        # may carry a @revision pin), never Model.load()'s unpinned
+        # built-in: an unpinned warm-up resolves upstream's current
+        # revision, which drifts out from under the local mlx stack.
+        self._runner._model_loaded(self.config.default_model_id)  # noqa: SLF001
         print("[agent] model loaded; polling.")
 
         with ApiClient(self.config) as api:
