@@ -2,8 +2,8 @@
 
 Tools:
 
-  run_experiment(prompt, experiment_kind?, model_id?)
-      Runs the experiment *in-process* via mechbench-compute and returns
+  run_protocol(prompt, protocol_kind?, model_id?)
+      Runs the protocol *in-process* via mechbench-compute and returns
       the LayerAblationPayload dict. Does not round-trip through the
       mechbench-api job queue — the MCP caller wants the answer, and
       we are the compute target. (The job-runner subcommand is the
@@ -13,7 +13,7 @@ Tools:
       Fetches /objects/<path> from mechbench-api. Returns the parsed
       JSON payload.
 
-  list_experiments()
+  list_jobs()
       Lists the caller's jobs via GET /jobs.
 
 Stdio transport only for v0. SSE / HTTP transports when remote
@@ -34,30 +34,30 @@ from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 
 def build_server(
     config: Config | None = None,
-    runner: ProtocolExecutor | None = None,
+    executor: ProtocolExecutor | None = None,
 ) -> FastMCP:
     """Construct the MCP server. Factored out so in-process tests can
     exercise the tools without spawning a stdio subprocess."""
     cfg = config or Config.from_env()
-    _runner = runner or ProtocolExecutor()
+    _executor = executor or ProtocolExecutor()
     mcp = FastMCP("mechbench-runner")
 
     @mcp.tool()
-    def run_experiment(
+    def run_protocol(
         prompt: str,
-        experiment_kind: str = "layer_ablation",
+        protocol_kind: str = "layer_ablation",
         model_id: str | None = None,
     ) -> dict[str, Any]:
-        """Run an interpretability experiment in-process and return
-        the structured result. `experiment_kind` defaults to
+        """Run an interpretability protocol in-process and return
+        the structured result. `protocol_kind` defaults to
         layer_ablation (the only kind wired in v0). `model_id`
         defaults to MECHBENCH_DEFAULT_MODEL_ID."""
         spec = ProtocolSpec(
-            kind=experiment_kind,
+            kind=protocol_kind,
             prompt=prompt,
             model_id=model_id or cfg.default_model_id,
         )
-        payload = _runner.run(spec)
+        payload = _executor.run(spec)
         return payload.model_dump(mode="json")
 
     @mcp.tool()
@@ -69,7 +69,7 @@ def build_server(
         return json.loads(raw)
 
     @mcp.tool()
-    def list_experiments() -> list[dict[str, Any]]:
+    def list_jobs() -> list[dict[str, Any]]:
         """List the caller's queued / running / completed jobs."""
         with ApiClient(cfg) as api:
             return api.list_jobs()

@@ -4,23 +4,23 @@ The machine-side process of the [mechbench](https://github.com/mechbench/mechben
 
 (Named `mechbench-agent` until 2026-08-22. "Agent" already meant two other things here — an LLM acting as a principal, recorded on API keys and audit rows, and the telemetry agent — so the process that executes *runs* is a runner.)
 
-**Status:** scaffolded per task [`000185`](https://github.com/mechbench/mechbench/blob/main/tasks/mechbench-runner/). Three MCP tools (`run_experiment`, `get_result`, `list_experiments`); job-runner loop verified against the e2e trace from epic 000178. Supersedes the throwaway `bin/run_local_agent.py` shim in `mechbench-experiments`.
+**Status:** scaffolded per task [`000185`](https://github.com/mechbench/mechbench/blob/main/tasks/mechbench-runner/). Three MCP tools (`run_protocol`, `get_result`, `list_jobs`); job-runner loop verified against the e2e trace from epic 000178. Supersedes the throwaway `bin/run_local_agent.py` shim in `mechbench-experiments`.
 
 ## What this repo is for
 
 Two adjacent surfaces for different callers:
 
 1. **MCP server.** An LLM agent (Claude, others) connects via MCP stdio and calls mechbench primitives as structured tools. Tool bodies run in-process against `mechbench-compute`.
-2. **Job-runner.** Polls `mechbench-api`'s `/jobs/next` for UI-queued experiments, runs them, posts results back. Same compute path as the MCP `run_experiment` tool; different *trigger*.
+2. **Job-runner.** Polls `mechbench-api`'s `/jobs/next` for UI-queued protocols, runs them, posts results back. Same compute path as the MCP `run_protocol` tool; different *trigger*.
 
-Both modes share one binary (`mechbench-runner`) with subcommands; they share the loaded model, API client, and experiment runner. Splitting into separate processes is a later operational decision — see "Open design questions" below.
+Both modes share one binary (`mechbench-runner`) with subcommands; they share the loaded model, API client, and protocol executor. Splitting into separate processes is a later operational decision — see "Open design questions" below.
 
 ## Architectural decisions (task 000185)
 
 - **Python.** `mechbench-compute` is Python; delegating to Python via RPC or subprocess-shell from a TS runner adds a layer that pays no dividends in v0. The MCP Python SDK is mature.
 - **One binary, two subcommands.** `mechbench-runner mcp` launches the MCP server over stdio; `mechbench-runner run` starts the job-runner loop. They share `ExperimentRunner` (owns the loaded Gemma model) and `ApiClient`.
 - **Agent authenticates to `mechbench-api` with a dedicated API key**, not a user's personal session. Export `MECHBENCH_API_KEY` (mint one at `/settings/api-keys`, or via `POST /auth/api-keys`). Matches the pattern from the e2e trace.
-- **MCP `run_experiment` runs in-process**, not queued through `mechbench-api`. The MCP caller wants the answer; we are the compute target. Job-queue round-tripping exists for the *UI-triggered* path (job-runner subcommand).
+- **MCP `run_protocol` runs in-process**, not queued through `mechbench-api`. The MCP caller wants the answer; we are the compute target. Job-queue round-tripping exists for the *UI-triggered* path (job-runner subcommand).
 - **stdio transport only.** SSE / HTTP-SSE transports earn their seat once remote MCP deploy matters (deferred).
 
 ## Install
@@ -60,13 +60,13 @@ Three tools appear in Claude:
 
 | tool | description |
 |---|---|
-| `run_experiment` | Run a layer-ablation experiment in-process on a prompt; return per-layer damage. |
+| `run_protocol` | Run a layer-ablation protocol in-process on a prompt; return per-layer damage. |
 | `get_result` | Fetch a cached payload from `mechbench-api` by MechbenchPath. |
-| `list_experiments` | List the caller's queued / running / completed jobs. |
+| `list_jobs` | List the caller's queued / running / completed jobs. |
 
 ### Job-runner
 
-Polls `mechbench-api` for UI-queued jobs. Same compute path as `run_experiment`; different trigger.
+Polls `mechbench-api` for UI-queued jobs. Same compute path as `run_protocol`; different trigger.
 
 ```bash
 export MECHBENCH_API_URL=http://localhost:3000
@@ -79,8 +79,8 @@ Ctrl-C exits cleanly. API-unreachable is retried with exponential backoff capped
 ### In-process smoke test
 
 ```bash
-mechbench-runner smoke            # quick: list_experiments + get_result
-mechbench-runner smoke --full     # adds run_experiment (42 forwards, ~1-2 min)
+mechbench-runner smoke            # quick: list_jobs + get_result
+mechbench-runner smoke --full     # adds run_protocol (42 forwards, ~1-2 min)
 ```
 
 ## Configuration
@@ -106,7 +106,7 @@ All via env vars:
 ## Open design questions (deferred)
 
 - **One binary or two processes?** Current answer: one binary, two subcommands. Revisit if MCP-caller frequency vs. job-runner throughput diverges enough to want independent scaling.
-- **Structured-summary interface.** The family's philosophy doc describes a read-side surface where agents consume JSON summaries of findings / experiments. Currently implicit in `list_experiments` + `get_result`. A richer summary layer (`GET /summary`, `POST /query`) is still on the table but unbuilt.
+- **Structured-summary interface.** The family's philosophy doc describes a read-side surface where agents consume JSON summaries of findings / experiments. Currently implicit in `list_jobs` + `get_result`. A richer summary layer (`GET /summary`, `POST /query`) is still on the table but unbuilt.
 - **MCP-surface observability.** Rate limits, per-tool metrics, audit trail for the tool-calling side. Deferred until a second LLM-agent consumer exists.
 
 ## License

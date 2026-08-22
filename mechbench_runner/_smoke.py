@@ -8,7 +8,7 @@ API key must be available via MECHBENCH_API_KEY.
 
 The layer-ablation run is gated behind --full because loading Gemma
 4 and running 42 forward passes takes 1-2 minutes; the default run
-asserts only the get_result / list_experiments tools, which are
+asserts only the get_result / list_jobs tools, which are
 fast and enough to verify the wiring.
 """
 
@@ -36,9 +36,9 @@ def main(full: bool = False) -> int:
     # functions directly so the smoke test doesn't need an MCP client.
     tools = {t.name: t.fn for t in server._tool_manager.list_tools()}  # noqa: SLF001
 
-    # --- list_experiments: sanity check that the runner can reach the API.
-    jobs = tools["list_experiments"]()
-    print(f"✓ list_experiments returned {len(jobs)} job(s)")
+    # --- list_jobs: sanity check that the runner can reach the API.
+    jobs = tools["list_jobs"]()
+    print(f"✓ list_jobs returned {len(jobs)} job(s)")
 
     # --- get_result: exercise against the most recent done job, if any.
     done = [j for j in jobs if j["status"] == "done" and j.get("resultPath")]
@@ -54,16 +54,16 @@ def main(full: bool = False) -> int:
         print("✓ get_result skipped (no completed jobs); api /auth/me reachable")
 
     if full:
-        payload = tools["run_experiment"](
+        payload = tools["run_protocol"](
             prompt="Complete this sentence with one word: The Eiffel Tower is in"
         )
         print(
-            f"✓ run_experiment → experiment={payload['experiment']} "
+            f"✓ run_protocol → experiment={payload['experiment']} "
             f"n_layers={payload['n_layers']} "
             f"baseline={payload['prompts'][0]['baseline_logprob']}"
         )
     else:
-        print("(skipping run_experiment; pass --full to include it)")
+        print("(skipping run_protocol; pass --full to include it)")
 
     print("\nall smoke checks passed.")
     return 0

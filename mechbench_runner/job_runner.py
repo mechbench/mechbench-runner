@@ -33,7 +33,7 @@ class JobRunner:
     def __init__(self, config: Config) -> None:
         self.config = config
         self._shutdown = False
-        self._runner = ProtocolExecutor()
+        self._executor = ProtocolExecutor()
 
     def install_sigint_handler(self) -> None:
         def _handler(_signum: int, _frame: FrameType | None) -> None:
@@ -50,7 +50,7 @@ class JobRunner:
         # may carry a @revision pin), never Model.load()'s unpinned
         # built-in: an unpinned warm-up resolves upstream's current
         # revision, which drifts out from under the local mlx stack.
-        self._runner._model_loaded(self.config.default_model_id)  # noqa: SLF001
+        self._executor._model_loaded(self.config.default_model_id)  # noqa: SLF001
         print("[runner] model loaded; polling.")
 
         with ApiClient(self.config) as api:
@@ -113,7 +113,7 @@ class JobRunner:
                 print(f"[runner] progress report failed ({e}); continuing")
 
         try:
-            payload = self._runner.run(spec, on_progress=on_progress,
+            payload = self._executor.run(spec, on_progress=on_progress,
                                        secrets=secrets)
             if hasattr(payload, "model_dump"):
                 payload = payload.model_dump(mode="json")
