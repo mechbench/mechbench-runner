@@ -29,6 +29,15 @@ def main(argv: list[str] | None = None) -> int:
         help="What to call this machine (default: its hostname).",
     )
     sub.add_parser("logout", help="Revoke this machine's key and forget it.")
+    sub.add_parser(
+        "install-agent",
+        help="Start the runner automatically, and keep it running.",
+    )
+    sub.add_parser("uninstall-agent", help="Stop starting it automatically.")
+    sub.add_parser(
+        "agent-status",
+        help="Is the service installed, loaded and running?",
+    )
     sub.add_parser("whoami", help="Which machine, which account, which scope.")
     sub.add_parser(
         "doctor",
@@ -53,9 +62,14 @@ def main(argv: list[str] | None = None) -> int:
         "mcp",
         help="Run the MCP server over stdio (the agent-callable surface).",
     )
-    sub.add_parser(
+    run_p = sub.add_parser(
         "run",
         help="Run the job-runner polling loop against mechbench-api.",
+    )
+    run_p.add_argument(
+        "--no-log-file",
+        action="store_true",
+        help="Print to the terminal only, without the rotating log.",
     )
     status = sub.add_parser(
         "status",
@@ -97,6 +111,30 @@ def main(argv: list[str] | None = None) -> int:
 
         return models_cmd.run(prune=args.prune, delete=args.delete)
 
+    if args.cmd in {"install-agent", "uninstall-agent", "agent-status"}:
+        from . import agent as agent_mod
+
+        try:
+            if args.cmd == "install-agent":
+                st = agent_mod.install()
+                print(f"Installed {st.path}")
+                print(f"  {st.detail}")
+                hint = agent_mod.linger_hint()
+                if hint:
+                    print(f"\n{hint}")
+                return 0 if st.loaded else 1
+            if args.cmd == "uninstall-agent":
+                st = agent_mod.uninstall()
+                print(st.detail)
+                return 0
+            st = agent_mod.status()
+            print(f"service  {st.detail}")
+            print(f"unit     {st.path}")
+            return 0 if st.running or not st.installed else 1
+        except agent_mod.UnsupportedPlatformError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
     if args.cmd in {"login", "logout", "whoami"}:
         from . import login as login_mod
 
@@ -113,10 +151,27 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "run":
+        from .exits import EXIT_CRASH
         from .job_runner import JobRunner
+        from .logs import excepthook_to_log
+        from .logs import install as install_logs
 
-        JobRunner(config).run()
-        return 0
+        # Bounded logs, because launchd has no rotation and this process
+        # is meant to run for months unattended (task 000294).
+        if not args.no_log_file:
+            install_logs()
+            excepthook_to_log()
+        try:
+            return JobRunner(config).run()
+        except SystemExit:
+            raise
+        except BaseException:
+            # A crash has to *be* a crash to the supervisor, and it has
+            # to be legible in the file afterwards.
+            import traceback
+
+            traceback.print_exc()
+            return EXIT_CRASH
 
     if args.cmd in {"status", "pause", "resume"}:
         from .control import ControlError

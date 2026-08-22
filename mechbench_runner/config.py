@@ -12,6 +12,7 @@ import os
 from dataclasses import dataclass
 
 from . import credentials
+from .watchdog import DEFAULT_STALL_SECONDS
 
 DEFAULT_API_URL = "http://localhost:3000"
 
@@ -24,6 +25,9 @@ class Config:
     api_key: str | None
     poll_interval_seconds: float
     warm_model_id: str | None
+    #: How long without progress means wedged rather than slow (000294).
+    #: Zero disables the watchdog, which is what a debugger wants.
+    watchdog_seconds: float = DEFAULT_STALL_SECONDS
     #: Which machine this credential belongs to, when it came from a
     #: registration. None for a hand-pasted key, which is anonymous by
     #: construction — it has no runner record behind it.
@@ -35,6 +39,9 @@ class Config:
     @classmethod
     def from_env(cls) -> Config:
         poll = float(os.environ.get("MECHBENCH_POLL_INTERVAL_SECONDS", "2.0"))
+        watchdog = float(
+            os.environ.get("MECHBENCH_WATCHDOG_SECONDS", str(DEFAULT_STALL_SECONDS))
+        )
         # Which model to warm at startup so the first job does not pay
         # cold-start cost. Purely operational, and deliberately without a
         # built-in value: a runner that invents a model can execute a
@@ -55,6 +62,7 @@ class Config:
                 api_key=env_key,
                 poll_interval_seconds=poll,
                 warm_model_id=warm,
+                watchdog_seconds=watchdog,
             )
 
         stored = credentials.load()
@@ -76,6 +84,7 @@ class Config:
             api_key=None,
             poll_interval_seconds=poll,
             warm_model_id=warm,
+            watchdog_seconds=watchdog,
         )
 
     def require_api_key(self) -> str:

@@ -130,10 +130,62 @@ def login(
         )
     print(
         f"Connected as \"{runner.get('name')}\" ({runner.get('id')}).\n"
-        f"Credentials written to {path} (mode 0600).\n\n"
-        "Start working:\n\n    mechbench-runner run\n"
+        f"Credentials written to {path} (mode 0600)."
     )
+    _offer_agent()
     return 0
+
+
+def _offer_agent() -> None:
+    """Offer to start automatically, so the promise really is one command.
+
+    A runner you have to remember to start is one you have to touch
+    again. Declining leaves a perfectly good manual runner.
+    """
+    from . import agent
+
+    try:
+        existing = agent.status()
+    except agent.UnsupportedPlatformError:
+        print("\nStart working:\n\n    mechbench-runner run\n")
+        return
+
+    if existing.installed:
+        # It exited deliberately when the key was revoked, so the
+        # supervisor is correctly leaving it alone. Nothing else will
+        # bring it back.
+        if agent.kickstart():
+            print("\nRestarted the background service with the new credentials.")
+        else:
+            print("\nA background service is installed; restart it to pick up "
+                  "the new credentials:\n\n    mechbench-runner install-agent\n")
+        return
+
+    if not sys.stdin.isatty():
+        print(
+            "\nStart working:\n\n    mechbench-runner run\n\n"
+            "Or have it start automatically and stay running:\n\n"
+            "    mechbench-runner install-agent\n"
+        )
+        return
+
+    try:
+        answer = input(
+            "\nStart automatically at login and keep running? [Y/n] "
+        ).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        answer = "n"
+        print()
+
+    if answer in {"", "y", "yes"}:
+        st = agent.install()
+        print(f"  {st.detail}  ({st.path})")
+        hint = agent.linger_hint()
+        if hint:
+            print(f"\n{hint}")
+    else:
+        print("\nStart working:\n\n    mechbench-runner run\n\n"
+              "Change your mind with `mechbench-runner install-agent`.\n")
 
 
 def logout(config: Config) -> int:

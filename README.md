@@ -26,14 +26,44 @@ Both modes share one binary (`mechbench-runner`) with subcommands; they share th
 ## Install
 
 ```bash
+uv tool install mechbench-runner     # or: pipx install mechbench-runner
+mechbench-runner login
+```
+
+`login` prints a link, takes the registration token from it, stores a
+durable key at `~/.mechbench/config.toml` (mode 0600), and offers to
+start the runner automatically. Say yes and there is nothing further to
+do: it starts at login, comes back after a crash, and is controlled from
+the website.
+
+`mechbench-runner doctor` answers "will this actually work here" —
+Python, backend, credentials, API, model cache, disk — before you find
+out the slow way.
+
+Running a model needs Apple Silicon (the MLX backend from
+`mechbench-compute`). The rest installs anywhere.
+
+### Running it yourself
+
+```bash
+mechbench-runner run              # foreground, ^C to stop
+mechbench-runner install-agent    # or have the OS keep it running
+mechbench-runner agent-status
+```
+
+The service is supervised by launchd or systemd rather than by anything
+we wrote — see `mechbench_runner/exits.py` for the contract that makes
+that work.
+
+### From a checkout
+
+```bash
 git clone https://github.com/mechbench/mechbench-runner.git
 cd mechbench-runner
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
 ```
-
-Requires Apple Silicon (MLX backend from `mechbench-compute`).
 
 ## Usage
 

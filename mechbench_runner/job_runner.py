@@ -21,13 +21,15 @@ from contextlib import suppress
 from types import FrameType
 from typing import Any
 
+from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 from mechbench_schema import dump_canonical
 
 from .api_client import ApiClient, ApiError
-from .config import Config
 from .channel import LiveChannel
+from .config import Config
 from .control import ControlServer, RunnerState, probe, socket_path
-from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
+from .exits import EXIT_CRASH, EXIT_OK
+from .watchdog import Watchdog
 
 BACKOFF_MAX_SECONDS = 30.0
 
@@ -55,20 +57,48 @@ class JobRunner:
         # its own thread and a runner with no channel at all claims and
         # finishes jobs exactly as before (task 000289).
         self._channel = LiveChannel(config, self.state)
+        # Nothing outside this process can tell a wedged forward pass from
+        # a slow one, so it has to notice for itself (task 000294).
+        self._watchdog = Watchdog(
+            stall_seconds=config.watchdog_seconds,
+            on_stall=self._announce_stall,
+            exit_code=EXIT_CRASH,
+        )
 
-    def install_sigint_handler(self) -> None:
-        def _handler(_signum: int, _frame: FrameType | None) -> None:
+    def install_signal_handlers(self) -> None:
+        """Stop claiming, finish what is in flight, exit 0.
+
+        SIGTERM is how a supervisor stops a service, so it has to mean
+        the same deliberate thing SIGINT does — an exit code of 0, which
+        under `KeepAlive{SuccessfulExit: false}` is what keeps a stopped
+        runner stopped instead of instantly restarted.
+        """
+
+        def _handler(signum: int, _frame: FrameType | None) -> None:
             self._shutdown = True
-            print("\n[runner] SIGINT received; exiting after current job.")
+            name = signal.Signals(signum).name
+            print(f"\n[runner] {name} received; exiting after the current job.")
 
         signal.signal(signal.SIGINT, _handler)
+        signal.signal(signal.SIGTERM, _handler)
 
-    def run(self) -> None:
-        self.install_sigint_handler()
+    def run(self) -> int:
+        """The poll loop. Returns the process's exit code — see exits.py."""
+        self.install_signal_handlers()
+        if not self.config.api_key:
+            # Not a crash. A supervisor restarts a crash, and a machine
+            # that is merely not signed in would spin against the
+            # throttle forever instead of waiting quietly for `login`.
+            print(
+                "[runner] this machine is not signed in; nothing to do.\n"
+                "[runner] Run `mechbench-runner login` to connect it."
+            )
+            return EXIT_OK
         self._claim_control_socket()
         self._control.start()
         print(f"[runner] control socket at {self._control.path}")
         self._channel.start()
+        self._watchdog.start()
         warm = self.config.warm_model_id
         if warm:
             print("[runner] loading model (first call is slow)...")
@@ -88,6 +118,10 @@ class JobRunner:
         with ApiClient(self.config) as api:
             backoff = self.config.poll_interval_seconds
             while not self._shutdown:
+                # Every trip round is progress — including an empty poll,
+                # which is how an idle runner proves it is alive rather
+                # than stuck.
+                self._watchdog.stamp()
                 if self.state.paused:
                     time.sleep(self.config.poll_interval_seconds)
                     continue
@@ -99,7 +133,10 @@ class JobRunner:
                         # knows this machine. Backing off would just hide it.
                         self._signed_out()
                         self._stop_channel()
-                        return
+                        # Deliberate, not a fault: a revoked key does not
+                        # start working again, and a restart loop against
+                        # it would bury the reason.
+                        return EXIT_OK
                     print(f"[runner] /jobs/next error ({e}); "
                           f"retrying in {backoff:.0f}s")
                     time.sleep(backoff)
@@ -127,6 +164,18 @@ class JobRunner:
                     self._report_error(api, job, exc)
 
         self._stop_channel()
+        self._watchdog.stop()
+        return EXIT_OK
+
+    def _announce_stall(self, idle: float) -> None:
+        """Say so on the way down, so the board shows a restart rather
+        than a machine that simply went quiet."""
+        self.state.set_phase("wedged")
+        self.state.emit(
+            "runner.wedged",
+            {"idle_seconds": round(idle, 1), "job": self._active_job},
+        )
+        time.sleep(0.25)  # give the channel a moment to flush
 
     def _stop_channel(self) -> None:
         # Teardown must never mask the reason we are exiting.
@@ -288,6 +337,7 @@ class JobRunner:
         A first run against an uncached model is minutes of silence otherwise,
         which reads as a hang. `status --watch` and the Mac app both see this.
         """
+        self._watchdog.stamp()
         what = f"{repo_id}@{revision}" if revision else repo_id
         print(f"[runner] downloading {what} (this can take a while)")
         self.state.model_downloading(what)
@@ -300,6 +350,7 @@ class JobRunner:
         Throttled to once a second: a multi-gigabyte fetch calls this
         thousands of times, and the board only needs a moving bar.
         """
+        self._watchdog.stamp()
         self.state.job_progress(done, total)
         now = time.monotonic()
         if now - self._last_byte_report < 1.0 and done != total:
