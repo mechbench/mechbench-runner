@@ -29,7 +29,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .api_client import ApiClient
 from .config import Config
-from .experiment_runner import ExperimentRunner, ExperimentSpec
+from mechbench_core.experiment_runner import ExperimentRunner, ExperimentSpec
 
 
 def build_server(
