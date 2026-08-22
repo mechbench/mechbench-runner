@@ -24,7 +24,7 @@ from mechbench_schema import dump_canonical
 
 from .api_client import ApiClient, ApiError
 from .config import Config
-from mechbench_compute.experiment_runner import ExperimentRunner, ExperimentSpec
+from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 
 BACKOFF_MAX_SECONDS = 30.0
 
@@ -33,7 +33,7 @@ class JobRunner:
     def __init__(self, config: Config) -> None:
         self.config = config
         self._shutdown = False
-        self._runner = ExperimentRunner()
+        self._runner = ProtocolExecutor()
 
     def install_sigint_handler(self) -> None:
         def _handler(_signum: int, _frame: FrameType | None) -> None:
@@ -94,7 +94,7 @@ class JobRunner:
             raise ValueError(f"job {job_id}: spec.prompt missing or empty")
 
         print(f"[runner] running {job_id} kind={kind}")
-        spec = ExperimentSpec(kind=kind, prompt=prompt, model_id=model_id,
+        spec = ProtocolSpec(kind=kind, prompt=prompt, model_id=model_id,
                               extra={**spec_dict,
                                      "resultPath": job.get("resultPath")})
         # Secret lifecycle (000266): claim-delivered credentials are

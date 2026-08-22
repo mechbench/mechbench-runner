@@ -29,17 +29,17 @@ from mcp.server.fastmcp import FastMCP
 
 from .api_client import ApiClient
 from .config import Config
-from mechbench_compute.experiment_runner import ExperimentRunner, ExperimentSpec
+from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 
 
 def build_server(
     config: Config | None = None,
-    runner: ExperimentRunner | None = None,
+    runner: ProtocolExecutor | None = None,
 ) -> FastMCP:
     """Construct the MCP server. Factored out so in-process tests can
     exercise the tools without spawning a stdio subprocess."""
     cfg = config or Config.from_env()
-    _runner = runner or ExperimentRunner()
+    _runner = runner or ProtocolExecutor()
     mcp = FastMCP("mechbench-runner")
 
     @mcp.tool()
@@ -52,7 +52,7 @@ def build_server(
         the structured result. `experiment_kind` defaults to
         layer_ablation (the only kind wired in v0). `model_id`
         defaults to MECHBENCH_DEFAULT_MODEL_ID."""
-        spec = ExperimentSpec(
+        spec = ProtocolSpec(
             kind=experiment_kind,
             prompt=prompt,
             model_id=model_id or cfg.default_model_id,
