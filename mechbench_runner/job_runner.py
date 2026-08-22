@@ -85,7 +85,7 @@ class JobRunner:
 
     def _handle(self, api: ApiClient, job: dict[str, Any]) -> None:
         job_id = job["id"]
-        kind = job["experimentKind"]
+        kind = job["protocolKind"]
         spec_dict = job.get("spec") or {}
         prompt = spec_dict.get("prompt") or ""
         model_id = spec_dict.get("modelId") or self.config.default_model_id
