@@ -6,8 +6,25 @@ build-backend = "setuptools.build_meta"
 name = "mechbench-runner"
 version = "0.1.0"
 description = "The mechbench runner: claims jobs from mechbench-api, executes protocols against mechbench-compute, and emits results. Also exposes those primitives as MCP tools."
+readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
+authors = [{ name = "Benji Smith", email = "benji@shaxpir.com" }]
+keywords = ["interpretability", "mechanistic-interpretability", "mlx", "mcp", "runner"]
+# Honest about the split: the runner installs and runs anywhere, and the
+# MLX backend it pulls in through mechbench-compute is Apple-Silicon
+# only. `mechbench-runner doctor` says which half a given machine has.
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 dependencies = [
     "mcp>=1.2",
@@ -23,6 +40,10 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.6",
 ]
+
+[project.urls]
+Homepage = "https://github.com/mechbench/mechbench-runner"
+"Meta repo" = "https://github.com/mechbench/mechbench"
 
 [project.scripts]
 mechbench-runner = "mechbench_runner.cli:main"
