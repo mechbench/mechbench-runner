@@ -1,6 +1,6 @@
 """Thin typed wrapper around the mechbench-api REST surface.
 
-Synchronous and ruthlessly minimal — the agent's consumer paths are
+Synchronous and ruthlessly minimal — the runner's consumer paths are
 either a stdio MCP loop (one tool call at a time) or a 2-second
 polling loop, so async machinery doesn't earn its keep. httpx's
 sync `Client` is enough; it reuses a connection pool for free.

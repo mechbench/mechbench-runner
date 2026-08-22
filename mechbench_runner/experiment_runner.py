@@ -91,7 +91,7 @@ class ExperimentRunner:
             )
         ]
         return LayerAblationPayload(
-            experiment="mechbench-agent:layer_ablation",
+            experiment="mechbench-runner:layer_ablation",
             description=(
                 "Single-prompt layer ablation: zero each decoder block's "
                 "residual-stream update and measure Δ log p of the "
@@ -129,7 +129,7 @@ class ExperimentRunner:
         prov = ms.Provenance(
             created_at=datetime.now(timezone.utc).strftime(
                 "%Y-%m-%dT%H:%M:%SZ"),
-            produced_by=ms.ToolInfo(tool="mechbench-agent",
+            produced_by=ms.ToolInfo(tool="mechbench-runner",
                                     version=core_version),
             inputs=[],
             params_fingerprint=ms.fingerprint_params(
@@ -449,7 +449,7 @@ class ExperimentRunner:
         prov = ms.Provenance(
             created_at=datetime.now(timezone.utc).strftime(
                 "%Y-%m-%dT%H:%M:%SZ"),
-            produced_by=ms.ToolInfo(tool="mechbench-agent",
+            produced_by=ms.ToolInfo(tool="mechbench-runner",
                                     version=core_version),
             inputs=[],
             params_fingerprint=ms.fingerprint_params(

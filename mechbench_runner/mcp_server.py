@@ -40,7 +40,7 @@ def build_server(
     exercise the tools without spawning a stdio subprocess."""
     cfg = config or Config.from_env()
     _runner = runner or ExperimentRunner()
-    mcp = FastMCP("mechbench-agent")
+    mcp = FastMCP("mechbench-runner")
 
     @mcp.tool()
     def run_experiment(
@@ -78,6 +78,6 @@ def build_server(
 
 
 def run_stdio(config: Config | None = None) -> None:
-    """Run the MCP server over stdio. Invoked by `mechbench-agent mcp`."""
+    """Run the MCP server over stdio. Invoked by `mechbench-runner mcp`."""
     server = build_server(config)
     server.run(transport="stdio")

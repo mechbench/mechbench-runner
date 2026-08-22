@@ -36,7 +36,7 @@ def main(full: bool = False) -> int:
     # functions directly so the smoke test doesn't need an MCP client.
     tools = {t.name: t.fn for t in server._tool_manager.list_tools()}  # noqa: SLF001
 
-    # --- list_experiments: sanity check that the agent can reach the API.
+    # --- list_experiments: sanity check that the runner can reach the API.
     jobs = tools["list_experiments"]()
     print(f"✓ list_experiments returned {len(jobs)} job(s)")
 

@@ -1,4 +1,4 @@
-"""Config loading for mechbench-agent.
+"""Config loading for mechbench-runner.
 
 All runtime config comes from environment variables. Fails fast on
 missing required values so both the MCP server (long-running) and
@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Config:
-    """Resolved agent config. Construct via `Config.from_env()`."""
+    """Resolved runner config. Construct via `Config.from_env()`."""
 
     api_base_url: str
     api_key: str | None

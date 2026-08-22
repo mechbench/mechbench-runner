@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mechbench-agent"
+name = "mechbench-runner"
 version = "0.1.0"
-description = "Agent-facing surface (MCP + job-runner) for the mechbench platform. Wraps mechbench-core primitives as MCP tools and hosts a job-runner that polls mechbench-api."
+description = "The mechbench runner: claims jobs from mechbench-api, executes protocols against mechbench-core, and emits results. Also exposes those primitives as MCP tools."
 requires-python = ">=3.11"
 license = { text = "MIT" }
 
@@ -24,10 +24,10 @@ dev = [
 ]
 
 [project.scripts]
-mechbench-agent = "mechbench_agent.cli:main"
+mechbench-runner = "mechbench_runner.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["mechbench_agent*"]
+include = ["mechbench_runner*"]
 
 [tool.ruff]
 line-length = 88

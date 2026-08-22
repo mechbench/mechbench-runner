@@ -1,4 +1,4 @@
-"""CLI entry: `mechbench-agent {mcp,run,smoke}`."""
+"""CLI entry: `mechbench-runner {mcp,run,smoke}`."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from .config import Config
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="mechbench-agent")
+    parser = argparse.ArgumentParser(prog="mechbench-runner")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser(
