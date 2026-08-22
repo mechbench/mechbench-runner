@@ -162,3 +162,23 @@ def test_a_missing_socket_explains_itself(short_tmp: Path):
     with pytest.raises(ControlError) as exc:
         request("status", path=short_tmp / "nothing.sock")
     assert "no runner is listening" in str(exc.value)
+
+
+class TestSignedOut:
+    """A revoked key is terminal, and says so on the socket (task 000284)."""
+
+    def test_phase_and_event(self):
+        state = RunnerState(version="0.1.0", api_url="https://api.mechbench.ai")
+        state.job_claimed("job_1", "layer_ablation", "google/gemma-4")
+        state.signed_out("credential rejected")
+        snap = state.snapshot()
+        assert snap["phase"] == "signed-out"
+        # The in-flight job is cleared: nothing is going to finish it.
+        assert snap["job"] is None
+
+    def test_survives_having_no_subscribers(self):
+        # emit() runs from the job thread; with no event loop bound it
+        # must be a no-op rather than an exception on the way out.
+        state = RunnerState(version="0.1.0", api_url="http://x")
+        state.signed_out("nobody is listening")
+        assert state.snapshot()["phase"] == "signed-out"

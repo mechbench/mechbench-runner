@@ -45,6 +45,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .paths import mechbench_dir
+
 PROTOCOL_VERSION = 1
 SOCKET_NAME = "runner.sock"
 
@@ -57,11 +59,7 @@ EVENT_QUEUE_LIMIT = 256
 
 def control_dir() -> Path:
     """`~/.mechbench`, created 0700 — the socket's permissions are the auth."""
-    d = Path.home() / ".mechbench"
-    d.mkdir(mode=0o700, parents=True, exist_ok=True)
-    with suppress(OSError):  # pre-existing directories keep their mode
-        d.chmod(0o700)
-    return d
+    return mechbench_dir()
 
 
 def socket_path() -> Path:
@@ -190,6 +188,19 @@ class RunnerState:
             self._job = None
             self._phase = "idle"
         self.emit("job.failed", {"id": job_id, "message": message})
+
+    def signed_out(self, message: str) -> None:
+        """The API rejected this machine's credential (task 000284).
+
+        Terminal, unlike every other failure in the poll loop: a revoked
+        key does not start working again, and retrying it forever turns
+        "you were signed out" into "the runner seems stuck". Anything
+        watching the socket learns the reason at the same moment.
+        """
+        with self._lock:
+            self._phase = "signed-out"
+            self._job = None
+        self.emit("runner.signed_out", {"message": message})
 
     def pause(self) -> None:
         """Stop claiming new work. Never interrupts a job in flight: a

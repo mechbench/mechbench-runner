@@ -87,6 +87,11 @@ class JobRunner:
                 try:
                     job = api.claim_next_job()
                 except ApiError as e:
+                    if e.status == 401:
+                        # Revoked, or pointed at an account that no longer
+                        # knows this machine. Backing off would just hide it.
+                        self._signed_out()
+                        return
                     print(f"[runner] /jobs/next error ({e}); "
                           f"retrying in {backoff:.0f}s")
                     time.sleep(backoff)
@@ -112,6 +117,21 @@ class JobRunner:
                     traceback.print_exc()
                     self.state.job_failed(job.get("id", "?"), str(exc))
                     self._report_error(api, job, exc)
+
+    def _signed_out(self) -> None:
+        source = (
+            "the stored credential"
+            if self.config.from_stored_credentials
+            else "MECHBENCH_API_KEY"
+        )
+        message = (
+            f"{self.config.api_base_url} rejected {source}. "
+            "This machine has been signed out."
+        )
+        self.state.signed_out(message)
+        print(f"\n[runner] {message}")
+        if self.config.from_stored_credentials:
+            print("[runner] Run `mechbench-runner login` to reconnect.")
 
     def _handle(self, api: ApiClient, job: dict[str, Any]) -> None:
         job_id = job["id"]
@@ -156,19 +176,34 @@ class JobRunner:
         # finally below — never env, never specs, never logs.
         secrets = job.get("integrations") or {}
 
+        # Flips on the first progress report, which is also what carries
+        # the job from "preparing" to "running". The claim put it in
+        # preparing; nothing else ever takes it out.
+        promoted = False
+
         def on_progress(done: int, total: int) -> None:
+            nonlocal promoted
             # Throttle: report every 5th unit and the final one. Progress
             # is cosmetic — a failed PATCH must never fail the job.
             # The control surface gets every tick; only the API is throttled.
             self.state.job_progress(done, total)
-            if done % 5 != 0 and done != total:
+            # The promotion itself is not cosmetic and is not throttled:
+            # until it lands the board still says "preparing", and the
+            # first tick can easily be one the throttle would drop.
+            if promoted and done % 5 != 0 and done != total:
                 return
             try:
-                api.report_progress(job_id, done, total, unit=_unit_for(kind))
+                api.report_progress(
+                    job_id, done, total,
+                    unit=_unit_for(kind),
+                    status=None if promoted else "running",
+                )
+                # Only on success: a failed first report must leave the
+                # promotion owed, not silently spent.
+                promoted = True
             except Exception as e:  # noqa: BLE001 — best-effort by design
                 print(f"[runner] progress report failed ({e}); continuing")
 
-        promoted = False
         try:
             payload = self._executor.run(spec, on_progress=on_progress,
                                        secrets=secrets)

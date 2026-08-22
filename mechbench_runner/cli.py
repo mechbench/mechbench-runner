@@ -1,4 +1,7 @@
-"""CLI entry: `mechbench-runner {mcp,run,status,pause,resume,smoke}`."""
+"""CLI entry.
+
+`mechbench-runner {login,logout,whoami,mcp,run,status,pause,resume,smoke}`
+"""
 
 from __future__ import annotations
 
@@ -11,6 +14,22 @@ from .config import Config
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="mechbench-runner")
     sub = parser.add_subparsers(dest="cmd", required=True)
+
+    login_p = sub.add_parser(
+        "login",
+        help="Connect this machine to a mechbench account.",
+    )
+    login_p.add_argument(
+        "--token",
+        help="A registration token (mbr_...) from the website. Omit to be "
+             "shown where to get one.",
+    )
+    login_p.add_argument(
+        "--name",
+        help="What to call this machine (default: its hostname).",
+    )
+    sub.add_parser("logout", help="Revoke this machine's key and forget it.")
+    sub.add_parser("whoami", help="Which machine, which account, which scope.")
 
     sub.add_parser(
         "mcp",
@@ -49,6 +68,15 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     config = Config.from_env()
+
+    if args.cmd in {"login", "logout", "whoami"}:
+        from . import login as login_mod
+
+        if args.cmd == "login":
+            return login_mod.login(config, token=args.token, name=args.name)
+        if args.cmd == "logout":
+            return login_mod.logout(config)
+        return login_mod.whoami(config)
 
     if args.cmd == "mcp":
         from .mcp_server import run_stdio

@@ -22,6 +22,42 @@ class ApiError(RuntimeError):
         self.body = body
 
 
+def register_runner(
+    api_base_url: str,
+    *,
+    token: str,
+    name: str,
+    hostname: str,
+    platform: str,
+    runner_version: str,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    """`POST /runners/register` — trade a registration token for a key.
+
+    The one call that carries no credential, because it is what produces
+    one. Lives outside `ApiClient` for exactly that reason: the client
+    requires a key in its constructor, and it should keep doing so.
+    """
+    res = httpx.post(
+        f"{api_base_url.rstrip('/')}/runners/register",
+        json={
+            "token": token.strip(),
+            "name": name,
+            "hostname": hostname,
+            "platform": platform,
+            "runnerVersion": runner_version,
+        },
+        timeout=httpx.Timeout(timeout),
+    )
+    if res.status_code >= 400:
+        try:
+            body = res.json()
+        except ValueError:
+            body = res.text
+        raise ApiError(res.status_code, body)
+    return res.json()
+
+
 class ApiClient:
     def __init__(self, config: Config) -> None:
         self.config = config
@@ -40,6 +76,19 @@ class ApiClient:
 
     def __exit__(self, *_exc: object) -> None:
         self.close()
+
+    # --- this machine ------------------------------------------------------
+
+    def whoami(self) -> dict[str, Any]:
+        """`GET /runners/me` — which machine, which account, which scope."""
+        res = self._client.get("/runners/me")
+        self._raise_for_status(res)
+        return res.json()
+
+    def revoke_runner(self, runner_id: str) -> None:
+        """`DELETE /runners/:id` — sign this machine out everywhere, not
+        just locally. The key stops working immediately."""
+        self._raise_for_status(self._client.delete(f"/runners/{runner_id}"))
 
     # --- job queue ---------------------------------------------------------
 
