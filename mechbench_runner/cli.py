@@ -1,6 +1,6 @@
 """CLI entry.
 
-`mechbench-runner {login,logout,whoami,mcp,run,status,pause,resume,smoke}`
+`mechbench-runner {login,logout,whoami,doctor,models,mcp,run,status,…}`
 """
 
 from __future__ import annotations
@@ -30,6 +30,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub.add_parser("logout", help="Revoke this machine's key and forget it.")
     sub.add_parser("whoami", help="Which machine, which account, which scope.")
+    sub.add_parser(
+        "doctor",
+        help="Check whether this machine can actually run jobs.",
+    )
+    models_p = sub.add_parser(
+        "models", help="What weights are cached, and what pruning would return."
+    )
+    models_p.add_argument(
+        "--prune",
+        action="store_true",
+        help="Delete every revision no ref points at.",
+    )
+    models_p.add_argument(
+        "--delete",
+        metavar="COMMIT",
+        nargs="+",
+        help="Delete specific revisions, by full commit hash.",
+    )
 
     sub.add_parser(
         "mcp",
@@ -68,6 +86,16 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     config = Config.from_env()
+
+    if args.cmd == "doctor":
+        from . import doctor
+
+        return doctor.run(config)
+
+    if args.cmd == "models":
+        from . import models_cmd
+
+        return models_cmd.run(prune=args.prune, delete=args.delete)
 
     if args.cmd in {"login", "logout", "whoami"}:
         from . import login as login_mod
