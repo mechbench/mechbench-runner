@@ -45,7 +45,7 @@ def main(full: bool = False) -> int:
     if done:
         path = done[0]["resultPath"]
         payload = tools["get_result"](path=path)
-        print(f"✓ get_result({path}) → kind/experiment={payload.get('experiment')}")
+        print(f"✓ get_result({path}) → kind/protocol={payload.get('protocol')}")
     else:
         # Queue one via the API so get_result has something to target.
         with ApiClient(config) as api:
@@ -58,7 +58,7 @@ def main(full: bool = False) -> int:
             prompt="Complete this sentence with one word: The Eiffel Tower is in"
         )
         print(
-            f"✓ run_protocol → experiment={payload['experiment']} "
+            f"✓ run_protocol → protocol={payload['protocol']} "
             f"n_layers={payload['n_layers']} "
             f"baseline={payload['prompts'][0]['baseline_logprob']}"
         )
