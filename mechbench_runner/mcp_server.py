@@ -51,11 +51,12 @@ def build_server(
         """Run an interpretability protocol in-process and return
         the structured result. `protocol_kind` defaults to
         layer_ablation (the only kind wired in v0). `model_id`
-        defaults to MECHBENCH_DEFAULT_MODEL_ID."""
+        falls back to MECHBENCH_WARM_MODEL_ID, and is required if
+        that is unset."""
         spec = ProtocolSpec(
             kind=protocol_kind,
             prompt=prompt,
-            model_id=model_id or cfg.default_model_id,
+            model_id=_require_model(model_id, cfg),
         )
         payload = _executor.run(spec)
         return payload.model_dump(mode="json")
@@ -81,3 +82,14 @@ def run_stdio(config: Config | None = None) -> None:
     """Run the MCP server over stdio. Invoked by `mechbench-runner mcp`."""
     server = build_server(config)
     server.run(transport="stdio")
+
+
+def _require_model(model_id: str | None, cfg: Config) -> str:
+    """A protocol has to name its model; this layer will not choose one."""
+    resolved = model_id or cfg.warm_model_id
+    if not resolved:
+        raise ValueError(
+            "model_id is required: pass one, or set MECHBENCH_WARM_MODEL_ID "
+            "for this runner."
+        )
+    return resolved

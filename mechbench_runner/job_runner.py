@@ -54,16 +54,21 @@ class JobRunner:
         self._claim_control_socket()
         self._control.start()
         print(f"[runner] control socket at {self._control.path}")
-        print("[runner] loading model (first call is slow)...")
+        warm = self.config.warm_model_id
+        if warm:
+            print("[runner] loading model (first call is slow)...")
         # Warm the model so the first claimed job doesn't pay cold-start
         # cost — the CONFIGURED default (MECHBENCH_DEFAULT_MODEL_ID, which
         # may carry a @revision pin), never Model.load()'s unpinned
         # built-in: an unpinned warm-up resolves upstream's current
         # revision, which drifts out from under the local mlx stack.
-        self.state.model_loading(self.config.default_model_id)
-        self._executor._model_loaded(self.config.default_model_id)  # noqa: SLF001
-        self.state.model_loaded(self.config.default_model_id)
-        print("[runner] model loaded; polling.")
+            self.state.model_loading(warm)
+            self._executor._model_loaded(warm)  # noqa: SLF001
+            self.state.model_loaded(warm)
+            print("[runner] model loaded; polling.")
+        else:
+            print("[runner] no warm model set; the first job will load its own.")
+            self.state.set_phase("idle")
 
         with ApiClient(self.config) as api:
             backoff = self.config.poll_interval_seconds
@@ -105,7 +110,16 @@ class JobRunner:
         kind = job["protocolKind"]
         spec_dict = job.get("spec") or {}
         prompt = spec_dict.get("prompt") or ""
-        model_id = spec_dict.get("modelId") or self.config.default_model_id
+        # No fallback: a protocol that does not name its model cannot be
+        # executed reproducibly, and a result that cannot say which weights
+        # produced it is worse than no result.
+        model_id = spec_dict.get("modelId") or self.config.warm_model_id
+        if not model_id:
+            raise ValueError(
+                f"job {job_id}: spec.modelId is missing and this runner has no "
+                f"MECHBENCH_WARM_MODEL_ID to fall back on. A protocol has to "
+                f"name the model it runs against."
+            )
 
         if kind == "layer_ablation" and not prompt:
             raise ValueError(f"job {job_id}: spec.prompt missing or empty")

@@ -19,7 +19,7 @@ class Config:
     api_base_url: str
     api_key: str | None
     poll_interval_seconds: float
-    default_model_id: str
+    warm_model_id: str | None
 
     @classmethod
     def from_env(cls) -> Config:
@@ -31,10 +31,12 @@ class Config:
             poll_interval_seconds=float(
                 os.environ.get("MECHBENCH_POLL_INTERVAL_SECONDS", "2.0")
             ),
-            default_model_id=os.environ.get(
-                "MECHBENCH_DEFAULT_MODEL_ID",
-                "mlx-community/gemma-4-E4B-it-bf16",
-            ),
+            # Which model to warm at startup so the first job does not pay
+            # cold-start cost. Purely operational, and deliberately without a
+            # built-in value: a runner that invents a model can execute a
+            # protocol that never said which weights it wanted.
+            warm_model_id=os.environ.get("MECHBENCH_WARM_MODEL_ID")
+            or os.environ.get("MECHBENCH_DEFAULT_MODEL_ID"),
         )
 
     def require_api_key(self) -> str:
