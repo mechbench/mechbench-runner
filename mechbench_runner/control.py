@@ -40,6 +40,7 @@ import os
 import socket
 import threading
 import time
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -108,6 +109,11 @@ class RunnerState:
         # them only through `call_soon_threadsafe`.
         self._loop: asyncio.AbstractEventLoop | None = None
         self._subscribers: list[asyncio.Queue[dict[str, Any]]] = []
+        # Plain callbacks, for consumers that live on a different loop
+        # than the control socket's — the live channel (000289) runs its
+        # own. Keeping them as calls rather than queues is what stops
+        # RunnerState from having to know about more than one loop.
+        self._listeners: list[Callable[[dict[str, Any]], None]] = []
 
     # -- reads
 
@@ -227,6 +233,21 @@ class RunnerState:
             self._subscribers.append(q)
         return q
 
+    def add_listener(self, fn: Callable[[dict[str, Any]], None]) -> None:
+        """Call `fn` with every event, from whichever thread emitted it.
+
+        The callback is responsible for its own thread-hopping and must
+        not block: it runs on the job thread, between a model load and
+        the next forward pass.
+        """
+        with self._lock:
+            self._listeners.append(fn)
+
+    def drop_listener(self, fn: Callable[[dict[str, Any]], None]) -> None:
+        with self._lock:
+            if fn in self._listeners:
+                self._listeners.remove(fn)
+
     def drop_subscriber(self, q: asyncio.Queue[dict[str, Any]]) -> None:
         with self._lock:
             if q in self._subscribers:
@@ -236,12 +257,17 @@ class RunnerState:
         """Fan an event out to subscribers. Called from the job thread."""
         with self._lock:
             loop, subs = self._loop, list(self._subscribers)
-        if loop is None or not subs:
-            return
+            listeners = list(self._listeners)
         message = {"v": PROTOCOL_VERSION, "event": event, "data": data}
-        for q in subs:
-            with suppress(RuntimeError):  # loop already closed during shutdown
-                loop.call_soon_threadsafe(_offer, q, message)
+        if loop is not None and subs:
+            for q in subs:
+                with suppress(RuntimeError):  # loop closed during shutdown
+                    loop.call_soon_threadsafe(_offer, q, message)
+        for fn in listeners:
+            # A broken listener is a broken listener; it does not get to
+            # take down the job that was only reporting its progress.
+            with suppress(Exception):
+                fn(message)
 
 
 def _offer(q: asyncio.Queue[dict[str, Any]], message: dict[str, Any]) -> None:

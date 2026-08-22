@@ -17,6 +17,7 @@ import hashlib
 import signal
 import time
 import traceback
+from contextlib import suppress
 from types import FrameType
 from typing import Any
 
@@ -24,6 +25,7 @@ from mechbench_schema import dump_canonical
 
 from .api_client import ApiClient, ApiError
 from .config import Config
+from .channel import LiveChannel
 from .control import ControlServer, RunnerState, probe, socket_path
 from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 
@@ -49,6 +51,10 @@ class JobRunner:
             runner_version = "unknown"
         self.state = RunnerState(version=runner_version, api_url=config.api_base_url)
         self._control = ControlServer(self.state)
+        # The live channel is best-effort by construction: it dials out on
+        # its own thread and a runner with no channel at all claims and
+        # finishes jobs exactly as before (task 000289).
+        self._channel = LiveChannel(config, self.state)
 
     def install_sigint_handler(self) -> None:
         def _handler(_signum: int, _frame: FrameType | None) -> None:
@@ -62,6 +68,7 @@ class JobRunner:
         self._claim_control_socket()
         self._control.start()
         print(f"[runner] control socket at {self._control.path}")
+        self._channel.start()
         warm = self.config.warm_model_id
         if warm:
             print("[runner] loading model (first call is slow)...")
@@ -91,6 +98,7 @@ class JobRunner:
                         # Revoked, or pointed at an account that no longer
                         # knows this machine. Backing off would just hide it.
                         self._signed_out()
+                        self._stop_channel()
                         return
                     print(f"[runner] /jobs/next error ({e}); "
                           f"retrying in {backoff:.0f}s")
@@ -117,6 +125,13 @@ class JobRunner:
                     traceback.print_exc()
                     self.state.job_failed(job.get("id", "?"), str(exc))
                     self._report_error(api, job, exc)
+
+        self._stop_channel()
+
+    def _stop_channel(self) -> None:
+        # Teardown must never mask the reason we are exiting.
+        with suppress(Exception):
+            self._channel.stop()
 
     def _signed_out(self) -> None:
         source = (

@@ -14,6 +14,7 @@ dependencies = [
     "mechbench-compute>=0.9.1",
     "mechbench-schema>=0.13",
     "httpx>=0.27",
+    "websockets>=13",
     "pydantic>=2.7",
 ]
 
