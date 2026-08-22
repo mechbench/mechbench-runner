@@ -142,6 +142,14 @@ class RunnerState:
         with self._lock:
             self._phase = phase
 
+    def model_downloading(self, model_id: str) -> None:
+        """Weights are being fetched. Distinct from loading: one is minutes of
+        network, the other is seconds of disk, and a watcher should be able to
+        tell a slow download from a wedged runner."""
+        with self._lock:
+            self._phase = "downloading-model"
+        self.emit("model.downloading", {"model_id": model_id})
+
     def model_loading(self, model_id: str) -> None:
         with self._lock:
             self._phase = "loading-model"

@@ -34,7 +34,7 @@ class JobRunner:
     def __init__(self, config: Config) -> None:
         self.config = config
         self._shutdown = False
-        self._executor = ProtocolExecutor()
+        self._executor = ProtocolExecutor(on_download=self._announce_download)
         try:
             from . import __version__ as runner_version
         except ImportError:  # version is optional metadata, not a dependency
@@ -192,3 +192,13 @@ class JobRunner:
         if path.exists():
             print(f"[runner] replacing stale socket at {path}")
             path.unlink()
+
+    def _announce_download(self, repo_id: str, revision: str | None) -> None:
+        """Weights are about to be fetched — say so, loudly and over the wire.
+
+        A first run against an uncached model is minutes of silence otherwise,
+        which reads as a hang. `status --watch` and the Mac app both see this.
+        """
+        what = f"{repo_id}@{revision}" if revision else repo_id
+        print(f"[runner] downloading {what} (this can take a while)")
+        self.state.model_downloading(what)
