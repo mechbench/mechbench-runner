@@ -24,6 +24,7 @@ from mechbench_schema import dump_canonical
 
 from .api_client import ApiClient, ApiError
 from .config import Config
+from .control import ControlServer, RunnerState, probe, socket_path
 from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 
 BACKOFF_MAX_SECONDS = 30.0
@@ -34,6 +35,12 @@ class JobRunner:
         self.config = config
         self._shutdown = False
         self._executor = ProtocolExecutor()
+        try:
+            from . import __version__ as runner_version
+        except ImportError:  # version is optional metadata, not a dependency
+            runner_version = "unknown"
+        self.state = RunnerState(version=runner_version, api_url=config.api_base_url)
+        self._control = ControlServer(self.state)
 
     def install_sigint_handler(self) -> None:
         def _handler(_signum: int, _frame: FrameType | None) -> None:
@@ -44,18 +51,26 @@ class JobRunner:
 
     def run(self) -> None:
         self.install_sigint_handler()
+        self._claim_control_socket()
+        self._control.start()
+        print(f"[runner] control socket at {self._control.path}")
         print("[runner] loading model (first call is slow)...")
         # Warm the model so the first claimed job doesn't pay cold-start
         # cost — the CONFIGURED default (MECHBENCH_DEFAULT_MODEL_ID, which
         # may carry a @revision pin), never Model.load()'s unpinned
         # built-in: an unpinned warm-up resolves upstream's current
         # revision, which drifts out from under the local mlx stack.
+        self.state.model_loading(self.config.default_model_id)
         self._executor._model_loaded(self.config.default_model_id)  # noqa: SLF001
+        self.state.model_loaded(self.config.default_model_id)
         print("[runner] model loaded; polling.")
 
         with ApiClient(self.config) as api:
             backoff = self.config.poll_interval_seconds
             while not self._shutdown:
+                if self.state.paused:
+                    time.sleep(self.config.poll_interval_seconds)
+                    continue
                 try:
                     job = api.claim_next_job()
                 except ApiError as e:
@@ -79,8 +94,10 @@ class JobRunner:
 
                 try:
                     self._handle(api, job)
+                    self.state.job_finished(job["id"])
                 except Exception as exc:  # noqa: BLE001 — report + continue
                     traceback.print_exc()
+                    self.state.job_failed(job.get("id", "?"), str(exc))
                     self._report_error(api, job, exc)
 
     def _handle(self, api: ApiClient, job: dict[str, Any]) -> None:
@@ -94,6 +111,7 @@ class JobRunner:
             raise ValueError(f"job {job_id}: spec.prompt missing or empty")
 
         print(f"[runner] running {job_id} kind={kind}")
+        self.state.job_claimed(job_id, kind, model_id)
         spec = ProtocolSpec(kind=kind, prompt=prompt, model_id=model_id,
                               extra={**spec_dict,
                                      "resultPath": job.get("resultPath")})
@@ -105,6 +123,8 @@ class JobRunner:
         def on_progress(done: int, total: int) -> None:
             # Throttle: report every 5th unit and the final one. Progress
             # is cosmetic — a failed PATCH must never fail the job.
+            # The control surface gets every tick; only the API is throttled.
+            self.state.job_progress(done, total)
             if done % 5 != 0 and done != total:
                 return
             try:
@@ -138,3 +158,23 @@ class JobRunner:
             api.fail_job(job_id, message)
         except Exception:  # noqa: BLE001 — best-effort
             print(f"[runner] failed to report failure for {job_id}")
+
+    def _claim_control_socket(self) -> None:
+        """Refuse to start beside another runner; adopt a dead one's socket.
+
+        A crashed runner leaves its socket file behind. Treating that as
+        "already running" would mean a machine could never start a runner
+        again after one crash, so the file alone is not the test — whether
+        anything answers on it is.
+        """
+        existing = probe()
+        if existing is not None:
+            raise SystemExit(
+                f"[runner] another runner (pid {existing.get('pid')}) is already "
+                f"listening at {socket_path()}. Stop it first, or ask it what it "
+                f"is doing with `mechbench-runner status`."
+            )
+        path = socket_path()
+        if path.exists():
+            print(f"[runner] replacing stale socket at {path}")
+            path.unlink()
