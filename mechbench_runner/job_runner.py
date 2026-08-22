@@ -34,7 +34,15 @@ class JobRunner:
     def __init__(self, config: Config) -> None:
         self.config = config
         self._shutdown = False
-        self._executor = ProtocolExecutor(on_download=self._announce_download)
+        # Set while a job is in flight so the download callbacks, which the
+        # compute layer calls with no idea a job exists, can report against it.
+        self._active_job: str | None = None
+        self._active_api: ApiClient | None = None
+        self._last_byte_report = 0.0
+        self._executor = ProtocolExecutor(
+            on_download=self._announce_download,
+            on_download_bytes=self._announce_download_bytes,
+        )
         try:
             from . import __version__ as runner_version
         except ImportError:  # version is optional metadata, not a dependency
@@ -126,6 +134,20 @@ class JobRunner:
 
         print(f"[runner] running {job_id} kind={kind}")
         self.state.job_claimed(job_id, kind, model_id)
+        # The download callbacks come from the compute layer, which knows
+        # nothing about jobs; this is how they find the one to report against.
+        self._active_job = job_id
+        self._active_api = api
+        self._last_byte_report = 0.0
+        # What getting ready will involve, declared before any of it happens.
+        # Whether the weights need fetching is not known until the hub is
+        # asked, so that step starts pending and becomes active only if a
+        # download actually begins.
+        self._report_plan(api, job_id, [
+            {"key": "weights", "label": f"Weights for {model_id.split('@')[0]}",
+             "status": "pending"},
+            {"key": "load", "label": "Load model into memory", "status": "pending"},
+        ])
         spec = ProtocolSpec(kind=kind, prompt=prompt, model_id=model_id,
                               extra={**spec_dict,
                                      "resultPath": job.get("resultPath")})
@@ -142,10 +164,11 @@ class JobRunner:
             if done % 5 != 0 and done != total:
                 return
             try:
-                api.report_progress(job_id, done, total)
+                api.report_progress(job_id, done, total, unit=_unit_for(kind))
             except Exception as e:  # noqa: BLE001 — best-effort by design
                 print(f"[runner] progress report failed ({e}); continuing")
 
+        promoted = False
         try:
             payload = self._executor.run(spec, on_progress=on_progress,
                                        secrets=secrets)
@@ -157,6 +180,8 @@ class JobRunner:
             api.complete_job_cbor(job_id, cbor_bytes, f"sha256:{digest}")
             print(f"[runner] {job_id} done ({len(cbor_bytes)} CBOR bytes)")
         finally:
+            self._active_job = None
+            self._active_api = None
             secrets.clear()
             job.pop("integrations", None)
 
@@ -193,6 +218,20 @@ class JobRunner:
             print(f"[runner] replacing stale socket at {path}")
             path.unlink()
 
+    def _report_plan(self, api: ApiClient, job_id: str, steps: list[dict]) -> None:
+        try:
+            api.declare_preparing(job_id, steps)
+        except Exception:  # noqa: BLE001 — display only, never fatal
+            pass
+
+    def _report_step(self, step: dict) -> None:
+        if not (self._active_job and self._active_api):
+            return
+        try:
+            self._active_api.report_preparing_step(self._active_job, step)
+        except Exception:  # noqa: BLE001 — display only, never fatal
+            pass
+
     def _announce_download(self, repo_id: str, revision: str | None) -> None:
         """Weights are about to be fetched — say so, loudly and over the wire.
 
@@ -202,3 +241,28 @@ class JobRunner:
         what = f"{repo_id}@{revision}" if revision else repo_id
         print(f"[runner] downloading {what} (this can take a while)")
         self.state.model_downloading(what)
+        self._report_step({"key": "weights", "label": f"Download {repo_id}",
+                           "status": "active", "unit": "bytes"})
+
+    def _announce_download_bytes(self, done: int, total: int) -> None:
+        """Report download progress against the job that triggered it.
+
+        Throttled to once a second: a multi-gigabyte fetch calls this
+        thousands of times, and the board only needs a moving bar.
+        """
+        self.state.job_progress(done, total)
+        now = time.monotonic()
+        if now - self._last_byte_report < 1.0 and done != total:
+            return
+        self._last_byte_report = now
+        self._report_step({"key": "weights", "label": "Download weights",
+                           "status": "done" if done >= total else "active",
+                           "num": done, "den": max(total, 1), "unit": "bytes"})
+
+
+def _unit_for(protocol_kind: str) -> str:
+    """What this kind's progress numbers count, for the board's label."""
+    return {
+        "layer_ablation": "layers",
+        "decision_distribution": "conditions",
+    }.get(protocol_kind, "steps")

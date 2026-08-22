@@ -52,14 +52,38 @@ class ApiClient:
         self._raise_for_status(res)
         return res.json()
 
-    def report_progress(self, job_id: str, num: int, den: int) -> None:
+    def report_progress(self, job_id: str, num: int, den: int, *,
+                        unit: str | None = None,
+                        status: str | None = None) -> None:
         """PATCH `/jobs/:id/progress` (task 000252). Best-effort by
         contract: callers should tolerate failures — progress display
-        degrades to the plain status chip, never blocks the job."""
-        res = self._client.patch(
-            f"/jobs/{job_id}/progress", json={"num": num, "den": den}
-        )
+        degrades to the plain status chip, never blocks the job.
+
+        `unit` says what the numbers count, so the board can render bytes
+        as bytes. `status` promotes a claimed job from preparing to
+        running, which is the moment weights are ready and compute starts.
+        """
+        body: dict[str, object] = {"num": num, "den": den}
+        if unit is not None:
+            body["unit"] = unit
+        if status is not None:
+            body["status"] = status
+        res = self._client.patch(f"/jobs/{job_id}/progress", json=body)
         self._raise_for_status(res)
+
+    def declare_preparing(self, job_id: str, steps: list[dict]) -> None:
+        """PATCH `/jobs/:id/preparing` with the whole plan, so the board can
+        show what is going to happen before any of it has."""
+        self._raise_for_status(
+            self._client.patch(f"/jobs/{job_id}/preparing", json={"steps": steps})
+        )
+
+    def report_preparing_step(self, job_id: str, step: dict) -> None:
+        """PATCH one step by key. Best-effort, like progress: a failed report
+        degrades the display, it never fails the job."""
+        self._raise_for_status(
+            self._client.patch(f"/jobs/{job_id}/preparing", json={"step": step})
+        )
 
     def fail_job(self, job_id: str, message: str) -> None:
         """POST `/jobs/:id/fail` — mark a claimed job (and its run)
