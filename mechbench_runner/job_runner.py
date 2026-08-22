@@ -24,7 +24,7 @@ from mechbench_schema import dump_canonical
 
 from .api_client import ApiClient, ApiError
 from .config import Config
-from mechbench_core.experiment_runner import ExperimentRunner, ExperimentSpec
+from mechbench_compute.experiment_runner import ExperimentRunner, ExperimentSpec
 
 BACKOFF_MAX_SECONDS = 30.0
 

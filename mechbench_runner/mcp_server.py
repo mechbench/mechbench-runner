@@ -3,7 +3,7 @@
 Tools:
 
   run_experiment(prompt, experiment_kind?, model_id?)
-      Runs the experiment *in-process* via mechbench-core and returns
+      Runs the experiment *in-process* via mechbench-compute and returns
       the LayerAblationPayload dict. Does not round-trip through the
       mechbench-api job queue — the MCP caller wants the answer, and
       we are the compute target. (The job-runner subcommand is the
@@ -29,7 +29,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .api_client import ApiClient
 from .config import Config
-from mechbench_core.experiment_runner import ExperimentRunner, ExperimentSpec
+from mechbench_compute.experiment_runner import ExperimentRunner, ExperimentSpec
 
 
 def build_server(

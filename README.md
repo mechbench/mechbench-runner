@@ -1,6 +1,6 @@
 # mechbench-runner
 
-The machine-side process of the [mechbench](https://github.com/mechbench/mechbench) family: it claims queued jobs from `mechbench-api`, executes them against `mechbench-core`, and posts results back. It also exposes those same primitives as [Model Context Protocol](https://modelcontextprotocol.io) tools, so an LLM agent can call them directly.
+The machine-side process of the [mechbench](https://github.com/mechbench/mechbench) family: it claims queued jobs from `mechbench-api`, executes them against `mechbench-compute`, and posts results back. It also exposes those same primitives as [Model Context Protocol](https://modelcontextprotocol.io) tools, so an LLM agent can call them directly.
 
 (Named `mechbench-agent` until 2026-08-22. "Agent" already meant two other things here — an LLM acting as a principal, recorded on API keys and audit rows, and the telemetry agent — so the process that executes *runs* is a runner.)
 
@@ -10,14 +10,14 @@ The machine-side process of the [mechbench](https://github.com/mechbench/mechben
 
 Two adjacent surfaces for different callers:
 
-1. **MCP server.** An LLM agent (Claude, others) connects via MCP stdio and calls mechbench primitives as structured tools. Tool bodies run in-process against `mechbench-core`.
+1. **MCP server.** An LLM agent (Claude, others) connects via MCP stdio and calls mechbench primitives as structured tools. Tool bodies run in-process against `mechbench-compute`.
 2. **Job-runner.** Polls `mechbench-api`'s `/jobs/next` for UI-queued experiments, runs them, posts results back. Same compute path as the MCP `run_experiment` tool; different *trigger*.
 
 Both modes share one binary (`mechbench-runner`) with subcommands; they share the loaded model, API client, and experiment runner. Splitting into separate processes is a later operational decision — see "Open design questions" below.
 
 ## Architectural decisions (task 000185)
 
-- **Python.** `mechbench-core` is Python; delegating to Python via RPC or subprocess-shell from a TS runner adds a layer that pays no dividends in v0. The MCP Python SDK is mature.
+- **Python.** `mechbench-compute` is Python; delegating to Python via RPC or subprocess-shell from a TS runner adds a layer that pays no dividends in v0. The MCP Python SDK is mature.
 - **One binary, two subcommands.** `mechbench-runner mcp` launches the MCP server over stdio; `mechbench-runner run` starts the job-runner loop. They share `ExperimentRunner` (owns the loaded Gemma model) and `ApiClient`.
 - **Agent authenticates to `mechbench-api` with a dedicated API key**, not a user's personal session. Export `MECHBENCH_API_KEY` (mint one at `/settings/api-keys`, or via `POST /auth/api-keys`). Matches the pattern from the e2e trace.
 - **MCP `run_experiment` runs in-process**, not queued through `mechbench-api`. The MCP caller wants the answer; we are the compute target. Job-queue round-tripping exists for the *UI-triggered* path (job-runner subcommand).
@@ -33,7 +33,7 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
-Requires Apple Silicon (MLX backend from `mechbench-core`).
+Requires Apple Silicon (MLX backend from `mechbench-compute`).
 
 ## Usage
 
@@ -96,7 +96,7 @@ All via env vars:
 
 ## Relationship to other mechbench repos
 
-- **`mechbench-core`** — imported directly. `Model`, `Ablate`, hook-aware forward.
+- **`mechbench-compute`** — imported directly. `Model`, `Ablate`, hook-aware forward.
 - **`mechbench-schema`** — produces `LayerAblationPayload` etc. as typed results.
 - **`mechbench-api`** — the runner's only platform dependency. All workspace state (jobs, cache reads) goes through it.
 - **`mechbench-ui`** — no coupling. UI queues jobs; the job-runner consumes them.
