@@ -32,6 +32,20 @@ from .watchdog import Watchdog
 BACKOFF_MAX_SECONDS = 30.0
 
 
+def _binding_model(spec: dict[str, Any]) -> str | None:
+    """The model a pipeline run bound, for display only.
+
+    Run bindings fill the graph's holes; conventionally the model one is
+    called "model". This is a label for the board, never an input to
+    execution — the graph decides what actually loads.
+    """
+    bindings = spec.get("bindings")
+    if not isinstance(bindings, dict):
+        return None
+    value = bindings.get("model")
+    return value if isinstance(value, str) and value else None
+
+
 class JobRunner:
     def __init__(self, config: Config) -> None:
         self.config = config
@@ -97,6 +111,12 @@ class JobRunner:
         print(f"[runner] control socket at {self._control.path}")
         self._channel.start()
         self._watchdog.start()
+        # The compute layer emits intermediate pipeline objects through
+        # mechbench_compute.bench, which otherwise reads credentials from
+        # the environment. Ours live in ~/.mechbench/config.toml since
+        # `login`, so hand them over explicitly rather than exporting a
+        # key into the process environment (task 000284 follow-up).
+        self._configure_bench()
         warm = self.config.warm_model_id
         if warm:
             print("[runner] loading model (first call is slow)...")
@@ -165,6 +185,17 @@ class JobRunner:
         self._watchdog.stop()
         return EXIT_OK
 
+    def _configure_bench(self) -> None:
+        try:
+            from mechbench_compute import bench
+
+            bench.configure(
+                api_url=self.config.api_base_url,
+                api_key=self.config.api_key,
+            )
+        except Exception as exc:  # noqa: BLE001 — older compute, or no backend
+            print(f"[runner] could not configure the bench emitter: {exc}")
+
     def _announce_stall(self, idle: float) -> None:
         """Say so on the way down, so the board shows a restart rather
         than a machine that simply went quiet."""
@@ -200,11 +231,23 @@ class JobRunner:
         kind = job["protocolKind"]
         spec_dict = job.get("spec") or {}
         prompt = spec_dict.get("prompt") or ""
-        # No fallback: a protocol that does not name its model cannot be
-        # executed reproducibly, and a result that cannot say which weights
-        # produced it is worse than no result.
+        # Where the model is named depends on the shape of the job.
+        #
+        # A flat job (layer_ablation, decision_distribution) carries
+        # `spec.modelId`. A **pipeline** does not: its graph names models
+        # per node, as `params.model`, usually as a `$model` hole the run
+        # bindings fill — so the executor resolves it and this layer must
+        # not demand it. Requiring `spec.modelId` of every kind rejected
+        # every protocol run ever queued from the website.
+        #
+        # No fallback either way: a protocol that does not name its model
+        # cannot be executed reproducibly, and a result that cannot say
+        # which weights produced it is worse than no result.
         model_id = spec_dict.get("modelId") or self.config.warm_model_id
-        if not model_id:
+        if kind == "pipeline":
+            # Only for display — the graph is authoritative.
+            model_id = model_id or _binding_model(spec_dict)
+        elif not model_id:
             raise ValueError(
                 f"job {job_id}: spec.modelId is missing and this runner has no "
                 f"MECHBENCH_WARM_MODEL_ID to fall back on. A protocol has to "
@@ -225,9 +268,11 @@ class JobRunner:
         # Whether the weights need fetching is not known until the hub is
         # asked, so that step starts pending and becomes active only if a
         # download actually begins.
+        weights_label = (
+            f"Weights for {model_id.split('@')[0]}" if model_id else "Weights"
+        )
         self._report_plan(api, job_id, [
-            {"key": "weights", "label": f"Weights for {model_id.split('@')[0]}",
-             "status": "pending"},
+            {"key": "weights", "label": weights_label, "status": "pending"},
             {"key": "load", "label": "Load model into memory", "status": "pending"},
         ])
         spec = ProtocolSpec(kind=kind, prompt=prompt, model_id=model_id,
