@@ -216,17 +216,17 @@ def _service() -> Check:
     it was the runner, after which this machine quietly stops taking
     work and nothing else would say so.
     """
-    from . import agent
+    from . import service
 
     try:
-        st = agent.status()
-    except agent.UnsupportedPlatformError:
+        st = service.status()
+    except service.UnsupportedPlatformError:
         return Check("service", OK, "not managed here; run `mechbench-runner run`")
 
     if not st.installed:
         return Check(
             "service", OK, "not installed (running by hand is fine)",
-            "`mechbench-runner install-agent` starts it at login and keeps it "
+            "`mechbench-runner install-service` starts it at login and keeps it "
             "running.",
         )
     if st.running:
@@ -236,7 +236,7 @@ def _service() -> Check:
         'If macOS asked about background software from "Ned Deily" and it was '
         "turned off, that was this — the Python interpreter's signer. Re-enable "
         "it in System Settings > General > Login Items & Extensions, or run "
-        "`mechbench-runner install-agent` again.",
+        "`mechbench-runner install-service` again.",
     )
 
 

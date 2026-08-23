@@ -12,7 +12,7 @@ restarts: the parent is watching, so it simply *knows* whether the new
 version came up.
 
 This is not a second supervisor. launchd and systemd still own *this*
-process — `install-agent` points them here — and this owns exactly one
+process — `install-service` points them here — and this owns exactly one
 child. The same exit-code contract applies at both levels, which is
 what keeps them from disagreeing:
 

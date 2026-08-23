@@ -50,7 +50,7 @@ class UnsupportedPlatformError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class AgentStatus:
+class ServiceStatus:
     installed: bool
     loaded: bool
     running: bool
@@ -151,7 +151,7 @@ WantedBy=default.target
 # --- operations --------------------------------------------------------------
 
 
-def install() -> AgentStatus:
+def install() -> ServiceStatus:
     path = unit_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -165,7 +165,7 @@ def install() -> AgentStatus:
             # Older macOS, or a domain that refuses bootstrap.
             result = _run(["launchctl", "load", "-w", str(path)], check=False)
         if result.returncode != 0:
-            return AgentStatus(True, False, False, path,
+            return ServiceStatus(True, False, False, path,
                                f"written, but could not be loaded: {_msg(result)}")
     else:
         path.write_text(systemd_unit())
@@ -173,13 +173,13 @@ def install() -> AgentStatus:
         result = _run(["systemctl", "--user", "enable", "--now", UNIT_NAME],
                       check=False)
         if result.returncode != 0:
-            return AgentStatus(True, False, False, path,
+            return ServiceStatus(True, False, False, path,
                                f"written, but could not be enabled: {_msg(result)}")
 
     return _settled_status()
 
 
-def _settled_status(attempts: int = 10, pause: float = 0.3) -> AgentStatus:
+def _settled_status(attempts: int = 10, pause: float = 0.3) -> ServiceStatus:
     """Status once the service has had a moment to actually start.
 
     `bootstrap` and `enable --now` return before the process is up, so
@@ -198,7 +198,7 @@ def _settled_status(attempts: int = 10, pause: float = 0.3) -> AgentStatus:
     return st
 
 
-def uninstall() -> AgentStatus:
+def uninstall() -> ServiceStatus:
     path = unit_path()
     if is_macos():
         _run(["launchctl", "bootout", _domain(), str(path)], check=False)
@@ -209,7 +209,7 @@ def uninstall() -> AgentStatus:
     path.unlink(missing_ok=True)
     if is_linux():
         _run(["systemctl", "--user", "daemon-reload"], check=False)
-    return AgentStatus(
+    return ServiceStatus(
         installed=False,
         loaded=False,
         running=False,
@@ -218,10 +218,10 @@ def uninstall() -> AgentStatus:
     )
 
 
-def status() -> AgentStatus:
+def status() -> ServiceStatus:
     path = unit_path()
     if not path.exists():
-        return AgentStatus(False, False, False, path, "not installed")
+        return ServiceStatus(False, False, False, path, "not installed")
 
     if is_macos():
         printed = _run(["launchctl", "print", f"{_domain()}/{LABEL}"], check=False)
@@ -233,13 +233,13 @@ def status() -> AgentStatus:
             else "loaded, not currently running" if loaded
             else "installed but not loaded"
         )
-        return AgentStatus(True, loaded, running, path, detail)
+        return ServiceStatus(True, loaded, running, path, detail)
 
     enabled = _run(["systemctl", "--user", "is-enabled", UNIT_NAME], check=False)
     active = _run(["systemctl", "--user", "is-active", UNIT_NAME], check=False)
     loaded = enabled.returncode == 0
     running = active.stdout.strip() == "active"
-    return AgentStatus(
+    return ServiceStatus(
         True, loaded, running, path,
         f"{active.stdout.strip() or 'unknown'}, {enabled.stdout.strip() or 'disabled'}",
     )

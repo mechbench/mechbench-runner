@@ -204,12 +204,12 @@ class TestServiceCheck:
     def _status(self, monkeypatch, **kw):
         from pathlib import Path
 
-        from mechbench_runner import agent
+        from mechbench_runner import service
 
         base = {"installed": True, "loaded": True, "running": True,
                 "path": Path("/x.plist"), "detail": "running (pid 1)"}
         base.update(kw)
-        monkeypatch.setattr(agent, "status", lambda: agent.AgentStatus(**base))
+        monkeypatch.setattr(service, "status", lambda: service.ServiceStatus(**base))
 
     def test_running_is_fine(self, monkeypatch):
         self._status(monkeypatch)
@@ -228,4 +228,4 @@ class TestServiceCheck:
                      detail="not installed")
         check = doctor._service()  # noqa: SLF001
         assert check.status == OK
-        assert "install-agent" in (check.fix or "")
+        assert "install-service" in (check.fix or "")

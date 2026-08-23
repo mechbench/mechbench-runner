@@ -230,11 +230,11 @@ def update_now(report=None) -> int:
     for name, (was, now) in changed.items():
         say(f"  {name}: {was} -> {now}")
 
-    from . import agent
+    from . import service
 
     try:
-        if agent.status().installed and agent.kickstart():
+        if service.status().installed and service.kickstart():
             say("Restarted the background service on the new version.")
-    except agent.UnsupportedPlatformError:
+    except service.UnsupportedPlatformError:
         pass
     return 0

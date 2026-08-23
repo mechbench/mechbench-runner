@@ -73,8 +73,8 @@ Running a model needs Apple Silicon (the MLX backend from
 
 ```bash
 mechbench-runner run              # foreground, ^C to stop
-mechbench-runner install-agent    # or have the OS keep it running
-mechbench-runner agent-status
+mechbench-runner install-service  # or have the OS keep it running
+mechbench-runner service-status
 ```
 
 The service is supervised by launchd or systemd rather than by anything

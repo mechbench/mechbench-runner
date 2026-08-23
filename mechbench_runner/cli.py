@@ -10,10 +10,25 @@ import sys
 
 from .config import Config
 
+#: Every spelling of the three service commands, mapped to the one thing
+#: each actually does. The `*-agent` spellings are the pre-0.5.0 names
+#: (task 000305); they still work and no longer appear in --help.
+SERVICE_COMMANDS = {
+    "install-service": "install",
+    "uninstall-service": "uninstall",
+    "service-status": "status",
+    "install-agent": "install",
+    "uninstall-agent": "uninstall",
+    "agent-status": "status",
+}
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="mechbench-runner")
-    sub = parser.add_subparsers(dest="cmd", required=True)
+    # metavar, or argparse prints every subcommand name in the usage
+    # line's {...} blob — including the ones whose help is SUPPRESSed,
+    # which defeats hiding them at all (task 000305).
+    sub = parser.add_subparsers(dest="cmd", required=True, metavar="<command>")
 
     login_p = sub.add_parser(
         "login",
@@ -30,14 +45,31 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub.add_parser("logout", help="Revoke this machine's key and forget it.")
     sub.add_parser(
-        "install-agent",
+        "install-service",
         help="Start the runner automatically, and keep it running.",
     )
-    sub.add_parser("uninstall-agent", help="Stop starting it automatically.")
+    sub.add_parser("uninstall-service", help="Stop starting it automatically.")
     sub.add_parser(
-        "agent-status",
+        "service-status",
         help="Is the service installed, loaded and running?",
     )
+    # The old names, kept working and kept out of --help (task 000305).
+    #
+    # These said "agent" because launchd calls a per-user background job a
+    # LaunchAgent. Systemd has no such word — the same command writes a
+    # user *unit* there — and in this platform "agent" already means the
+    # model-driven kind: agent keys, agent.object_write, the
+    # agent-callable MCP surface. One word, two unrelated jobs, and the
+    # louder job was not the one the command meant.
+    #
+    # Aliases rather than a clean break because 0.4.0 is published and
+    # these are in muscle memory, README, and the download page. They can
+    # go once those have turned over.
+    # No `help=` at all: argparse only lists a subcommand when it is
+    # given one, and passing argparse.SUPPRESS as the value prints the
+    # literal string "==SUPPRESS==" instead of hiding anything.
+    for _old in ("install-agent", "uninstall-agent", "agent-status"):
+        sub.add_parser(_old)
     sub.add_parser("whoami", help="Which machine, which account, which scope.")
     sub.add_parser(
         "update", help="Upgrade this machine now, and restart the service."
@@ -129,27 +161,28 @@ def main(argv: list[str] | None = None) -> int:
 
         return models_cmd.run(prune=args.prune, delete=args.delete)
 
-    if args.cmd in {"install-agent", "uninstall-agent", "agent-status"}:
-        from . import agent as agent_mod
+    if args.cmd in SERVICE_COMMANDS:
+        from . import service as service_mod
 
+        cmd = SERVICE_COMMANDS[args.cmd]
         try:
-            if args.cmd == "install-agent":
-                st = agent_mod.install()
+            if cmd == "install":
+                st = service_mod.install()
                 print(f"Installed {st.path}")
                 print(f"  {st.detail}")
-                hint = agent_mod.linger_hint()
+                hint = service_mod.linger_hint()
                 if hint:
                     print(f"\n{hint}")
                 return 0 if st.loaded else 1
-            if args.cmd == "uninstall-agent":
-                st = agent_mod.uninstall()
+            if cmd == "uninstall":
+                st = service_mod.uninstall()
                 print(st.detail)
                 return 0
-            st = agent_mod.status()
+            st = service_mod.status()
             print(f"service  {st.detail}")
             print(f"unit     {st.path}")
             return 0 if st.running or not st.installed else 1
-        except agent_mod.UnsupportedPlatformError as exc:
+        except service_mod.UnsupportedPlatformError as exc:
             print(str(exc), file=sys.stderr)
             return 1
 
