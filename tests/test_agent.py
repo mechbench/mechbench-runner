@@ -146,3 +146,45 @@ class TestUnsupportedIsHandledEverywhere:
         monkeypatch.setattr(agent.sys, "platform", "plan9")
         assert cli.main(["agent-status"]) == 1
         assert "supervise" in capsys.readouterr().err
+
+
+class TestInstallReportsSettledState:
+    """Install must not report a race as a failure.
+
+    `bootstrap` returns before launchd has spawned anything, so reading
+    status immediately says "loaded, not currently running" — printed
+    right after someone answers "yes, start it automatically", that reads
+    as though it did not work. It did; the read was just too early.
+    """
+
+    def test_it_waits_for_running(self, tmp_path, monkeypatch):
+        path = tmp_path / "a.plist"
+        seq = [
+            agent.AgentStatus(True, True, False, path, "loaded, not running"),
+            agent.AgentStatus(True, True, False, path, "loaded, not running"),
+            agent.AgentStatus(True, True, True, path, "running (pid 1)"),
+        ]
+        monkeypatch.setattr(agent, "status", lambda: seq.pop(0) if seq else seq0)
+        seq0 = agent.AgentStatus(True, True, True, path, "running (pid 1)")
+        st = agent._settled_status(attempts=5, pause=0)  # noqa: SLF001
+        assert st.running is True
+
+    def test_it_gives_up_rather_than_hanging(self, tmp_path, monkeypatch):
+        path = tmp_path / "a.plist"
+        never = agent.AgentStatus(True, True, False, path, "loaded, not running")
+        monkeypatch.setattr(agent, "status", lambda: never)
+        st = agent._settled_status(attempts=3, pause=0)  # noqa: SLF001
+        assert st.running is False
+
+    def test_an_unloaded_service_returns_at_once(self, tmp_path, monkeypatch):
+        # Nothing to wait for: it is not going to start on its own.
+        path = tmp_path / "a.plist"
+        calls = []
+
+        def st():
+            calls.append(1)
+            return agent.AgentStatus(True, False, False, path, "not loaded")
+
+        monkeypatch.setattr(agent, "status", st)
+        agent._settled_status(attempts=9, pause=0)  # noqa: SLF001
+        assert len(calls) == 1

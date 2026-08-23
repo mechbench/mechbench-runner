@@ -167,7 +167,26 @@ def install() -> AgentStatus:
             return AgentStatus(True, False, False, path,
                                f"written, but could not be enabled: {_msg(result)}")
 
-    return status()
+    return _settled_status()
+
+
+def _settled_status(attempts: int = 10, pause: float = 0.3) -> AgentStatus:
+    """Status once the service has had a moment to actually start.
+
+    `bootstrap` and `enable --now` return before the process is up, so
+    reading status immediately reports "loaded, not currently running" —
+    which, printed the instant someone answers "yes, start it
+    automatically", reads as a failure rather than as a race.
+    """
+    import time
+
+    st = status()
+    for _ in range(attempts):
+        if st.running or not st.loaded:
+            return st
+        time.sleep(pause)
+        st = status()
+    return st
 
 
 def uninstall() -> AgentStatus:

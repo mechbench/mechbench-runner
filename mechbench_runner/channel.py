@@ -29,7 +29,10 @@ import random
 import threading
 from collections import OrderedDict
 from contextlib import suppress
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import ssl
 
 from .config import Config
 from .control import RunnerState
@@ -60,6 +63,28 @@ def channel_url(api_base_url: str) -> str:
     elif base.startswith("http://"):
         base = "ws://" + base[len("http://") :]
     return f"{base}/runners/channel"
+
+
+def _ssl_context(url: str) -> "ssl.SSLContext | None":
+    """A TLS context with CA roots that actually exist.
+
+    `websockets` uses `ssl.create_default_context()`, which trusts
+    whatever the interpreter's OpenSSL was pointed at — and a Python
+    installed by uv or from python.org on macOS is pointed at nothing:
+    the default store holds *zero* certificates. Every `wss://` connect
+    then fails with CERTIFICATE_VERIFY_FAILED while HTTPS keeps working,
+    because httpx bundles certifi and the standard library does not.
+
+    That asymmetry is what made this hard to see: `login` succeeds over
+    HTTPS and the channel silently never connects.
+    """
+    if not url.startswith("wss://"):
+        return None
+    import ssl
+
+    import certifi
+
+    return ssl.create_default_context(cafile=certifi.where())
 
 
 class LiveChannel:
@@ -204,6 +229,7 @@ class LiveChannel:
         async with websockets.connect(
             self.url,
             additional_headers={"authorization": f"Bearer {key}"},
+            ssl=_ssl_context(self.url),
             open_timeout=15,
             close_timeout=5,
             # The library's own keepalive is off: the server pings on a
