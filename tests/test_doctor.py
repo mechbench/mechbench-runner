@@ -190,3 +190,41 @@ class TestExitCode:
         )
         assert doctor.run(config()) == 0
         assert "Ready to run jobs" in capsys.readouterr().out
+
+
+class TestServiceCheck:
+    """A disabled background item is silent otherwise.
+
+    macOS names background items after whoever signed the executable —
+    "Ned Deily" for any python.org-derived interpreter. Turning that off
+    in Login Items stops the runner, and before this check `doctor`
+    would still have reported a perfectly healthy machine.
+    """
+
+    def _status(self, monkeypatch, **kw):
+        from mechbench_runner import agent
+        from pathlib import Path
+
+        base = {"installed": True, "loaded": True, "running": True,
+                "path": Path("/x.plist"), "detail": "running (pid 1)"}
+        base.update(kw)
+        monkeypatch.setattr(agent, "status", lambda: agent.AgentStatus(**base))
+
+    def test_running_is_fine(self, monkeypatch):
+        self._status(monkeypatch)
+        assert doctor._service().status == OK  # noqa: SLF001
+
+    def test_installed_but_stopped_warns_and_names_the_cause(self, monkeypatch):
+        self._status(monkeypatch, running=False, detail="loaded, not running")
+        check = doctor._service()  # noqa: SLF001
+        assert check.status == WARN
+        # The fix is only findable if the warning says whose name to look for.
+        assert "Ned Deily" in (check.fix or "")
+        assert "Login Items" in (check.fix or "")
+
+    def test_not_installed_is_not_a_problem(self, monkeypatch):
+        self._status(monkeypatch, installed=False, loaded=False, running=False,
+                     detail="not installed")
+        check = doctor._service()  # noqa: SLF001
+        assert check.status == OK
+        assert "install-agent" in (check.fix or "")

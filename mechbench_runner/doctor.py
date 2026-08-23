@@ -53,6 +53,7 @@ def run(config: Config) -> int:
     checks.append(backend)
     checks.append(_compute())
     checks.extend(_account(config))
+    checks.append(_service())
     checks.extend(_models())
     checks.append(_disk())
 
@@ -203,6 +204,40 @@ def _account(config: Config) -> list[Check]:
         )
     )
     return checks
+
+
+def _service() -> Check:
+    """Installed but not running is the interesting state.
+
+    macOS attributes background items to whoever signed the executable,
+    and for any python.org-derived interpreter that is "Ned Deily" —
+    CPython's macOS release manager, and a name nobody recognizes. It is
+    easy to switch that off in Login Items & Extensions without knowing
+    it was the runner, after which this machine quietly stops taking
+    work and nothing else would say so.
+    """
+    from . import agent
+
+    try:
+        st = agent.status()
+    except agent.UnsupportedPlatformError:
+        return Check("service", OK, "not managed here; run `mechbench-runner run`")
+
+    if not st.installed:
+        return Check(
+            "service", OK, "not installed (running by hand is fine)",
+            "`mechbench-runner install-agent` starts it at login and keeps it "
+            "running.",
+        )
+    if st.running:
+        return Check("service", OK, st.detail)
+    return Check(
+        "service", WARN, f"installed but {st.detail}",
+        'If macOS asked about background software from "Ned Deily" and it was '
+        "turned off, that was this — the Python interpreter's signer. Re-enable "
+        "it in System Settings > General > Login Items & Extensions, or run "
+        "`mechbench-runner install-agent` again.",
+    )
 
 
 # --- the weights -------------------------------------------------------------

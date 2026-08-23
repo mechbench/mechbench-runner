@@ -53,6 +53,13 @@ The service is supervised by launchd or systemd rather than by anything
 we wrote — see `mechbench_runner/exits.py` for the contract that makes
 that work.
 
+**On macOS you will be told that software from "Ned Deily" can run in
+the background.** That is this runner. macOS attributes a background
+item to whoever code-signed the executable, and the executable is the
+Python interpreter, which Ned Deily signs as CPython's macOS release
+manager. Turning it off in Login Items & Extensions stops the runner;
+`mechbench-runner doctor` reports it if that happens.
+
 ### From a checkout
 
 ```bash

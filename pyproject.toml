@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mechbench-runner"
-version = "0.1.4"
+version = "0.1.5"
 description = "The mechbench runner: claims jobs from mechbench-api, executes protocols against mechbench-compute, and emits results. Also exposes those primitives as MCP tools."
 readme = "README.md"
 requires-python = ">=3.11"
