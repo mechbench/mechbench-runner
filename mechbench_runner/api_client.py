@@ -58,6 +58,59 @@ def register_runner(
     return res.json()
 
 
+def start_device_auth(
+    api_base_url: str,
+    *,
+    name: str,
+    hostname: str,
+    platform: str,
+    runner_version: str,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    """`POST /runners/device` — ask to be adopted, and say who is asking.
+
+    Unauthenticated, like registration: having no credential is the
+    problem being solved. The machine facts travel now so the person
+    approving sees a machine rather than a blank.
+    """
+    res = httpx.post(
+        f"{api_base_url.rstrip('/')}/runners/device",
+        json={
+            "name": name,
+            "hostname": hostname,
+            "platform": platform,
+            "runnerVersion": runner_version,
+        },
+        timeout=httpx.Timeout(timeout),
+    )
+    if res.status_code >= 400:
+        raise ApiError(res.status_code, _body_of(res))
+    return res.json()
+
+
+def poll_device_auth(
+    api_base_url: str, device_code: str, timeout: float = 15.0
+) -> dict[str, Any]:
+    """`POST /runners/device/poll` — pending, approved, denied or expired."""
+    res = httpx.post(
+        f"{api_base_url.rstrip('/')}/runners/device/poll",
+        json={"deviceCode": device_code},
+        timeout=httpx.Timeout(timeout),
+    )
+    if res.status_code == 429:
+        return {"status": "slow_down"}
+    if res.status_code >= 400:
+        raise ApiError(res.status_code, _body_of(res))
+    return res.json()
+
+
+def _body_of(res: httpx.Response) -> Any:
+    try:
+        return res.json()
+    except ValueError:
+        return res.text
+
+
 class ApiClient:
     def __init__(self, config: Config) -> None:
         self.config = config

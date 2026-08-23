@@ -15,6 +15,7 @@ blocking forever on stdin nobody is attached to.
 from __future__ import annotations
 
 import sys
+from contextlib import suppress
 from datetime import UTC, datetime
 
 from . import credentials, machine
@@ -55,25 +56,22 @@ def login(
     token: str | None = None,
     name: str | None = None,
 ) -> int:
-    url = web_url(config.api_base_url)
+    """Pair this machine with an account.
 
+    The default is the browser flow: the machine asks to be adopted, a
+    person approves it on the website, and the machine collects its own
+    credential. `--token` remains for the cases a browser cannot serve —
+    a headless box, a script, someone who would rather paste.
+    """
     if not token:
-        # All on stdout, deliberately: piped, stderr is unbuffered and
-        # stdout is not, so splitting these two halves across streams
-        # prints the second line first. It is guidance, not an error —
-        # the non-zero exit is what says nothing was connected.
-        print(f"To connect this machine, open:\n\n    {url}\n")
-        if not sys.stdin.isatty():
-            print("Then run:\n\n    mechbench-runner login --token mbr_...\n")
-            return 1
-        try:
-            token = input("Paste the registration token: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return 1
-        if not token:
-            print("no token given.", file=sys.stderr)
-            return 1
+        return _login_via_browser(config, name)
+    return _login_with_token(config, token, name)
+
+
+def _login_with_token(config: Config, token: str, name: str | None) -> int:
+    """Redeem a pasted registration token. Kept for headless boxes,
+    scripts, and anyone who would rather not involve a browser."""
+    url = web_url(config.api_base_url)
 
     # Read now, report later: announcing a replacement before the token
     # has been validated tells someone their credential is gone when a
@@ -269,4 +267,136 @@ def whoami(config: Config) -> int:
     print(f"host     {runner.get('hostname')}  {runner.get('platform')}")
     if runner.get("signedOut"):
         print("status   REVOKED — run `mechbench-runner login` to reconnect")
+    return 0
+
+def _login_via_browser(config: Config, name: str | None) -> int:
+    """Ask to be adopted, then wait while a person approves in a browser.
+
+    The machine has no credential — that is the whole problem — so it
+    starts unauthenticated, holds a secret only it knows, and polls. The
+    URL a person opens carries a *different* code that grants nothing on
+    its own: approving still requires being signed in.
+
+    Nothing long-lived is ever typed, pasted, or shown on screen.
+    """
+    import time
+    import webbrowser
+
+    from .api_client import poll_device_auth, start_device_auth
+
+    try:
+        from . import __version__ as runner_version
+    except ImportError:
+        runner_version = "unknown"
+
+    machine_name = name or machine.default_name()
+    try:
+        started = start_device_auth(
+            config.api_base_url,
+            name=machine_name,
+            hostname=machine.hostname(),
+            platform=machine.describe_platform(),
+            runner_version=runner_version,
+        )
+    except ApiError as exc:
+        if exc.status == 404:
+            print(
+                f"{config.api_base_url} does not support browser sign-in.\n"
+                f"Try `mechbench-runner login --token mbr_...` instead.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"could not start sign-in against {config.api_base_url}: {exc}",
+              file=sys.stderr)
+        return 1
+    except Exception as exc:  # noqa: BLE001 — a bad URL should read as one
+        print(f"could not reach {config.api_base_url}: {exc}", file=sys.stderr)
+        return 1
+
+    verification = started.get("verificationUri") or web_url(config.api_base_url)
+    interval = float(started.get("intervalSeconds") or 3)
+
+    # Flushed explicitly: piped or redirected, Python block-buffers
+    # stdout, so a headless operator would see nothing at all until the
+    # command finished — and the URL is the one thing they need *while*
+    # it is still running.
+    print(f'Connecting this machine as "{machine_name}".', flush=True)
+    print(f"\nApprove it at:\n\n    {verification}\n", flush=True)
+
+    if sys.stdin.isatty():
+        try:
+            input("Press ENTER to open your browser (or open the link yourself)…")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 1
+        # Failure here is not failure of the flow: the URL is printed
+        # above and polling continues either way.
+        with suppress(Exception):
+            webbrowser.open(verification)
+
+    print("Waiting for approval… (^C to cancel)", flush=True)
+    deadline = time.time() + _seconds_until(started.get("expiresAt"))
+    try:
+        while time.time() < deadline:
+            time.sleep(interval)
+            try:
+                answer = poll_device_auth(config.api_base_url, started["deviceCode"])
+            except Exception:  # noqa: BLE001 — a blip must not end the wait
+                continue
+            status = answer.get("status")
+            if status == "approved":
+                return _store_and_finish(config, answer)
+            if status == "denied":
+                print("\nThat request was declined.", file=sys.stderr)
+                return 1
+            if status == "expired":
+                break
+            # pending / slow_down: keep waiting.
+    except KeyboardInterrupt:
+        print("\ncancelled; nothing was connected.")
+        return 1
+
+    print(
+        "\nThe request expired before it was approved. Run "
+        "`mechbench-runner login` again.",
+        file=sys.stderr,
+    )
+    return 1
+
+
+def _seconds_until(iso: object) -> float:
+    if not isinstance(iso, str):
+        return 15 * 60
+    try:
+        when = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return 15 * 60
+    return max(0.0, (when - datetime.now(UTC)).total_seconds())
+
+
+def _store_and_finish(config: Config, answer: dict) -> int:
+    """Write the credential the poll returned, and offer the service."""
+    runner = answer.get("runner") or {}
+    existing = credentials.load()
+    path = credentials.save(
+        StoredCredentials(
+            api_url=config.api_base_url,
+            api_key=answer["apiKey"],
+            runner_id=runner.get("id"),
+            name=runner.get("name"),
+            registered_at=datetime.now(UTC)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z"),
+        )
+    )
+    rname = runner.get("name")
+    rid = runner.get("id")
+    print(f'\nConnected as "{rname}" ({rid}).')
+    if existing:
+        print(
+            f"Replaced the credential for {existing.name or 'this machine'} "
+            f"at {existing.api_url}."
+        )
+    print(f"Credentials written to {path} (mode 0600).")
+    _offer_agent()
     return 0
