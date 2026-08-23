@@ -58,7 +58,7 @@ class Supervisor:
         #: What to run. `-m` rather than a console script: the script's
         #: location depends on PATH, and a service has almost none.
         self.child_argv = argv or [
-            sys.executable, "-m", "mechbench_runner.cli", "run",
+            sys.executable, "-m", "mechbench.cli", "run",
         ]
         self._child: subprocess.Popen[bytes] | None = None
         self._stopping = False
@@ -122,7 +122,7 @@ class Supervisor:
             if crashes >= CRASH_LIMIT:
                 print(
                     f"[supervisor] giving up after {crashes} consecutive "
-                    f"failures. Run `mechbench-runner doctor` to see why."
+                    f"failures. Run `mechbench doctor` to see why."
                 )
                 return EXIT_CRASH
 

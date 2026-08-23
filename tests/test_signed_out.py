@@ -80,7 +80,7 @@ def test_it_says_which_credential_was_rejected(runner, monkeypatch, capsys):
     # and the fixture's is loopback so the suite never dials out.
     assert "127.0.0.1:1" in out
     assert "signed out" in out.lower()
-    assert "mechbench-runner login" in out
+    assert "mechbench login" in out
 
 
 def test_an_env_key_is_not_told_to_run_login(runner, monkeypatch, capsys):
@@ -95,7 +95,7 @@ def test_an_env_key_is_not_told_to_run_login(runner, monkeypatch, capsys):
     runner.run()
     out = capsys.readouterr().out
     assert "MECHBENCH_API_KEY" in out
-    assert "mechbench-runner login" not in out
+    assert "mechbench login" not in out
 
 
 def test_other_errors_still_retry(runner, monkeypatch):

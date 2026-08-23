@@ -119,7 +119,7 @@ class TestSelfCheck:
 
 
 class TestManualUpdate:
-    """`mechbench-runner update` — the path that does not need a browser.
+    """`mechbench update` — the path that does not need a browser.
 
     The web route exists because a *service* cannot upgrade itself while
     running. Run by hand there is no such constraint: this process is not
@@ -137,7 +137,7 @@ class TestManualUpdate:
                             install_mod.Installation("venv", ["true"], "x"))
         monkeypatch.setattr(install_mod, "run_upgrade", lambda w, t=None: (True, ""))
         monkeypatch.setattr(install_mod, "installed_versions",
-                            lambda: {"mechbench-runner": "0.2.2"})
+                            lambda: {"mechbench": "0.2.2"})
         assert updater.update_now() == 0
         assert "nothing to do" in capsys.readouterr().out
 
@@ -156,13 +156,13 @@ class TestManualUpdate:
                                 True, True, True, None, "running"))
         monkeypatch.setattr(service, "kickstart",
                             lambda: kicked.append(True) or True)
-        seq = [{"mechbench-runner": "0.2.1", "mechbench-compute": "0.11.1"},
-               {"mechbench-runner": "0.2.2", "mechbench-compute": "0.11.1"}]
+        seq = [{"mechbench": "0.2.1", "mechbench-compute": "0.11.1"},
+               {"mechbench": "0.2.2", "mechbench-compute": "0.11.1"}]
         monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
                             install_mod.Installation("venv", ["true"], "x"))
         monkeypatch.setattr(install_mod, "run_upgrade", lambda w, t=None: (True, ""))
         monkeypatch.setattr(install_mod, "installed_versions", lambda: seq.pop(0) if seq else seq0)
-        seq0 = {"mechbench-runner": "0.2.2", "mechbench-compute": "0.11.1"}
+        seq0 = {"mechbench": "0.2.2", "mechbench-compute": "0.11.1"}
         updater.update_now()
         out = capsys.readouterr().out
         assert "0.2.1 -> 0.2.2" in out

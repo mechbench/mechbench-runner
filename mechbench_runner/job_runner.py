@@ -121,7 +121,7 @@ class JobRunner:
             # throttle forever instead of waiting quietly for `login`.
             print(
                 "[runner] this machine is not signed in; nothing to do.\n"
-                "[runner] Run `mechbench-runner login` to connect it."
+                "[runner] Run `mechbench login` to connect it."
             )
             return EXIT_OK
         self._claim_control_socket()
@@ -249,7 +249,7 @@ class JobRunner:
         self.state.signed_out(message)
         print(f"\n[runner] {message}")
         if self.config.from_stored_credentials:
-            print("[runner] Run `mechbench-runner login` to reconnect.")
+            print("[runner] Run `mechbench login` to reconnect.")
 
     def _handle(self, api: ApiClient, job: dict[str, Any]) -> None:
         job_id = job["id"]
@@ -378,7 +378,7 @@ class JobRunner:
             raise SystemExit(
                 f"[runner] another runner (pid {existing.get('pid')}) is already "
                 f"listening at {socket_path()}. Stop it first, or ask it what it "
-                f"is doing with `mechbench-runner status`."
+                f"is doing with `mechbench status`."
             )
         path = socket_path()
         if path.exists():

@@ -1,4 +1,4 @@
-"""`mechbench-runner models` — what is cached, and what pruning buys.
+"""`mechbench models` — what is cached, and what pruning buys.
 
 Thin on purpose: the inventory lives in `mechbench_compute.inventory`
 because the web UI wants the same answer, and neither side should be

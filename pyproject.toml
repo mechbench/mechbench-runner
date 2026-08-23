@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mechbench-runner"
+name = "mechbench"
 version = "0.5.0"
 description = "The mechbench runner: claims jobs from mechbench-api, executes protocols against mechbench-compute, and emits results. Also exposes those primitives as MCP tools."
 readme = "README.md"
@@ -24,7 +24,7 @@ authors = [{ name = "Benji Smith", email = "benji@shaxpir.com" }]
 keywords = ["interpretability", "mechanistic-interpretability", "mlx", "mcp", "runner"]
 # Honest about the split: the runner installs and runs anywhere, and the
 # MLX backend it pulls in through mechbench-compute is Apple-Silicon
-# only. `mechbench-runner doctor` says which half a given machine has.
+# only. `mechbench doctor` says which half a given machine has.
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -62,10 +62,12 @@ Homepage = "https://github.com/mechbench/mechbench-runner"
 Website = "https://mechbench.ai"
 
 [project.scripts]
-mechbench-runner = "mechbench_runner.cli:main"
+mechbench = "mechbench.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["mechbench_runner*"]
+# Two modules, one distribution (task 000307): `mechbench` is the bare
+# front door, `mechbench_runner` the engine behind it.
+include = ["mechbench", "mechbench_runner*"]
 
 [tool.ruff]
 line-length = 88

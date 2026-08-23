@@ -160,7 +160,7 @@ def _offer_service() -> None:
     try:
         existing = service.status()
     except service.UnsupportedPlatformError:
-        print("\nStart working:\n\n    mechbench-runner run\n")
+        print("\nStart working:\n\n    mechbench run\n")
         return
 
     if existing.installed:
@@ -171,14 +171,14 @@ def _offer_service() -> None:
             print("\nRestarted the background service with the new credentials.")
         else:
             print("\nA background service is installed; restart it to pick up "
-                  "the new credentials:\n\n    mechbench-runner install-service\n")
+                  "the new credentials:\n\n    mechbench install-service\n")
         return
 
     if not sys.stdin.isatty():
         print(
-            "\nStart working:\n\n    mechbench-runner run\n\n"
+            "\nStart working:\n\n    mechbench run\n\n"
             "Or have it start automatically and stay running:\n\n"
-            "    mechbench-runner install-service\n"
+            "    mechbench install-service\n"
         )
         return
 
@@ -197,8 +197,8 @@ def _offer_service() -> None:
         if hint:
             print(f"\n{hint}")
     else:
-        print("\nStart working:\n\n    mechbench-runner run\n\n"
-              "Change your mind with `mechbench-runner install-service`.\n")
+        print("\nStart working:\n\n    mechbench run\n\n"
+              "Change your mind with `mechbench install-service`.\n")
 
 
 def logout(config: Config) -> int:
@@ -230,7 +230,7 @@ def logout(config: Config) -> int:
 def whoami(config: Config) -> int:
     if not config.api_key:
         print(
-            "this machine is not signed in. Run `mechbench-runner login`.",
+            "this machine is not signed in. Run `mechbench login`.",
             file=sys.stderr,
         )
         return 1
@@ -241,14 +241,14 @@ def whoami(config: Config) -> int:
         if exc.status == 401:
             print(
                 "signed out: this credential has been revoked.\n"
-                "Run `mechbench-runner login` to reconnect.",
+                "Run `mechbench login` to reconnect.",
                 file=sys.stderr,
             )
             return 1
         if exc.status == 400:
             print(
                 "this credential is a plain API key, not a registered runner.\n"
-                "Run `mechbench-runner login` to register this machine.",
+                "Run `mechbench login` to register this machine.",
                 file=sys.stderr,
             )
             return 1
@@ -266,7 +266,7 @@ def whoami(config: Config) -> int:
     print(f"api      {config.api_base_url}")
     print(f"host     {runner.get('hostname')}  {runner.get('platform')}")
     if runner.get("signedOut"):
-        print("status   REVOKED — run `mechbench-runner login` to reconnect")
+        print("status   REVOKED — run `mechbench login` to reconnect")
     return 0
 
 def _login_via_browser(config: Config, name: str | None) -> int:
@@ -302,7 +302,7 @@ def _login_via_browser(config: Config, name: str | None) -> int:
         if exc.status == 404:
             print(
                 f"{config.api_base_url} does not support browser sign-in.\n"
-                f"Try `mechbench-runner login --token mbr_...` instead.",
+                f"Try `mechbench login --token mbr_...` instead.",
                 file=sys.stderr,
             )
             return 1
@@ -358,7 +358,7 @@ def _login_via_browser(config: Config, name: str | None) -> int:
 
     print(
         "\nThe request expired before it was approved. Run "
-        "`mechbench-runner login` again.",
+        "`mechbench login` again.",
         file=sys.stderr,
     )
     return 1

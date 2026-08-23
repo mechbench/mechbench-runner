@@ -104,7 +104,7 @@ class TestChildCommand:
         # A script's location depends on PATH, and a service has almost
         # none -- the same trap that broke self-update on 2026-08-22.
         argv = Supervisor().child_argv
-        assert argv[1:3] == ["-m", "mechbench_runner.cli"]
+        assert argv[1:3] == ["-m", "mechbench.cli"]
         assert argv[3] == "run"
 
 

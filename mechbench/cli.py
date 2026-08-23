@@ -1,6 +1,6 @@
 """CLI entry.
 
-`mechbench-runner {login,logout,whoami,doctor,models,mcp,run,status,…}`
+`mechbench {login,logout,whoami,doctor,models,mcp,run,status,…}`
 """
 
 from __future__ import annotations
@@ -8,23 +8,20 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .config import Config
+from mechbench_runner.config import Config
 
-#: Every spelling of the three service commands, mapped to the one thing
-#: each actually does. The `*-agent` spellings are the pre-0.5.0 names
-#: (task 000305); they still work and no longer appear in --help.
+#: The three service commands, mapped to what each does. The old
+#: `*-agent` spellings died with the `mechbench` rename (task 000307):
+#: a brand-new command name owes nothing to the old one's muscle memory.
 SERVICE_COMMANDS = {
     "install-service": "install",
     "uninstall-service": "uninstall",
     "service-status": "status",
-    "install-agent": "install",
-    "uninstall-agent": "uninstall",
-    "agent-status": "status",
 }
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="mechbench-runner")
+    parser = argparse.ArgumentParser(prog="mechbench")
     # metavar, or argparse prints every subcommand name in the usage
     # line's {...} blob — including the ones whose help is SUPPRESSed,
     # which defeats hiding them at all (task 000305).
@@ -65,11 +62,6 @@ def main(argv: list[str] | None = None) -> int:
     # Aliases rather than a clean break because 0.4.0 is published and
     # these are in muscle memory, README, and the download page. They can
     # go once those have turned over.
-    # No `help=` at all: argparse only lists a subcommand when it is
-    # given one, and passing argparse.SUPPRESS as the value prints the
-    # literal string "==SUPPRESS==" instead of hiding anything.
-    for _old in ("install-agent", "uninstall-agent", "agent-status"):
-        sub.add_parser(_old)
     sub.add_parser("whoami", help="Which machine, which account, which scope.")
     sub.add_parser(
         "update", help="Upgrade this machine now, and restart the service."
@@ -142,27 +134,27 @@ def main(argv: list[str] | None = None) -> int:
     config = Config.from_env()
 
     if args.cmd == "supervise":
-        from .supervisor import main as supervise_main
+        from mechbench_runner.supervisor import main as supervise_main
 
         return supervise_main()
 
     if args.cmd == "update":
-        from . import updater
+        from mechbench_runner import updater
 
         return updater.update_now()
 
     if args.cmd == "doctor":
-        from . import doctor
+        from mechbench_runner import doctor
 
         return doctor.run(config)
 
     if args.cmd == "models":
-        from . import models_cmd
+        from mechbench_runner import models_cmd
 
         return models_cmd.run(prune=args.prune, delete=args.delete)
 
     if args.cmd in SERVICE_COMMANDS:
-        from . import service as service_mod
+        from mechbench_runner import service as service_mod
 
         cmd = SERVICE_COMMANDS[args.cmd]
         try:
@@ -187,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     if args.cmd in {"login", "logout", "whoami"}:
-        from . import login as login_mod
+        from mechbench_runner import login as login_mod
 
         if args.cmd == "login":
             return login_mod.login(config, token=args.token, name=args.name)
@@ -196,15 +188,15 @@ def main(argv: list[str] | None = None) -> int:
         return login_mod.whoami(config)
 
     if args.cmd == "mcp":
-        from .mcp_server import run_stdio
+        from mechbench_runner.mcp_server import run_stdio
 
         run_stdio(config)
         return 0
 
     if args.cmd == "run":
-        from .exits import EXIT_CRASH
-        from .logs import excepthook_to_log
-        from .logs import install as install_logs
+        from mechbench_runner.exits import EXIT_CRASH
+        from mechbench_runner.logs import excepthook_to_log
+        from mechbench_runner.logs import install as install_logs
 
         # Bounded logs, because launchd has no rotation and this process
         # is meant to run for months unattended (task 000294).
@@ -221,11 +213,11 @@ def main(argv: list[str] | None = None) -> int:
         # An approved update replaces this code and can only do that
         # while the code is still unloaded — so before the runner itself
         # is imported.
-        from . import updater
+        from mechbench_runner import updater
 
         updater.take_pending_step()
 
-        from .job_runner import JobRunner
+        from mechbench_runner.job_runner import JobRunner
         try:
             return JobRunner(config).run()
         except SystemExit:
@@ -239,12 +231,12 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_CRASH
 
     if args.cmd in {"status", "pause", "resume"}:
-        from .control import ControlError
+        from mechbench_runner.control import ControlError
 
         try:
             if args.cmd == "status" and getattr(args, "watch", False):
                 return _watch()
-            from .control import request
+            from mechbench_runner.control import request
 
             data = request(args.cmd)
         except ControlError as exc:
@@ -259,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "smoke":
-        from ._smoke import main as smoke_main
+        from mechbench_runner._smoke import main as smoke_main
 
         return smoke_main(full=args.full)
 
@@ -298,7 +290,7 @@ def _watch() -> int:
     import json
     import socket as _socket
 
-    from .control import PROTOCOL_VERSION, ControlError, socket_path
+    from mechbench_runner.control import PROTOCOL_VERSION, ControlError, socket_path
 
     path = socket_path()
     if not path.exists():

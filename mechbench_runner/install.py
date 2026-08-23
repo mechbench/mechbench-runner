@@ -4,7 +4,7 @@
 different upgrade commands. Guessing wrong does not fail cleanly — it
 corrupts an environment — so when the answer is not clear this module
 refuses and says what to run by hand. "Update available, run
-`uv tool upgrade mechbench-runner`" is a fine outcome; a half-upgraded
+`uv tool upgrade mechbench`" is a fine outcome; a half-upgraded
 venv on a machine nobody is watching is not.
 
 A source checkout always refuses. That machine belongs to a developer
@@ -20,7 +20,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-DIST = "mechbench-runner"
+DIST = "mechbench"
 
 
 #: Where installers actually live, for when PATH does not say.

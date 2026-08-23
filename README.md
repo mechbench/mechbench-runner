@@ -1,4 +1,10 @@
-# mechbench-runner
+# mechbench (the runner)
+
+The `mechbench` command: what you install on a machine to connect it to
+[mechbench.ai](https://mechbench.ai). The repository keeps its old name
+— the PyPI package and the command are `mechbench` (task 000307), and
+the distribution ships two modules: `mechbench`, the bare front door,
+and `mechbench_runner`, the engine it dispatches into.
 
 The machine-side process of the [mechbench](https://mechbench.ai) family: it claims queued jobs from `mechbench-api`, executes them against `mechbench-compute`, and posts results back. It also exposes those same primitives as [Model Context Protocol](https://modelcontextprotocol.io) tools, so an LLM agent can call them directly.
 
@@ -11,12 +17,12 @@ Two adjacent surfaces for different callers:
 1. **MCP server.** An LLM agent (Claude, others) connects via MCP stdio and calls mechbench primitives as structured tools. Tool bodies run in-process against `mechbench-compute`.
 2. **Job-runner.** Polls `mechbench-api`'s `/jobs/next` for UI-queued protocols, runs them, posts results back. Same compute path as the MCP `run_protocol` tool; different *trigger*.
 
-Both modes share one binary (`mechbench-runner`) with subcommands; they share the loaded model, API client, and protocol executor. Splitting into separate processes is a later operational decision — see "Open design questions" below.
+Both modes share one binary (`mechbench`) with subcommands; they share the loaded model, API client, and protocol executor. Splitting into separate processes is a later operational decision — see "Open design questions" below.
 
 ## Architectural decisions (task 000185)
 
 - **Python.** `mechbench-compute` is Python; delegating to Python via RPC or subprocess-shell from a TS runner adds a layer that pays no dividends in v0. The MCP Python SDK is mature.
-- **One binary, two subcommands.** `mechbench-runner mcp` launches the MCP server over stdio; `mechbench-runner run` starts the job-runner loop. They share `ExperimentRunner` (owns the loaded Gemma model) and `ApiClient`.
+- **One binary, two subcommands.** `mechbench mcp` launches the MCP server over stdio; `mechbench run` starts the job-runner loop. They share `ExperimentRunner` (owns the loaded Gemma model) and `ApiClient`.
 - **Agent authenticates to `mechbench-api` with a dedicated API key**, not a user's personal session. Export `MECHBENCH_API_KEY` (mint one at `/settings/api-keys`, or via `POST /auth/api-keys`). Matches the pattern from the e2e trace.
 - **MCP `run_protocol` runs in-process**, not queued through `mechbench-api`. The MCP caller wants the answer; we are the compute target. Job-queue round-tripping exists for the *UI-triggered* path (job-runner subcommand).
 - **stdio transport only.** SSE / HTTP-SSE transports earn their seat once remote MCP deploy matters (deferred).
@@ -24,14 +30,14 @@ Both modes share one binary (`mechbench-runner`) with subcommands; they share th
 ## Install
 
 ```bash
-uv tool install --managed-python mechbench-runner
-mechbench-runner login
+uv tool install --managed-python mechbench
+mechbench login
 ```
 
 `--managed-python` has uv fetch its own interpreter rather than adopt
 whichever `python3` the machine happens to have. It costs a one-time
 download and buys a version we support (3.11–3.14) on a machine whose
-own Python we then never touch. `pipx install mechbench-runner` works
+own Python we then never touch. `pipx install mechbench` works
 too, against an interpreter you already have.
 
 `login` prints a link and waits. Open it, approve the machine — the page
@@ -41,7 +47,7 @@ runner collects a credential it writes to `~/.mechbench/config.toml`
 URL grants nothing on its own, and the key is minted directly to the
 machine that asked.
 
-For a machine with no browser, `mechbench-runner login --token mbr_…`
+For a machine with no browser, `mechbench login --token mbr_…`
 takes a single-use token minted at [mechbench.ai/download](https://mechbench.ai/download).
 
 `login` then offers to start the runner automatically. Say yes and there
@@ -51,7 +57,7 @@ and is controlled from the website.
 ### Updating
 
 ```bash
-mechbench-runner update
+mechbench update
 ```
 
 Upgrades and restarts the service. **Re-running the install command does
@@ -62,7 +68,7 @@ so a machine can sit on an old version while looking freshly installed.
 rather than trusting an exit code, and rolls back if the new version
 cannot start.
 
-`mechbench-runner doctor` answers "will this actually work here" —
+`mechbench doctor` answers "will this actually work here" —
 Python, backend, credentials, API, model cache, disk — before you find
 out the slow way.
 
@@ -72,9 +78,9 @@ Running a model needs Apple Silicon (the MLX backend from
 ### Running it yourself
 
 ```bash
-mechbench-runner run              # foreground, ^C to stop
-mechbench-runner install-service  # or have the OS keep it running
-mechbench-runner service-status
+mechbench run              # foreground, ^C to stop
+mechbench install-service  # or have the OS keep it running
+mechbench service-status
 ```
 
 The service is supervised by launchd or systemd rather than by anything
@@ -86,13 +92,13 @@ the background.** That is this runner. macOS attributes a background
 item to whoever code-signed the executable, and the executable is the
 Python interpreter, which Ned Deily signs as CPython's macOS release
 manager. Turning it off in Login Items & Extensions stops the runner;
-`mechbench-runner doctor` reports it if that happens.
+`mechbench doctor` reports it if that happens.
 
 ### From a checkout
 
 ```bash
 git clone https://github.com/mechbench/mechbench-runner.git
-cd mechbench-runner
+cd mechbench
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
@@ -108,7 +114,7 @@ Launch as a stdio MCP server — connect from Claude Desktop via `claude_desktop
 {
   "mcpServers": {
     "mechbench": {
-      "command": "/abs/path/to/mechbench-runner/.venv/bin/mechbench-runner",
+      "command": "/abs/path/to/mechbench/.venv/bin/mechbench",
       "args": ["mcp"],
       "env": {
         "MECHBENCH_API_URL": "http://localhost:3000",
@@ -134,7 +140,7 @@ Polls `mechbench-api` for UI-queued jobs. Same compute path as `run_protocol`; d
 ```bash
 export MECHBENCH_API_URL=http://localhost:3000
 export MECHBENCH_API_KEY=mbk_...
-mechbench-runner run
+mechbench run
 ```
 
 Ctrl-C exits cleanly. API-unreachable is retried with exponential backoff capped at 30 s.
@@ -142,8 +148,8 @@ Ctrl-C exits cleanly. API-unreachable is retried with exponential backoff capped
 ### In-process smoke test
 
 ```bash
-mechbench-runner smoke            # quick: list_jobs + get_result
-mechbench-runner smoke --full     # adds run_protocol (42 forwards, ~1-2 min)
+mechbench smoke            # quick: list_jobs + get_result
+mechbench smoke --full     # adds run_protocol (42 forwards, ~1-2 min)
 ```
 
 ## Configuration

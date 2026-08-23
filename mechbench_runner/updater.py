@@ -166,9 +166,13 @@ def _self_check() -> list[str]:
     """
     problems: list[str] = []
     try:
+        # Both halves of the distribution (task 000307): the engine, and
+        # the `mechbench` front door the service unit re-execs into. An
+        # upgrade that delivered one without the other must roll back.
+        from mechbench import cli  # noqa: F401
+
         from . import (  # noqa: F401
             channel,
-            cli,
             config,
             job_runner,  # noqa: F401
         )
@@ -191,7 +195,7 @@ def _reexec(say) -> bool:
         sys.stderr.flush()
     except Exception:  # noqa: BLE001
         pass
-    os.execv(sys.executable, [sys.executable, "-m", "mechbench_runner.cli", *sys.argv[1:]])
+    os.execv(sys.executable, [sys.executable, "-m", "mechbench.cli", *sys.argv[1:]])
     return True  # unreachable
 
 
@@ -199,7 +203,7 @@ def _reexec(say) -> bool:
 
 
 def update_now(report=None) -> int:
-    """`mechbench-runner update` — upgrade this machine right now.
+    """`mechbench update` — upgrade this machine right now.
 
     The web UI route (approve, exit 75, upgrade at the next start) exists
     because a *service* cannot upgrade itself while running. Run by hand

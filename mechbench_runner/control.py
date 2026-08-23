@@ -3,7 +3,7 @@
 A running runner can otherwise be asked nothing: whether it is polling or
 wedged, what it is executing, how far in. This serves that over a Unix domain
 socket at `~/.mechbench/runner.sock`, speaking newline-delimited JSON, and it
-is the one contract both `mechbench-runner status` and mechbench-app-mac are
+is the one contract both `mechbench status` and mechbench-app-mac are
 built on.
 
 Why a socket rather than a file the runner writes and readers poll: a file
@@ -491,13 +491,13 @@ class ControlError(RuntimeError):
 def request(op: str, *, path: Path | None = None, timeout: float = 5.0) -> dict[str, Any]:
     """Send one request to a running runner and return its `data`.
 
-    Used by `mechbench-runner status` and friends; the Mac app speaks the same
+    Used by `mechbench status` and friends; the Mac app speaks the same
     protocol over the same socket.
     """
     p = path or socket_path()
     if not p.exists():
         raise ControlError(f"no runner is listening at {p} — start one with "
-                           f"`mechbench-runner run`")
+                           f"`mechbench run`")
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.settimeout(timeout)
     try:

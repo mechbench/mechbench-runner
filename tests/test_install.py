@@ -6,14 +6,14 @@ from mechbench_runner import install as m
 
 class TestDetect:
     def test_uv_tool(self):
-        i = m.detect("/Users/x/.local/share/uv/tools/mechbench-runner")
+        i = m.detect("/Users/x/.local/share/uv/tools/mechbench")
         assert i.method == "uv-tool"
         # `--reinstall` leaves satisfied dependencies alone -- observed
         # 2026-08-23 with compute stuck a version behind a moved floor.
-        assert i.upgrade[-2:] == ["upgrade", "mechbench-runner"]
+        assert i.upgrade[-2:] == ["upgrade", "mechbench"]
 
     def test_pipx(self):
-        assert m.detect("/Users/x/.local/pipx/venvs/mechbench-runner").method == "pipx"
+        assert m.detect("/Users/x/.local/pipx/venvs/mechbench").method == "pipx"
 
     def test_an_unknown_layout_refuses_rather_than_guessing(self):
         i = m.detect("/opt/somewhere/odd")
@@ -32,7 +32,7 @@ class TestDetect:
 class TestVersions:
     def test_it_reports_the_three_that_matter(self):
         v = m.installed_versions()
-        assert set(v) == {"mechbench-runner", "mechbench-compute", "mechbench-schema"}
+        assert set(v) == {"mechbench", "mechbench-compute", "mechbench-schema"}
 
     def test_it_never_raises_on_a_missing_package(self, monkeypatch):
         import importlib.metadata as md
@@ -89,7 +89,7 @@ class TestFindingInstallers:
 
     def test_a_missing_installer_refuses_with_the_command_to_run(self, monkeypatch):
         monkeypatch.setattr(m, "find_executable", lambda _n: None)
-        i = m.detect("/Users/x/.local/share/uv/tools/mechbench-runner")
+        i = m.detect("/Users/x/.local/share/uv/tools/mechbench")
         assert i.method == "uv-tool"
         assert i.upgradable is False
         assert "uv tool upgrade" in i.advice

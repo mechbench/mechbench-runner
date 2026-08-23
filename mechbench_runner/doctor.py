@@ -1,4 +1,4 @@
-"""`mechbench-runner doctor` — will this machine actually work?
+"""`mechbench doctor` — will this machine actually work?
 
 Answering that with a checklist rather than letting someone discover it
 through a stack trace three minutes into a model download. Every check
@@ -57,7 +57,7 @@ def run(config: Config) -> int:
     checks.extend(_models())
     checks.append(_disk())
 
-    print("mechbench-runner doctor\n")
+    print("mechbench doctor\n")
     for check in checks:
         print(check.render())
 
@@ -86,7 +86,7 @@ def _python() -> Check:
     if (v.major, v.minor) < (3, 11):
         return Check(
             "python", FAIL, f"{rendered} (need 3.11+)",
-            "Install Python 3.11 or newer and reinstall mechbench-runner.",
+            "Install Python 3.11 or newer and reinstall mechbench.",
         )
     return Check("python", OK, rendered)
 
@@ -155,7 +155,7 @@ def _account(config: Config) -> list[Check]:
         return [
             Check(
                 "credentials", FAIL, "this machine is not signed in",
-                "mechbench-runner login",
+                "mechbench login",
             )
         ]
 
@@ -173,14 +173,14 @@ def _account(config: Config) -> list[Check]:
             return checks + [
                 Check(
                     "api", FAIL, "the credential was rejected",
-                    "This machine has been signed out. Run `mechbench-runner login`.",
+                    "This machine has been signed out. Run `mechbench login`.",
                 )
             ]
         if exc.status == 400:
             return checks + [
                 Check(
                     "api", WARN, "reachable, but this key is not a runner's",
-                    "Jobs can still be claimed. `mechbench-runner login` registers "
+                    "Jobs can still be claimed. `mechbench login` registers "
                     "the machine so it appears on the website.",
                 )
             ]
@@ -221,12 +221,12 @@ def _service() -> Check:
     try:
         st = service.status()
     except service.UnsupportedPlatformError:
-        return Check("service", OK, "not managed here; run `mechbench-runner run`")
+        return Check("service", OK, "not managed here; run `mechbench run`")
 
     if not st.installed:
         return Check(
             "service", OK, "not installed (running by hand is fine)",
-            "`mechbench-runner install-service` starts it at login and keeps it "
+            "`mechbench install-service` starts it at login and keeps it "
             "running.",
         )
     if st.running:
@@ -236,7 +236,7 @@ def _service() -> Check:
         'If macOS asked about background software from "Ned Deily" and it was '
         "turned off, that was this — the Python interpreter's signer. Re-enable "
         "it in System Settings > General > Login Items & Extensions, or run "
-        "`mechbench-runner install-service` again.",
+        "`mechbench install-service` again.",
     )
 
 
@@ -285,7 +285,7 @@ def _models() -> list[Check]:
                 WARN if reclaimable > 1_000_000_000 else OK,
                 f"{superseded} not pointed at by any ref, "
                 f"{inventory.format_bytes(reclaimable)} reclaimable",
-                "mechbench-runner models --prune",
+                "mechbench models --prune",
             )
         )
     return checks

@@ -1,7 +1,7 @@
-"""Config loading for mechbench-runner.
+"""Config loading for mechbench.
 
 Two sources, in a deliberate order: the environment, then the
-credentials `mechbench-runner login` stored. Both the MCP server and
+credentials `mechbench login` stored. Both the MCP server and
 the job-runner are long-lived, so this fails fast on missing required
 values at startup rather than on the first tool call.
 """
@@ -96,7 +96,7 @@ class Config:
         if not self.api_key:
             raise RuntimeError(
                 "this machine is not signed in.\n"
-                "  Run `mechbench-runner login` and follow the printed link,\n"
+                "  Run `mechbench login` and follow the printed link,\n"
                 "  or set MECHBENCH_API_KEY for a container or CI job."
             )
         return self.api_key

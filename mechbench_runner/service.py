@@ -13,8 +13,8 @@ and the whole policy is the exit-code contract in `exits.py`:
   from a crash, stay stopped after a deliberate exit.
 * `ThrottleInterval` / `RestartSec` — do not spin.
 
-The command is `sys.executable -m mechbench_runner.cli run` rather than
-whatever `mechbench-runner` resolves to on `PATH`. A service has no
+The command is `sys.executable -m mechbench.cli run` rather than
+whatever `mechbench` resolves to on `PATH`. A service has no
 shell profile, so `PATH` is not ours to rely on — and pinning the
 interpreter pins the environment the runner was installed into, which
 is the one holding its dependencies.
@@ -35,7 +35,7 @@ from pathlib import Path
 from .paths import mechbench_dir
 
 LABEL = "ai.mechbench.runner"
-UNIT_NAME = "mechbench-runner.service"
+UNIT_NAME = "mechbench.service"
 
 #: Seconds launchd waits between restarts, and systemd's RestartSec.
 THROTTLE_SECONDS = 10
@@ -73,8 +73,8 @@ def unit_path() -> Path:
         return Path.home() / ".config" / "systemd" / "user" / UNIT_NAME
     raise UnsupportedPlatformError(
         f"there is no service manager we know how to use on {sys.platform}. "
-        f"Run `mechbench-runner run` under whatever supervises processes "
-        f"here, or use `mechbench-runner supervise` if there is nothing."
+        f"Run `mechbench run` under whatever supervises processes "
+        f"here, or use `mechbench supervise` if there is nothing."
     )
 
 
@@ -88,7 +88,7 @@ def program_arguments() -> list[str]:
     this design exists to avoid, and the exit-code contract is the same
     at both levels so they cannot disagree.
     """
-    return [sys.executable, "-m", "mechbench_runner.cli", "supervise"]
+    return [sys.executable, "-m", "mechbench.cli", "supervise"]
 
 
 def boot_log() -> Path:

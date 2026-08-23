@@ -67,7 +67,7 @@ class TestTheCommand:
         assert args[0] == sys.executable
         # `supervise`, not `run`: the supervisor owns the child and can
         # upgrade it while it is stopped (000295/000296).
-        assert args[1:] == ["-m", "mechbench_runner.cli", "supervise"]
+        assert args[1:] == ["-m", "mechbench.cli", "supervise"]
 
     def test_no_credential_is_written_into_the_unit(self):
         rendered = plistlib.dumps(service.launchd_plist()).decode()
@@ -141,49 +141,14 @@ class TestUnsupportedIsHandledEverywhere:
         monkeypatch.setattr(service.sys, "platform", "plan9")
         monkeypatch.setattr(login_mod.sys.stdin, "isatty", lambda: False)
         login_mod._offer_service()  # noqa: SLF001
-        assert "mechbench-runner run" in capsys.readouterr().out
+        assert "mechbench run" in capsys.readouterr().out
 
     def test_the_cli_catches_it(self, monkeypatch, capsys):
-        from mechbench_runner import cli
+        from mechbench import cli
 
         monkeypatch.setattr(service.sys, "platform", "plan9")
         assert cli.main(["service-status"]) == 1
         assert "supervise" in capsys.readouterr().err
-
-
-class TestTheOldAgentNamesStillWork:
-    """`install-agent` and friends are the pre-0.5.0 spellings (000305).
-
-    They are hidden from --help but must keep working: 0.4.0 is
-    published, and a rename that breaks the command someone has in their
-    notes is a rename that gets reverted.
-    """
-
-    def test_every_alias_maps_to_the_same_action(self):
-        from mechbench_runner.cli import SERVICE_COMMANDS
-
-        assert SERVICE_COMMANDS["install-agent"] == SERVICE_COMMANDS["install-service"]
-        assert (
-            SERVICE_COMMANDS["uninstall-agent"]
-            == SERVICE_COMMANDS["uninstall-service"]
-        )
-        assert SERVICE_COMMANDS["agent-status"] == SERVICE_COMMANDS["service-status"]
-
-    def test_an_alias_still_dispatches(self, monkeypatch, capsys):
-        from mechbench_runner import cli
-
-        monkeypatch.setattr(service.sys, "platform", "plan9")
-        assert cli.main(["agent-status"]) == 1
-        assert "supervise" in capsys.readouterr().err
-
-    def test_the_aliases_are_hidden_from_help(self, capsys):
-        from mechbench_runner import cli
-
-        with pytest.raises(SystemExit):
-            cli.main(["--help"])
-        out = capsys.readouterr().out
-        assert "install-service" in out
-        assert "install-agent" not in out
 
 
 class TestInstallReportsSettledState:

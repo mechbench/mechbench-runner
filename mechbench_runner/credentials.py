@@ -1,4 +1,4 @@
-"""Stored credentials: what `mechbench-runner login` writes down.
+"""Stored credentials: what `mechbench login` writes down.
 
 Before this, running a job meant `export MECHBENCH_API_KEY=mbk_...` —
 which puts a durable secret in shell history, loses it between
@@ -43,7 +43,7 @@ def load(path: Path | None = None) -> StoredCredentials | None:
     """Read the stored pairing, or None if this machine has not logged in.
 
     A malformed or unreadable file reads as "not logged in" rather than
-    raising: the runner should say "run `mechbench-runner login`", not
+    raising: the runner should say "run `mechbench login`", not
     hand someone a TOML parse error for a file they never wrote.
     """
     p = path or config_path()
@@ -114,7 +114,7 @@ def _render(creds: StoredCredentials) -> str:
     machine that installs the runner just to quote them.
     """
     lines = [
-        "# mechbench-runner credentials, written by `mechbench-runner login`.",
+        "# mechbench credentials, written by `mechbench login`.",
         "# Holds a durable API key: keep this file mode 0600.",
         "",
         f"[{TABLE}]",
