@@ -141,3 +141,33 @@ class TestWebUrl:
 
     def test_unknown_host_guesses_by_dropping_the_api_label(self):
         assert web_url("https://api.example.test") == "https://example.test/settings/runners"
+
+
+class TestDefaultApiUrl:
+    """The default has to serve the common case (task 000287 follow-up).
+
+    It pointed at localhost until 2026-08-23, so the first real install
+    registered against whatever happened to be on port 3000 and got a
+    404. Almost everyone installing this is connecting a machine to
+    mechbench.ai; developing against a local API is the rarer case, and
+    the one whose owner can be expected to set an env var.
+    """
+
+    def test_it_is_production(self, store, monkeypatch):
+        monkeypatch.setattr(credentials, "config_path", lambda: store)
+        monkeypatch.delenv("MECHBENCH_API_KEY", raising=False)
+        monkeypatch.delenv("MECHBENCH_API_URL", raising=False)
+        assert Config.from_env().api_base_url == "https://api.mechbench.ai"
+
+    def test_localhost_is_still_one_env_var_away(self, store, monkeypatch):
+        monkeypatch.setattr(credentials, "config_path", lambda: store)
+        monkeypatch.delenv("MECHBENCH_API_KEY", raising=False)
+        monkeypatch.setenv("MECHBENCH_API_URL", "http://localhost:3000")
+        assert Config.from_env().api_base_url == "http://localhost:3000"
+
+    def test_the_default_resolves_to_the_real_site(self):
+        from mechbench_runner.login import web_url
+        from mechbench_runner.config import DEFAULT_API_URL
+
+        # Not a guess from dropping the `api.` label — an explicit mapping.
+        assert web_url(DEFAULT_API_URL) == "https://mechbench.ai/settings/runners"

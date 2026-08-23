@@ -117,7 +117,7 @@ All via env vars:
 
 | var | default | purpose |
 |---|---|---|
-| `MECHBENCH_API_URL` | `http://localhost:3000` | mechbench-api base URL. Ignored when credentials are stored, which carry their own. |
+| `MECHBENCH_API_URL` | `https://api.mechbench.ai` | mechbench-api base URL. Set it to `http://localhost:3000` to develop against a local API. Ignored when credentials are stored, which carry their own. |
 | `MECHBENCH_API_KEY` | *(from `login`)* | Overrides the stored credential entirely, URL included. For CI and containers, which have nowhere to put a config file. |
 | `MECHBENCH_POLL_INTERVAL_SECONDS` | `2.0` | Job-runner poll cadence. |
 | `MECHBENCH_WARM_MODEL_ID` | *(none)* | Optional model to load at startup so the first job skips cold start. There is deliberately no default: a protocol names the model it runs against, and a job that names none is an error. |

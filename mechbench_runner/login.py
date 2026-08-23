@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 
 from . import credentials, machine
 from .api_client import ApiClient, ApiError, register_runner
-from .config import Config
+from .config import DEFAULT_API_URL, Config
 from .credentials import StoredCredentials
 
 #: Where the copy-paste block lives. Derived from the API host so that a
@@ -103,7 +103,22 @@ def login(
                 file=sys.stderr,
             )
             return 1
-        print(f"registration failed: {exc}", file=sys.stderr)
+        if exc.status == 404:
+            # Almost always the wrong host rather than a real 404: an
+            # older or unrelated server answering where the API should
+            # be. Naming the URL is the whole diagnosis.
+            print(
+                f"{config.api_base_url} does not have a runner registration "
+                f"endpoint.\n"
+                f"That is usually the wrong address — check MECHBENCH_API_URL, "
+                f"or drop it to use {DEFAULT_API_URL}.",
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            f"registration failed against {config.api_base_url}: {exc}",
+            file=sys.stderr,
+        )
         return 1
     except Exception as exc:  # noqa: BLE001 — a bad URL should read as one
         print(f"could not reach {config.api_base_url}: {exc}", file=sys.stderr)

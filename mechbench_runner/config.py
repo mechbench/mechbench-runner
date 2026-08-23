@@ -14,7 +14,14 @@ from dataclasses import dataclass
 from . import credentials
 from .watchdog import DEFAULT_STALL_SECONDS
 
-DEFAULT_API_URL = "http://localhost:3000"
+# Prod, because almost everyone installing this is connecting a machine
+# to mechbench.ai. Developing against a local API is the rarer case and
+# the one whose owner can be expected to set an env var, so it is the
+# opt-in: MECHBENCH_API_URL=http://localhost:3000.
+#
+# It was the other way round until 2026-08-23, and the first real install
+# duly registered against a stale localhost server and got a 404.
+DEFAULT_API_URL = "https://api.mechbench.ai"
 
 
 @dataclass(frozen=True)
