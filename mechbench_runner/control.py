@@ -100,6 +100,8 @@ class RunnerState:
         self._job: JobView | None = None
         self._model_id: str | None = None
         self._paused = False
+        self._exit_code: int | None = None
+        self._exit_reason = ""
         self._completed = 0
         self._failed = 0
         self._started_at = time.time()
@@ -207,6 +209,30 @@ class RunnerState:
             self._phase = "signed-out"
             self._job = None
         self.emit("runner.signed_out", {"message": message})
+
+    def request_exit(self, code: int, reason: str) -> None:
+        """Ask the poll loop to stop, with a specific exit code.
+
+        The channel runs on its own thread and cannot exit the process
+        itself — a thread that calls sys.exit only ends the thread, and
+        killing the process outright would abandon whatever the job
+        thread is doing. So it asks, and the loop decides when.
+
+        The code is the point: 75 tells the supervisor to bring us
+        straight back (task 000294), which is how an approved update
+        gets a fresh process to install into.
+        """
+        with self._lock:
+            self._exit_code = code
+            self._exit_reason = reason
+        self.emit("runner.exit_requested", {"code": code, "reason": reason})
+
+    @property
+    def exit_requested(self) -> tuple[int, str] | None:
+        with self._lock:
+            if self._exit_code is None:
+                return None
+            return self._exit_code, self._exit_reason
 
     def pause(self) -> None:
         """Stop claiming new work. Never interrupts a job in flight: a

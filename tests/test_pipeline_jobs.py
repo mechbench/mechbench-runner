@@ -1,6 +1,8 @@
 """Pipeline jobs name their model in the graph, not in spec.modelId."""
 from __future__ import annotations
+
 import pytest
+
 pytest.importorskip("mechbench_compute")
 from mechbench_runner import job_runner as jr  # noqa: E402
 

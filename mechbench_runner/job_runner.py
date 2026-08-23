@@ -140,6 +140,13 @@ class JobRunner:
                 # which is how an idle runner proves it is alive rather
                 # than stuck.
                 self._watchdog.stamp()
+                asked = self.state.exit_requested
+                if asked is not None:
+                    code, reason = asked
+                    print(f"[runner] exiting ({reason}); code {code}")
+                    self._stop_channel()
+                    self._watchdog.stop()
+                    return code
                 if self.state.paused:
                     time.sleep(self.config.poll_interval_seconds)
                     continue

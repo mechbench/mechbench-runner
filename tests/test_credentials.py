@@ -166,8 +166,8 @@ class TestDefaultApiUrl:
         assert Config.from_env().api_base_url == "http://localhost:3000"
 
     def test_the_default_resolves_to_the_real_site(self):
-        from mechbench_runner.login import web_url
         from mechbench_runner.config import DEFAULT_API_URL
+        from mechbench_runner.login import web_url
 
         # Not a guess from dropping the `api.` label — an explicit mapping.
         assert web_url(DEFAULT_API_URL) == "https://mechbench.ai/settings/runners"

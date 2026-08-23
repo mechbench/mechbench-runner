@@ -26,10 +26,10 @@ import json
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 
 from .api_client import ApiClient
 from .config import Config
-from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 
 
 def _decode_object(raw: bytes) -> dict[str, Any]:

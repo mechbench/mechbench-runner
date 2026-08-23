@@ -14,7 +14,6 @@ fast and enough to verify the wiring.
 
 from __future__ import annotations
 
-import json
 import sys
 
 from .api_client import ApiClient

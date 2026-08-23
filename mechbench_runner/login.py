@@ -15,7 +15,7 @@ blocking forever on stdin nobody is attached to.
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from . import credentials, machine
 from .api_client import ApiClient, ApiError, register_runner
@@ -131,7 +131,7 @@ def login(
             api_key=result["apiKey"],
             runner_id=runner.get("id"),
             name=runner.get("name"),
-            registered_at=datetime.now(timezone.utc)
+            registered_at=datetime.now(UTC)
             .isoformat(timespec="seconds")
             .replace("+00:00", "Z"),
         )

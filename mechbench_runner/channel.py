@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
 from .config import Config
 from .control import RunnerState
+from .exits import EXIT_RESTART
 
 PROTOCOL_VERSION = 1
 
@@ -65,7 +66,7 @@ def channel_url(api_base_url: str) -> str:
     return f"{base}/runners/channel"
 
 
-def _ssl_context(url: str) -> "ssl.SSLContext | None":
+def _ssl_context(url: str) -> ssl.SSLContext | None:
     """A TLS context with CA roots that actually exist.
 
     `websockets` uses `ssl.create_default_context()`, which trusts
@@ -257,12 +258,20 @@ class LiveChannel:
             from . import __version__ as runner_version
         except ImportError:
             runner_version = "unknown"
+        from . import install as install_mod
+
         return {
             "v": PROTOCOL_VERSION,
             "type": "hello",
             "runnerVersion": runner_version,
             "platform": machine.describe_platform(),
             "hostname": machine.hostname(),
+            # What the whole stack is on, and whether this machine can
+            # update itself — the API needs both to decide whether to
+            # offer an update, and the UI to say why it cannot.
+            "packages": install_mod.installed_versions(),
+            "installMethod": install_mod.detect().method,
+            "selfUpdatable": install_mod.detect().upgradable,
         }
 
     async def _send_loop(self, ws: Any) -> None:
@@ -318,7 +327,9 @@ class LiveChannel:
             return
 
         ack: dict[str, Any] = {"v": PROTOCOL_VERSION, "type": "ack", "ok": True}
-        if name == "pause":
+        if name == "update":
+            ack = self._accept_update(frame)
+        elif name == "pause":
             self.state.pause()
         elif name == "resume":
             self.state.resume()
@@ -336,6 +347,43 @@ class LiveChannel:
 
         self._remember(cmd_id, ack)
         await ws.send(json.dumps({**ack, "id": cmd_id}))
+
+    def _accept_update(self, frame: dict[str, Any]) -> dict[str, Any]:
+        """Record an approved update; the restart performs it.
+
+        Refused while a job is in flight: an update mid-run throws away
+        minutes of model load and forward passes, and the job would have
+        to be re-queued. The API can simply ask again when it goes idle.
+        """
+        target = (frame.get("args") or {}).get("version")
+        if not isinstance(target, str) or not target:
+            return {"v": PROTOCOL_VERSION, "type": "ack", "ok": False,
+                    "error": "update needs args.version"}
+
+        snap = self.state.snapshot()
+        if snap.get("job") is not None:
+            return {"v": PROTOCOL_VERSION, "type": "ack", "ok": False,
+                    "error": "busy: a job is in flight; ask again when idle"}
+
+        from . import install as install_mod
+        from . import updater
+
+        where = install_mod.detect()
+        if not where.upgradable:
+            return {"v": PROTOCOL_VERSION, "type": "ack", "ok": False,
+                    "error": where.advice}
+
+        try:
+            from . import __version__ as current
+        except ImportError:
+            current = ""
+        updater.request(target, current)
+        self.state.set_phase("updating")
+        # Exiting is the mechanism: the supervisor restarts us, and the
+        # new process performs the upgrade before loading old code.
+        self.state.request_exit(EXIT_RESTART, f"update to {target}")
+        return {"v": PROTOCOL_VERSION, "type": "ack", "ok": True,
+                "state": {"updating_to": target, "from": current}}
 
     def _remember(self, cmd_id: str, ack: dict[str, Any]) -> None:
         self._applied[cmd_id] = ack

@@ -202,8 +202,9 @@ class TestServiceCheck:
     """
 
     def _status(self, monkeypatch, **kw):
-        from mechbench_runner import agent
         from pathlib import Path
+
+        from mechbench_runner import agent
 
         base = {"installed": True, "loaded": True, "running": True,
                 "path": Path("/x.plist"), "detail": "running (pid 1)"}

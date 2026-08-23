@@ -151,6 +151,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "run":
+        # Before anything heavy: an approved update replaces this code,
+        # and it can only do that while the code is still unloaded.
+        from . import updater
+
+        updater.take_pending_step()
+
         from .exits import EXIT_CRASH
         from .job_runner import JobRunner
         from .logs import excepthook_to_log
