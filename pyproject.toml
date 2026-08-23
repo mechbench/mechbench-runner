@@ -4,10 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mechbench-runner"
-version = "0.3.0"
+version = "0.3.1"
 description = "The mechbench runner: claims jobs from mechbench-api, executes protocols against mechbench-compute, and emits results. Also exposes those primitives as MCP tools."
 readme = "README.md"
-requires-python = ">=3.11"
+# Capped on purpose, and only here. `uv tool install --managed-python`
+# takes the newest managed CPython that satisfies this — with an open
+# upper bound that meant 3.14.7 on 2026-08-23, a release nothing had
+# ever been tested against. It happened to work; nothing would have
+# warned anyone if it had not, and in three months it would silently be
+# 3.15.
+#
+# An upper bound is bad manners in a library and normal in an
+# application, which this is: mechbench-compute and mechbench-schema
+# keep `>=3.11`. Raising this is meant to be deliberate — test the new
+# interpreter, then bump — which is the same discipline as task 000300.
+requires-python = ">=3.11,<3.15"
 license = { text = "MIT" }
 authors = [{ name = "Benji Smith", email = "benji@shaxpir.com" }]
 keywords = ["interpretability", "mechanistic-interpretability", "mlx", "mcp", "runner"]
