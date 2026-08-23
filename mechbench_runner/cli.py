@@ -40,6 +40,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub.add_parser("whoami", help="Which machine, which account, which scope.")
     sub.add_parser(
+        "update", help="Upgrade this machine now, and restart the service."
+    )
+    sub.add_parser(
         "doctor",
         help="Check whether this machine can actually run jobs.",
     )
@@ -101,6 +104,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     config = Config.from_env()
 
+    if args.cmd == "update":
+        from . import updater
+
+        return updater.update_now()
+
     if args.cmd == "doctor":
         from . import doctor
 
@@ -151,22 +159,30 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "run":
-        # Before anything heavy: an approved update replaces this code,
-        # and it can only do that while the code is still unloaded.
-        from . import updater
-
-        updater.take_pending_step()
-
         from .exits import EXIT_CRASH
-        from .job_runner import JobRunner
         from .logs import excepthook_to_log
         from .logs import install as install_logs
 
         # Bounded logs, because launchd has no rotation and this process
         # is meant to run for months unattended (task 000294).
+        #
+        # Installed *before* the update hook, so what an update did lands
+        # in runner.log with everything else. It went to the boot log at
+        # first — technically where boot-time output belongs, and
+        # practically somewhere nobody would think to look, while being
+        # the only record of why an upgrade failed.
         if not args.no_log_file:
             install_logs()
             excepthook_to_log()
+
+        # An approved update replaces this code and can only do that
+        # while the code is still unloaded — so before the runner itself
+        # is imported.
+        from . import updater
+
+        updater.take_pending_step()
+
+        from .job_runner import JobRunner
         try:
             return JobRunner(config).run()
         except SystemExit:

@@ -54,3 +54,87 @@ class TestRunUpgrade:
         i = m.Installation("venv", ["/definitely/not/here"], "x")
         ok, msg = m.run_upgrade(i)
         assert ok is False and msg
+
+
+class TestFindingInstallers:
+    """A service does not inherit a login shell's PATH.
+
+    A LaunchAgent runs with PATH=/usr/bin:/bin:/usr/sbin:/sbin — no
+    Homebrew, no ~/.local/bin. The first real self-update died on
+    FileNotFoundError for `uv` while the identical command worked by
+    hand, which is the whole reason this does not trust `which`.
+    """
+
+    def test_path_is_tried_first(self, monkeypatch):
+        monkeypatch.setattr(m.shutil, "which", lambda n: "/from/path/" + n)
+        assert m.find_executable("uv") == "/from/path/uv"
+
+    def test_known_locations_are_searched_when_path_fails(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(m.shutil, "which", lambda _n: None)
+        fake = tmp_path / "uv"
+        fake.write_text("#!/bin/sh\n")
+        fake.chmod(0o755)
+        monkeypatch.setattr(m, "_SEARCH", (str(tmp_path),))
+        assert m.find_executable("uv") == str(fake)
+
+    def test_a_non_executable_file_does_not_count(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(m.shutil, "which", lambda _n: None)
+        (tmp_path / "uv").write_text("not executable")
+        monkeypatch.setattr(m, "_SEARCH", (str(tmp_path),))
+        assert m.find_executable("uv") is None
+
+    def test_a_missing_installer_refuses_with_the_command_to_run(self, monkeypatch):
+        monkeypatch.setattr(m, "find_executable", lambda _n: None)
+        i = m.detect("/Users/x/.local/share/uv/tools/mechbench-runner")
+        assert i.method == "uv-tool"
+        assert i.upgradable is False
+        assert "uv tool upgrade" in i.advice
+
+
+class TestSuccessIsMeasuredNotAssumed:
+    """Exit 0 does not mean anything moved.
+
+    `uv tool upgrade` on a tool installed with an exact pin prints
+    "Nothing to upgrade" and exits 0; pip does the same when the
+    requirement is already satisfied. Trusting the return code would
+    report a successful update that never happened — and then the verify
+    step would pass, because the old version does still work.
+    """
+
+    def _proc(self, monkeypatch, code=0):
+        import subprocess
+
+        monkeypatch.setattr(
+            m.subprocess, "run",
+            lambda *a, **k: subprocess.CompletedProcess(a[0], code, "Nothing to upgrade", ""),
+        )
+
+    def test_unchanged_version_is_a_failure(self, monkeypatch):
+        self._proc(monkeypatch)
+        monkeypatch.setattr(m, "installed_versions", lambda: {m.DIST: "0.2.0"})
+        ok, msg = m.run_upgrade(m.Installation("venv", ["true"], "x"), "0.2.1")
+        assert ok is False
+        assert "still 0.2.0" in msg
+
+    def test_the_target_landing_is_success(self, monkeypatch):
+        self._proc(monkeypatch)
+        monkeypatch.setattr(m, "installed_versions", lambda: {m.DIST: "0.2.1"})
+        ok, _ = m.run_upgrade(m.Installation("venv", ["true"], "x"), "0.2.1")
+        assert ok is True
+
+    def test_uv_is_asked_for_the_exact_version(self, monkeypatch):
+        seen: list[list[str]] = []
+        import subprocess
+
+        monkeypatch.setattr(
+            m.subprocess, "run",
+            lambda cmd, **k: (seen.append(cmd),
+                              subprocess.CompletedProcess(cmd, 0, "", ""))[1],
+        )
+        monkeypatch.setattr(m, "installed_versions", lambda: {m.DIST: "0.2.1"})
+        m.run_upgrade(m.Installation("uv-tool", ["/bin/uv", "tool", "upgrade", m.DIST], "x"), "0.2.1")
+        # `upgrade` honours the pin a tool was installed with and refuses
+        # to move; naming the version is what actually changes it, and is
+        # what a rollback needs.
+        assert seen[0] == ["/bin/uv", "tool", "install", "--reinstall",
+                           f"{m.DIST}==0.2.1"]

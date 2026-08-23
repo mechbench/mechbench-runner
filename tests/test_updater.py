@@ -116,3 +116,41 @@ class TestVerifyAndRollback:
 class TestSelfCheck:
     def test_it_passes_on_a_working_install(self):
         assert updater._self_check() == []  # noqa: SLF001
+
+
+class TestManualUpdate:
+    """`mechbench-runner update` — the path that does not need a browser.
+
+    The web route exists because a *service* cannot upgrade itself while
+    running. Run by hand there is no such constraint: this process is not
+    the supervised one, so it upgrades and then restarts the service.
+    """
+
+    def test_a_checkout_refuses(self, monkeypatch, capsys):
+        monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
+                            install_mod.Installation("source", None, "use git pull"))
+        assert updater.update_now() == 1
+        assert "git pull" in capsys.readouterr().out
+
+    def test_nothing_to_do_is_success_not_failure(self, monkeypatch, capsys):
+        monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
+                            install_mod.Installation("venv", ["true"], "x"))
+        monkeypatch.setattr(install_mod, "run_upgrade", lambda w, t=None: (True, ""))
+        monkeypatch.setattr(install_mod, "installed_versions",
+                            lambda: {"mechbench-runner": "0.2.2"})
+        assert updater.update_now() == 0
+        assert "nothing to do" in capsys.readouterr().out
+
+    def test_it_reports_what_moved(self, monkeypatch, capsys):
+        seq = [{"mechbench-runner": "0.2.1", "mechbench-compute": "0.11.1"},
+               {"mechbench-runner": "0.2.2", "mechbench-compute": "0.11.1"}]
+        monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
+                            install_mod.Installation("venv", ["true"], "x"))
+        monkeypatch.setattr(install_mod, "run_upgrade", lambda w, t=None: (True, ""))
+        monkeypatch.setattr(install_mod, "installed_versions", lambda: seq.pop(0) if seq else seq0)
+        seq0 = {"mechbench-runner": "0.2.2", "mechbench-compute": "0.11.1"}
+        updater.update_now()
+        out = capsys.readouterr().out
+        assert "0.2.1 -> 0.2.2" in out
+        # Only what changed; an unchanged dependency is noise.
+        assert "mechbench-compute" not in out

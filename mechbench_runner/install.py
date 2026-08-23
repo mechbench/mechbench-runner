@@ -13,6 +13,7 @@ and `git pull` is theirs to run.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -20,6 +21,35 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DIST = "mechbench-runner"
+
+
+#: Where installers actually live, for when PATH does not say.
+#:
+#: A LaunchAgent runs with PATH=/usr/bin:/bin:/usr/sbin:/sbin — no
+#: Homebrew, no ~/.local/bin — so `shutil.which("uv")` returns None in
+#: exactly the context that needs it, and the first real self-update
+#: died on FileNotFoundError while the same command worked by hand.
+#: A service cannot inherit a login shell's PATH, so it must not depend
+#: on one.
+_SEARCH = (
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "~/.local/bin",
+    "~/.cargo/bin",
+    "/opt/local/bin",
+)
+
+
+def find_executable(name: str) -> str | None:
+    """Locate `name` on PATH, or in the places tools are actually put."""
+    found = shutil.which(name)
+    if found:
+        return found
+    for d in _SEARCH:
+        candidate = Path(d).expanduser() / name
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
 
 
 @dataclass(frozen=True)
@@ -59,7 +89,14 @@ def detect(prefix: str | None = None) -> Installation:
         )
 
     if "uv" in parts and "tools" in parts:
-        uv = shutil.which("uv") or "uv"
+        uv = find_executable("uv")
+        if uv is None:
+            return Installation(
+                "uv-tool", None,
+                "This is a uv tool install but `uv` cannot be found from "
+                "here — a background service does not inherit your shell's "
+                f"PATH. Run: uv tool upgrade {DIST}",
+            )
         # `--reinstall` alone reinstalls the tool and leaves already
         # satisfied dependencies where they are: seen on 2026-08-23,
         # where mechbench-compute stayed a version behind a floor that
@@ -70,7 +107,13 @@ def detect(prefix: str | None = None) -> Installation:
         )
 
     if "pipx" in parts:
-        pipx = shutil.which("pipx") or "pipx"
+        pipx = find_executable("pipx")
+        if pipx is None:
+            return Installation(
+                "pipx", None,
+                "This is a pipx install but `pipx` cannot be found from "
+                f"here. Run: pipx upgrade {DIST}",
+            )
         return Installation(
             "pipx", [pipx, "upgrade", DIST], f"Run: pipx upgrade {DIST}",
         )
@@ -138,6 +181,11 @@ def run_upgrade(
     cmd = list(install.upgrade)
     if target and install.method == "venv":
         cmd[-1] = f"{DIST}=={target}"
+    if target and install.method == "uv-tool":
+        # `uv tool upgrade` respects the pin a tool was installed with
+        # and will refuse to move; naming the version explicitly is what
+        # actually changes it, and is also what a rollback needs.
+        cmd = [cmd[0], "tool", "install", "--reinstall", f"{DIST}=={target}"]
     try:
         proc = subprocess.run(  # noqa: S603
             cmd, capture_output=True, text=True, timeout=timeout, check=False
@@ -145,4 +193,15 @@ def run_upgrade(
     except (OSError, subprocess.SubprocessError) as exc:
         return False, str(exc)
     tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-800:]
-    return proc.returncode == 0, tail
+    if proc.returncode != 0:
+        return False, tail
+    # Exit 0 does not mean anything moved. `uv tool upgrade` on a tool
+    # installed with an exact pin prints "Nothing to upgrade" and exits
+    # 0; so does pip when the requirement is already satisfied. The only
+    # honest test is what is installed now.
+    if target and installed_versions().get(DIST) != target:
+        return False, (
+            f"{DIST} is still "
+            f"{installed_versions().get(DIST)} after upgrading; {tail}"
+        )
+    return True, tail

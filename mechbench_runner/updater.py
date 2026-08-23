@@ -193,3 +193,48 @@ def _reexec(say) -> bool:
         pass
     os.execv(sys.executable, [sys.executable, "-m", "mechbench_runner.cli", *sys.argv[1:]])
     return True  # unreachable
+
+
+# --- the manual path ---------------------------------------------------------
+
+
+def update_now(report=None) -> int:
+    """`mechbench-runner update` — upgrade this machine right now.
+
+    The web UI route (approve, exit 75, upgrade at the next start) exists
+    because a *service* cannot upgrade itself while running. Run by hand
+    there is no such constraint: this process is not the one being
+    supervised, so it can upgrade and then restart the service that is.
+    """
+    say = report or (lambda m: print(m))
+    from . import install as install_mod
+
+    where = install_mod.detect()
+    if not where.upgradable:
+        say(where.advice)
+        return 1
+
+    before = install_mod.installed_versions()
+    say(f"upgrading via {where.method}…")
+    ok, tail = install_mod.run_upgrade(where)
+    after = install_mod.installed_versions()
+
+    if not ok:
+        say(f"upgrade failed: {tail}")
+        return 1
+
+    changed = {k: (before[k], v) for k, v in after.items() if before.get(k) != v}
+    if not changed:
+        say(f"already on {after.get(install_mod.DIST)}; nothing to do.")
+        return 0
+    for name, (was, now) in changed.items():
+        say(f"  {name}: {was} -> {now}")
+
+    from . import agent
+
+    try:
+        if agent.status().installed and agent.kickstart():
+            say("Restarted the background service on the new version.")
+    except agent.UnsupportedPlatformError:
+        pass
+    return 0
