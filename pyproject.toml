@@ -43,7 +43,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/mechbench/mechbench-runner"
-"Meta repo" = "https://github.com/mechbench/mechbench"
+Website = "https://mechbench.ai"
 
 [project.scripts]
 mechbench-runner = "mechbench_runner.cli:main"

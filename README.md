@@ -1,10 +1,8 @@
 # mechbench-runner
 
-The machine-side process of the [mechbench](https://github.com/mechbench/mechbench) family: it claims queued jobs from `mechbench-api`, executes them against `mechbench-compute`, and posts results back. It also exposes those same primitives as [Model Context Protocol](https://modelcontextprotocol.io) tools, so an LLM agent can call them directly.
+The machine-side process of the [mechbench](https://mechbench.ai) family: it claims queued jobs from `mechbench-api`, executes them against `mechbench-compute`, and posts results back. It also exposes those same primitives as [Model Context Protocol](https://modelcontextprotocol.io) tools, so an LLM agent can call them directly.
 
-(Named `mechbench-agent` until 2026-08-22. "Agent" already meant two other things here — an LLM acting as a principal, recorded on API keys and audit rows, and the telemetry agent — so the process that executes *runs* is a runner.)
-
-**Status:** scaffolded per task [`000185`](https://github.com/mechbench/mechbench/blob/main/tasks/mechbench-runner/). Three MCP tools (`run_protocol`, `get_result`, `list_jobs`); job-runner loop verified against the e2e trace from epic 000178. Supersedes the throwaway `bin/run_local_agent.py` shim in `mechbench-experiments`.
+**Status:** in use. `login` pairs a machine with an account; the runner then claims and executes jobs, reports progress and preparing steps, holds a live WSS channel for control and telemetry, and installs as a launchd or systemd service so it survives reboots. `doctor` tells you whether a machine will work before it tries. Three MCP tools (`run_protocol`, `get_result`, `list_jobs`) expose the same primitives to an agent.
 
 ## What this repo is for
 
@@ -119,10 +117,11 @@ All via env vars:
 
 | var | default | purpose |
 |---|---|---|
-| `MECHBENCH_API_URL` | `http://localhost:3000` | mechbench-api base URL. |
-| `MECHBENCH_API_KEY` | *(required)* | Bearer API key the runner authenticates with. |
+| `MECHBENCH_API_URL` | `http://localhost:3000` | mechbench-api base URL. Ignored when credentials are stored, which carry their own. |
+| `MECHBENCH_API_KEY` | *(from `login`)* | Overrides the stored credential entirely, URL included. For CI and containers, which have nowhere to put a config file. |
 | `MECHBENCH_POLL_INTERVAL_SECONDS` | `2.0` | Job-runner poll cadence. |
-| `MECHBENCH_DEFAULT_MODEL_ID` | `mlx-community/gemma-4-E4B-it-bf16` | Fallback model id when a job spec omits it. |
+| `MECHBENCH_WARM_MODEL_ID` | *(none)* | Optional model to load at startup so the first job skips cold start. There is deliberately no default: a protocol names the model it runs against, and a job that names none is an error. |
+| `MECHBENCH_WATCHDOG_SECONDS` | `900` | How long without progress counts as wedged. `0` disables it. |
 
 ## Relationship to other mechbench repos
 
@@ -130,8 +129,7 @@ All via env vars:
 - **`mechbench-schema`** — produces `LayerAblationPayload` etc. as typed results.
 - **`mechbench-api`** — the runner's only platform dependency. All workspace state (jobs, cache reads) goes through it.
 - **`mechbench-ui`** — no coupling. UI queues jobs; the job-runner consumes them.
-- **`mechbench-experiments`** — `bin/run_local_agent.py` was the throwaway precursor; this repo supersedes it.
-- **`mechbench-remote`** — out of scope. Remote-GPU dispatch is a later concern; the runner is local-first.
+- **`mechbench-experiments`** — research scripts that use `mechbench-compute` directly, without the job machinery.
 
 ## Open design questions (deferred)
 

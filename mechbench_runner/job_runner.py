@@ -1,14 +1,12 @@
 """Job-runner subsystem: poll mechbench-api, execute, report back.
 
-Ports `mechbench-experiments/bin/run_local_agent.py` into the runner
-package. Operationally the same loop — claim a job via
-`GET /jobs/next`, execute in-process, post result bytes with their
-sha256 — but now running under `mechbench-runner run` as a supported
-subcommand rather than a throwaway `bin/` script.
+Claim a job via `GET /jobs/next`, execute it in-process, and post the
+result bytes with their sha256.
 
-Intentionally synchronous and single-tenant. Concurrency,
-heartbeats, and remote dispatch are deferred (see epic 000178's
-Not-in-scope list and mechbench-remote's own scope).
+Intentionally synchronous and single-tenant: one job at a time, on one
+machine. Running more than one machine is what the registry is for, and
+scaling within a machine is a question for when a single one is the
+bottleneck.
 """
 
 from __future__ import annotations
@@ -102,11 +100,11 @@ class JobRunner:
         warm = self.config.warm_model_id
         if warm:
             print("[runner] loading model (first call is slow)...")
-        # Warm the model so the first claimed job doesn't pay cold-start
-        # cost — the CONFIGURED default (MECHBENCH_DEFAULT_MODEL_ID, which
-        # may carry a @revision pin), never Model.load()'s unpinned
-        # built-in: an unpinned warm-up resolves upstream's current
-        # revision, which drifts out from under the local mlx stack.
+            # Warm the configured model (MECHBENCH_WARM_MODEL_ID, which
+            # may carry a @revision pin) so the first claimed job does not
+            # pay cold-start cost. Pin it: an unpinned warm-up resolves
+            # upstream's current revision, which drifts out from under the
+            # local mlx stack.
             self.state.model_loading(warm)
             self._executor._model_loaded(warm)  # noqa: SLF001
             self.state.model_loaded(warm)

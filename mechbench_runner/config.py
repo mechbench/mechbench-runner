@@ -46,9 +46,7 @@ class Config:
         # cold-start cost. Purely operational, and deliberately without a
         # built-in value: a runner that invents a model can execute a
         # protocol that never said which weights it wanted.
-        warm = os.environ.get("MECHBENCH_WARM_MODEL_ID") or os.environ.get(
-            "MECHBENCH_DEFAULT_MODEL_ID"
-        )
+        warm = os.environ.get("MECHBENCH_WARM_MODEL_ID")
 
         env_key = os.environ.get("MECHBENCH_API_KEY")
         if env_key:
