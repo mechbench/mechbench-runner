@@ -32,6 +32,31 @@ from .config import Config
 from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 
 
+def _decode_object(raw: bytes) -> dict[str, Any]:
+    """Decode a stored object, whichever way it was written.
+
+    Results are canonical CBOR (task 000186), and this used to call
+    `json.loads` — which had gone unnoticed because nothing exercised it
+    against a store that had CBOR in it. The legacy JSON completion path
+    is still inside its deprecation window (000181), so both shapes have
+    to be read rather than one assumed.
+
+    Sniffed rather than inferred from the path: the encoding is a
+    property of the bytes, and a path says nothing about when they were
+    written.
+    """
+    from mechbench_schema import load_raw
+
+    if raw[:1] in (b"{", b"["):
+        return json.loads(raw)  # type: ignore[no-any-return]
+    decoded = load_raw(raw)
+    if not isinstance(decoded, dict):
+        raise ValueError(
+            f"expected an object at the top level, got {type(decoded).__name__}"
+        )
+    return decoded
+
+
 def build_server(
     config: Config | None = None,
     executor: ProtocolExecutor | None = None,
@@ -64,10 +89,10 @@ def build_server(
     @mcp.tool()
     def get_result(path: str) -> dict[str, Any]:
         """Fetch a cached result from mechbench-api by its
-        MechbenchPath. Returns the parsed JSON payload."""
+        MechbenchPath, decoded to a plain structure."""
         with ApiClient(cfg) as api:
             raw = api.fetch_object(path)
-        return json.loads(raw)
+        return _decode_object(raw)
 
     @mcp.tool()
     def list_jobs() -> list[dict[str, Any]]:
