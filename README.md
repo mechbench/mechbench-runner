@@ -24,15 +24,43 @@ Both modes share one binary (`mechbench-runner`) with subcommands; they share th
 ## Install
 
 ```bash
-uv tool install mechbench-runner     # or: pipx install mechbench-runner
+uv tool install --managed-python mechbench-runner
 mechbench-runner login
 ```
 
-`login` prints a link, takes the registration token from it, stores a
-durable key at `~/.mechbench/config.toml` (mode 0600), and offers to
-start the runner automatically. Say yes and there is nothing further to
-do: it starts at login, comes back after a crash, and is controlled from
-the website.
+`--managed-python` has uv fetch its own interpreter rather than adopt
+whichever `python3` the machine happens to have. It costs a one-time
+download and buys a version we support (3.11–3.14) on a machine whose
+own Python we then never touch. `pipx install mechbench-runner` works
+too, against an interpreter you already have.
+
+`login` prints a link and waits. Open it, approve the machine — the page
+names it, along with its host and platform, before you do — and the
+runner collects a credential it writes to `~/.mechbench/config.toml`
+(mode 0600). Nothing durable passes through your hands: the code in the
+URL grants nothing on its own, and the key is minted directly to the
+machine that asked.
+
+For a machine with no browser, `mechbench-runner login --token mbr_…`
+takes a single-use token minted at [mechbench.ai/download](https://mechbench.ai/download).
+
+`login` then offers to start the runner automatically. Say yes and there
+is nothing further to do: it starts at login, comes back after a crash,
+and is controlled from the website.
+
+### Updating
+
+```bash
+mechbench-runner update
+```
+
+Upgrades and restarts the service. **Re-running the install command does
+not upgrade anything** — `uv tool install` treats an already-installed
+tool as nothing to do and reports that in a way that reads like success,
+so a machine can sit on an old version while looking freshly installed.
+`update` verifies by reading the installed version back afterwards
+rather than trusting an exit code, and rolls back if the new version
+cannot start.
 
 `mechbench-runner doctor` answers "will this actually work here" —
 Python, backend, credentials, API, model cache, disk — before you find
