@@ -48,7 +48,9 @@ class StubControl:
 def runner(monkeypatch, tmp_path):
     monkeypatch.setattr(jr, "ControlServer", StubControl)
     config = Config(
-        api_base_url="https://api.mechbench.ai",
+        # Loopback, deliberately: this fixture once named the real
+        # production URL and every test run dialled it (task 000306).
+        api_base_url="http://127.0.0.1:1",
         api_key="mbk_revoked",
         poll_interval_seconds=0.01,
         warm_model_id=None,
@@ -74,7 +76,9 @@ def test_it_says_which_credential_was_rejected(runner, monkeypatch, capsys):
     monkeypatch.setattr(jr, "ApiClient", lambda *_a, **_k: FakeApi())
     runner.run()
     out = capsys.readouterr().out
-    assert "api.mechbench.ai" in out
+    # The point is that the CONFIGURED url is named — any url proves it,
+    # and the fixture's is loopback so the suite never dials out.
+    assert "127.0.0.1:1" in out
     assert "signed out" in out.lower()
     assert "mechbench-runner login" in out
 

@@ -166,13 +166,22 @@ class TestDisk:
 
 
 class TestExitCode:
+    def _quiet_service(self, monkeypatch):
+        from mechbench_runner import service
+
+        monkeypatch.setattr(service, "status",
+                            lambda: service.ServiceStatus(
+                                False, False, False, None, "not installed"))
+
     def test_a_failure_exits_non_zero(self, monkeypatch, capsys):
+        self._quiet_service(monkeypatch)
         monkeypatch.setattr(doctor.credentials, "load", lambda: None)
         code = doctor.run(config(api_key=None))
         assert code == 1
         assert "problem" in capsys.readouterr().out
 
     def test_a_healthy_machine_exits_zero(self, monkeypatch, capsys):
+        self._quiet_service(monkeypatch)
         monkeypatch.setattr(doctor.credentials, "load", lambda: None)
         monkeypatch.setattr(
             doctor,

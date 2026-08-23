@@ -172,6 +172,18 @@ def installed_versions() -> dict[str, str]:
     return out
 
 
+def _run(cmd: list[str], *, timeout: float) -> subprocess.CompletedProcess[str]:
+    """The one door to the package manager, same pattern as service._run.
+
+    Everything that can rebuild an installation goes through here, so a
+    test suite can close this door once (tests/conftest.py, task 000306)
+    instead of remembering to mock every caller.
+    """
+    return subprocess.run(  # noqa: S603
+        cmd, capture_output=True, text=True, timeout=timeout, check=False
+    )
+
+
 def run_upgrade(
     install: Installation, target: str | None = None, timeout: float = 900.0
 ) -> tuple[bool, str]:
@@ -187,9 +199,7 @@ def run_upgrade(
         # actually changes it, and is also what a rollback needs.
         cmd = [cmd[0], "tool", "install", "--reinstall", f"{DIST}=={target}"]
     try:
-        proc = subprocess.run(  # noqa: S603
-            cmd, capture_output=True, text=True, timeout=timeout, check=False
-        )
+        proc = _run(cmd, timeout=timeout)
     except (OSError, subprocess.SubprocessError) as exc:
         return False, str(exc)
     tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-800:]

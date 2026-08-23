@@ -142,6 +142,20 @@ class TestManualUpdate:
         assert "nothing to do" in capsys.readouterr().out
 
     def test_it_reports_what_moved(self, monkeypatch, capsys):
+        # This test is why tests/conftest.py exists: before the fence it
+        # mocked the upgrade but not the service module, so update_now()
+        # ran a real `launchctl kickstart -k` — restarting the live
+        # runner on any machine that had one, ~6 times per local test
+        # session (task 000306). The stubs also assert the restart is
+        # REQUESTED, which the old test never checked.
+        from mechbench_runner import service
+
+        kicked = []
+        monkeypatch.setattr(service, "status",
+                            lambda: service.ServiceStatus(
+                                True, True, True, None, "running"))
+        monkeypatch.setattr(service, "kickstart",
+                            lambda: kicked.append(True) or True)
         seq = [{"mechbench-runner": "0.2.1", "mechbench-compute": "0.11.1"},
                {"mechbench-runner": "0.2.2", "mechbench-compute": "0.11.1"}]
         monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
@@ -152,5 +166,6 @@ class TestManualUpdate:
         updater.update_now()
         out = capsys.readouterr().out
         assert "0.2.1 -> 0.2.2" in out
+        assert kicked, "a changed version must restart the service"
         # Only what changed; an unchanged dependency is noise.
         assert "mechbench-compute" not in out

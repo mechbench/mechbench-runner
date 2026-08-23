@@ -94,6 +94,24 @@ class JobRunner:
         signal.signal(signal.SIGINT, _handler)
         signal.signal(signal.SIGTERM, _handler)
 
+    def _sleep(self, seconds: float) -> None:
+        """Sleep that a shutdown signal actually interrupts (task 000306).
+
+        `time.sleep(30)` is not interrupted by SIGTERM: PEP 475 restarts
+        the sleep after the handler returns, so a stop request sat for
+        up to a full poll interval before the loop noticed. That delay
+        is what made the service linger in launchd's SIGTERMed state for
+        ~30s per stop — long enough that a restart lands well after
+        whatever caused it, which is exactly how the cause of 000306
+        hid. One-second slices bound the latency at one second.
+        """
+        deadline = time.monotonic() + seconds
+        while not self._shutdown:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            time.sleep(min(1.0, remaining))
+
     def run(self) -> int:
         """The poll loop. Returns the process's exit code — see exits.py."""
         self.install_signal_handlers()
@@ -148,7 +166,7 @@ class JobRunner:
                     self._watchdog.stop()
                     return code
                 if self.state.paused:
-                    time.sleep(self.config.poll_interval_seconds)
+                    self._sleep(self.config.poll_interval_seconds)
                     continue
                 try:
                     job = api.claim_next_job()
@@ -164,20 +182,20 @@ class JobRunner:
                         return EXIT_OK
                     print(f"[runner] /jobs/next error ({e}); "
                           f"retrying in {backoff:.0f}s")
-                    time.sleep(backoff)
+                    self._sleep(backoff)
                     backoff = min(backoff * 2, BACKOFF_MAX_SECONDS)
                     continue
                 except Exception as e:  # noqa: BLE001 — surface + keep looping
                     print(f"[runner] API unreachable ({e}); "
                           f"retrying in {backoff:.0f}s")
-                    time.sleep(backoff)
+                    self._sleep(backoff)
                     backoff = min(backoff * 2, BACKOFF_MAX_SECONDS)
                     continue
 
                 backoff = self.config.poll_interval_seconds
 
                 if job is None:
-                    time.sleep(self.config.poll_interval_seconds)
+                    self._sleep(self.config.poll_interval_seconds)
                     continue
 
                 try:

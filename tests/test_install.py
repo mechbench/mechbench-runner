@@ -50,7 +50,11 @@ class TestRunUpgrade:
         ok, msg = m.run_upgrade(i)
         assert ok is False and msg == "do it yourself"
 
-    def test_a_missing_binary_is_reported_not_raised(self):
+    def test_a_missing_binary_is_reported_not_raised(self, monkeypatch):
+        def gone(cmd, **_kw):
+            raise FileNotFoundError(cmd[0])
+
+        monkeypatch.setattr(m, "_run", gone)
         i = m.Installation("venv", ["/definitely/not/here"], "x")
         ok, msg = m.run_upgrade(i)
         assert ok is False and msg
@@ -105,8 +109,8 @@ class TestSuccessIsMeasuredNotAssumed:
         import subprocess
 
         monkeypatch.setattr(
-            m.subprocess, "run",
-            lambda *a, **k: subprocess.CompletedProcess(a[0], code, "Nothing to upgrade", ""),
+            m, "_run",
+            lambda cmd, **k: subprocess.CompletedProcess(cmd, code, "Nothing to upgrade", ""),
         )
 
     def test_unchanged_version_is_a_failure(self, monkeypatch):
@@ -127,7 +131,7 @@ class TestSuccessIsMeasuredNotAssumed:
         import subprocess
 
         monkeypatch.setattr(
-            m.subprocess, "run",
+            m, "_run",
             lambda cmd, **k: (seen.append(cmd),
                               subprocess.CompletedProcess(cmd, 0, "", ""))[1],
         )

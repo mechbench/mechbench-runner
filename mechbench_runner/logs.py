@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
 from pathlib import Path
 from types import TracebackType
 from typing import TextIO
@@ -55,14 +56,34 @@ class RotatingWriter:
         #: Where to echo as well, when there is still a terminal to echo to.
         self.mirror = mirror
         self._lock = threading.Lock()
+        #: True when the next write starts a fresh line, so _stamp knows
+        #: where a timestamp belongs even across partial writes.
+        self._bol = True
         self._fh = path.open("a", encoding="utf-8")
         self._size = path.stat().st_size if path.exists() else 0
 
+    def _stamp(self, text: str) -> str:
+        """Prefix every line with a wall-clock time, in the file only.
+
+        Added for task 000306: the logs recorded a service being
+        restarted six times without saying WHEN, which turned a
+        ten-minute correlation into an hours-long hunt. The mirror (a
+        terminal someone is watching live) stays unstamped.
+        """
+        out: list[str] = []
+        for seg in text.splitlines(keepends=True):
+            if self._bol and seg != "\n":
+                out.append(time.strftime("%Y-%m-%d %H:%M:%S "))
+            out.append(seg)
+            self._bol = seg.endswith("\n")
+        return "".join(out)
+
     def write(self, text: str) -> int:
+        stamped = self._stamp(text)
         with self._lock:
-            self._fh.write(text)
+            self._fh.write(stamped)
             self._fh.flush()
-            self._size += len(text.encode("utf-8", "replace"))
+            self._size += len(stamped.encode("utf-8", "replace"))
             if self._size >= self.max_bytes:
                 self._rotate()
         if self.mirror is not None:
