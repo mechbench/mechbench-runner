@@ -79,7 +79,16 @@ def unit_path() -> Path:
 
 
 def program_arguments() -> list[str]:
-    return [sys.executable, "-m", "mechbench_runner.cli", "run"]
+    """What the OS supervisor starts.
+
+    `supervise`, not `run`: the supervisor owns one child and can
+    upgrade it while it is not running, which is what lets self-update
+    stop being a process replacing its own code. launchd still owns
+    *this* process — one supervisor above another is the arrangement
+    this design exists to avoid, and the exit-code contract is the same
+    at both levels so they cannot disagree.
+    """
+    return [sys.executable, "-m", "mechbench_runner.cli", "supervise"]
 
 
 def boot_log() -> Path:

@@ -65,6 +65,11 @@ def main(argv: list[str] | None = None) -> int:
         "mcp",
         help="Run the MCP server over stdio (the agent-callable surface).",
     )
+    sub.add_parser(
+        "supervise",
+        help="Run the runner as a supervised child, restarting and "
+             "upgrading it as needed.",
+    )
     run_p = sub.add_parser(
         "run",
         help="Run the job-runner polling loop against mechbench-api.",
@@ -103,6 +108,11 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     config = Config.from_env()
+
+    if args.cmd == "supervise":
+        from .supervisor import main as supervise_main
+
+        return supervise_main()
 
     if args.cmd == "update":
         from . import updater

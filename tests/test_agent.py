@@ -64,7 +64,9 @@ class TestTheCommand:
         # A service has no shell profile, so PATH is not ours to rely on;
         # and the interpreter pins the environment holding the deps.
         assert args[0] == sys.executable
-        assert args[1:] == ["-m", "mechbench_runner.cli", "run"]
+        # `supervise`, not `run`: the supervisor owns the child and can
+        # upgrade it while it is stopped (000295/000296).
+        assert args[1:] == ["-m", "mechbench_runner.cli", "supervise"]
 
     def test_no_credential_is_written_into_the_unit(self):
         rendered = plistlib.dumps(agent.launchd_plist()).decode()
