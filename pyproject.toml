@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mechbench"
-version = "0.5.0"
+version = "0.5.1"
 description = "The mechbench runner: claims jobs from mechbench-api, executes protocols against mechbench-compute, and emits results. Also exposes those primitives as MCP tools."
 readme = "README.md"
 # Capped on purpose, and only here. `uv tool install --managed-python`
@@ -43,7 +43,7 @@ dependencies = [
     # task 000298; until then an unbounded floor hands every fresh
     # install a broken MCP server, which is what shipping 0.1.0 did.
     "mcp>=1.2,<2",
-    "mechbench-compute>=0.11",
+    "mechbench-compute>=0.12",
     "mechbench-schema>=0.13",
     "certifi>=2024.2",
     "httpx>=0.27",
