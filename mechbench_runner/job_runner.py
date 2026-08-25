@@ -55,6 +55,11 @@ class JobRunner:
         self._active_job: str | None = None
         self._active_api: ApiClient | None = None
         self._last_byte_report = 0.0
+        # The executor's latest node view, so a mid-node download can
+        # report bytes against the node the board is watching (000316
+        # follow-up: the checkpoint fetch that reported nothing).
+        self._last_node: dict[str, Any] | None = None
+        self._last_scalar: tuple[int, int] = (0, 0)
         self._executor = ProtocolExecutor(
             on_download=self._announce_download,
             on_download_bytes=self._announce_download_bytes,
@@ -252,12 +257,26 @@ class JobRunner:
 
     def _announce_stall(self, idle: float) -> None:
         """Say so on the way down, so the board shows a restart rather
-        than a machine that simply went quiet."""
+        than a machine that simply went quiet.
+
+        This includes the JOB: the watchdog dies by os._exit (no
+        unwinding — the process is presumed stuck), which on 2026-08-25
+        left a job reading "running" on the board for an hour after its
+        runner was gone. The fail report gets a short timeout so a
+        truly-wedged network cannot stop the process from dying."""
         self.state.set_phase("wedged")
         self.state.emit(
             "runner.wedged",
             {"idle_seconds": round(idle, 1), "job": self._active_job},
         )
+        if self._active_job is not None and self._active_api is not None:
+            with suppress(Exception):
+                self._active_api.fail_job(
+                    self._active_job,
+                    f"the runner made no progress for {idle:.0f}s and was "
+                    f"restarted by its watchdog; this job died with it",
+                    timeout=10.0,
+                )
         time.sleep(0.25)  # give the channel a moment to flush
 
     def _stop_channel(self) -> None:
@@ -318,6 +337,8 @@ class JobRunner:
         self._active_job = job_id
         self._active_api = api
         self._last_byte_report = 0.0
+        self._last_node = None
+        self._last_scalar = (0, 0)
         # What getting ready will involve, declared before any of it happens.
         # Whether the weights need fetching is not known until the hub is
         # asked, so that step starts pending and becomes active only if a
@@ -346,6 +367,12 @@ class JobRunner:
         def on_progress(done: int, total: int,
                         node: dict | None = None) -> None:
             nonlocal promoted, reported_node
+            # Progress is progress: the watchdog measures exactly this,
+            # and a 40-step training node that never stamped would read
+            # as a wedge at step one.
+            self._watchdog.stamp()
+            self._last_node = dict(node) if node else None
+            self._last_scalar = (done, total)
             # Throttle: report every 5th unit and the final one. Progress
             # is cosmetic — a failed PATCH must never fail the job.
             # The control surface gets every tick; only the API is throttled.
@@ -462,9 +489,30 @@ class JobRunner:
         if now - self._last_byte_report < 1.0 and done != total:
             return
         self._last_byte_report = now
-        self._report_step({"key": "weights", "label": "Download weights",
-                           "status": "done" if done >= total else "active",
-                           "num": done, "den": max(total, 1), "unit": "bytes"})
+        if self._last_node is None:
+            # Getting ready: the preparing checklist is the display.
+            self._report_step({"key": "weights", "label": "Download weights",
+                               "status": "done" if done >= total else "active",
+                               "num": done, "den": max(total, 1),
+                               "unit": "bytes"})
+            return
+        # Mid-run (a checkpoint materializing inside a node): the
+        # preparing checklist is over, so the bytes ride the node view's
+        # `detail` — the board shows "node 1/2 · downloading 3.2 of
+        # 10.3 GB" instead of fifteen silent minutes.
+        if self._active_job is None or self._active_api is None:
+            return
+        detail = (f"downloading weights · {done / 1e9:.1f} of "
+                  f"{total / 1e9:.1f} GB" if total > 0
+                  else f"downloading weights · {done / 1e9:.1f} GB")
+        sd, st = self._last_scalar
+        try:
+            self._active_api.report_progress(
+                self._active_job, sd, st,
+                node={**self._last_node, "detail": detail},
+            )
+        except Exception as e:  # noqa: BLE001 — best-effort by design
+            print(f"[runner] progress report failed ({e}); continuing")
 
 
 def _unit_for(protocol_kind: str) -> str:

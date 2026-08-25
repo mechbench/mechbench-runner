@@ -192,11 +192,16 @@ class ApiClient:
             self._client.patch(f"/jobs/{job_id}/preparing", json={"step": step})
         )
 
-    def fail_job(self, job_id: str, message: str) -> None:
+    def fail_job(self, job_id: str, message: str,
+                 timeout: float | None = None) -> None:
         """POST `/jobs/:id/fail` — mark a claimed job (and its run)
         failed with the error message. Failures are failed, not done."""
-        res = self._client.post(f"/jobs/{job_id}/fail",
-                                json={"message": message[:2000]})
+        kwargs: dict = {"json": {"message": message[:2000]}}
+        if timeout is not None:
+            # The watchdog's dying breath: a bounded wait, because the
+            # process is presumed stuck and MUST still exit.
+            kwargs["timeout"] = timeout
+        res = self._client.post(f"/jobs/{job_id}/fail", **kwargs)
         self._raise_for_status(res)
 
     def complete_job_cbor(
