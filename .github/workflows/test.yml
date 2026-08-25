@@ -1,0 +1,21 @@
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    # Apple Silicon: the runner pulls mechbench-compute, which pulls
+    # mlx (macOS arm64 only). A fresh runner VM is also the fresh
+    # machine the suite's fences assume — no ~/.mechbench, no HF
+    # cache, no live service to touch (and conftest forbids touching
+    # one anyway).
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e . pytest
+      - run: python -m pytest tests/ -q
