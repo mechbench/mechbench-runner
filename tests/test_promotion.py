@@ -23,11 +23,13 @@ class RecordingApi:
         self.fail_first = fail_first
         self.completed = False
 
-    def report_progress(self, job_id, num, den, *, unit=None, status=None):
+    def report_progress(self, job_id, num, den, *, unit=None, status=None,
+                        node=None):
         if self.fail_first and not self.progress:
             self.progress.append({"num": num, "status": status, "failed": True})
             raise ApiError(503, "unavailable")
-        self.progress.append({"num": num, "den": den, "unit": unit, "status": status})
+        self.progress.append({"num": num, "den": den, "unit": unit,
+                              "status": status, "node": node})
 
     def declare_preparing(self, *_a, **_k):
         return None
@@ -114,3 +116,36 @@ def test_the_job_still_completes(monkeypatch):
     api = RecordingApi()
     build(monkeypatch, api, ticks=[1, 2])
     assert api.completed is True
+
+
+def test_a_node_boundary_defeats_the_throttle(monkeypatch):
+    """000316: "node 3/5" flipping to 4/5 is what a watcher watches
+    for; it must not wait out the every-5th-unit modulo."""
+    api = RecordingApi()
+    monkeypatch.setattr(jr, "ControlServer", StubControl)
+    config = Config(
+        api_base_url="http://localhost:3000", api_key="mbk_test",
+        poll_interval_seconds=0.01, warm_model_id=None,
+    )
+    runner = jr.JobRunner(config)
+
+    def fake_run(_spec, *, on_progress=None, secrets=None):
+        # ticks 6 and 7 are neither multiples of 5 nor final — but 7
+        # crosses into node 2, so it must be reported anyway.
+        on_progress(5, 8, {"index": 1, "count": 2, "id": "a", "done": 5, "total": 5})
+        on_progress(6, 8, {"index": 1, "count": 2, "id": "a", "done": 6, "total": 6})
+        on_progress(7, 8, {"index": 2, "count": 2, "id": "b", "done": 1, "total": 2})
+        on_progress(8, 8, {"index": 2, "count": 2, "id": "b", "done": 2, "total": 2})
+        return {"protocol": "layer_ablation"}
+
+    monkeypatch.setattr(runner._executor, "run", fake_run)
+    monkeypatch.setattr(runner._executor, "_model_loaded", lambda *_a, **_k: None)
+    monkeypatch.setattr(jr, "dump_canonical", lambda _p: b"\xa0")
+    runner._handle(api, {
+        "id": "job_1", "protocolKind": "pipeline",
+        "spec": {"prompt": "", "modelId": "google/gemma-4@abc"},
+    })
+    nums = [p["num"] for p in api.progress]
+    assert 7 in nums  # the boundary crossing went through
+    assert 6 not in nums  # ordinary mid-node ticks still throttle
+    assert api.progress[-1]["node"]["index"] == 2

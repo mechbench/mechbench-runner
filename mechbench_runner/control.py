@@ -80,6 +80,9 @@ class JobView:
     started_at: float = field(default_factory=time.time)
     done: int = 0
     total: int = 0
+    #: Structured position for pipelines (000316): {index, count, id,
+    #: done, total} — which node, and how far through it.
+    node: dict | None = None
 
     @property
     def elapsed_seconds(self) -> float:
@@ -174,14 +177,20 @@ class RunnerState:
         self.emit("job.claimed", {"id": job_id, "protocol_kind": protocol_kind,
                                   "model_id": model_id})
 
-    def job_progress(self, done: int, total: int) -> None:
+    def job_progress(self, done: int, total: int,
+                     node: dict | None = None) -> None:
         with self._lock:
             if self._job is None:
                 return
             self._job.done = done
             self._job.total = total
+            if node is not None:
+                self._job.node = node
             job_id = self._job.id
-        self.emit("job.progress", {"id": job_id, "done": done, "total": total})
+        data = {"id": job_id, "done": done, "total": total}
+        if node is not None:
+            data["node"] = node
+        self.emit("job.progress", data)
 
     def job_finished(self, job_id: str) -> None:
         with self._lock:

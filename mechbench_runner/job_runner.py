@@ -341,27 +341,36 @@ class JobRunner:
         # the job from "preparing" to "running". The claim put it in
         # preparing; nothing else ever takes it out.
         promoted = False
+        reported_node = -1
 
-        def on_progress(done: int, total: int) -> None:
-            nonlocal promoted
+        def on_progress(done: int, total: int,
+                        node: dict | None = None) -> None:
+            nonlocal promoted, reported_node
             # Throttle: report every 5th unit and the final one. Progress
             # is cosmetic — a failed PATCH must never fail the job.
             # The control surface gets every tick; only the API is throttled.
-            self.state.job_progress(done, total)
+            self.state.job_progress(done, total, node)
             # The promotion itself is not cosmetic and is not throttled:
             # until it lands the board still says "preparing", and the
             # first tick can easily be one the throttle would drop.
-            if promoted and done % 5 != 0 and done != total:
+            # Neither is a node boundary (000316): "node 3/5" flipping to
+            # 4/5 is exactly what a watcher watches for, so it must not
+            # wait out the modulo.
+            node_index = int(node.get("index", 0)) if node else 0
+            if (promoted and done % 5 != 0 and done != total
+                    and node_index == reported_node):
                 return
             try:
                 api.report_progress(
                     job_id, done, total,
                     unit=_unit_for(kind),
                     status=None if promoted else "running",
+                    node=node,
                 )
                 # Only on success: a failed first report must leave the
                 # promotion owed, not silently spent.
                 promoted = True
+                reported_node = node_index
             except Exception as e:  # noqa: BLE001 — best-effort by design
                 print(f"[runner] progress report failed ({e}); continuing")
 

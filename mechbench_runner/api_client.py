@@ -156,7 +156,8 @@ class ApiClient:
 
     def report_progress(self, job_id: str, num: int, den: int, *,
                         unit: str | None = None,
-                        status: str | None = None) -> None:
+                        status: str | None = None,
+                        node: dict | None = None) -> None:
         """PATCH `/jobs/:id/progress` (task 000252). Best-effort by
         contract: callers should tolerate failures — progress display
         degrades to the plain status chip, never blocks the job.
@@ -170,6 +171,10 @@ class ApiClient:
             body["unit"] = unit
         if status is not None:
             body["status"] = status
+        if node is not None:
+            # Where in the graph the run is (000316): index/count over
+            # nodes, done/total within the current one.
+            body["node"] = node
         res = self._client.patch(f"/jobs/{job_id}/progress", json=body)
         self._raise_for_status(res)
 
