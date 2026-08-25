@@ -126,6 +126,25 @@ class TestSuccessIsMeasuredNotAssumed:
         ok, _ = m.run_upgrade(m.Installation("venv", ["true"], "x"), "0.2.1")
         assert ok is True
 
+    def test_no_target_reinstalls_the_whole_env(self, monkeypatch):
+        # Targeted self-updates pin the tool at an exact version, and
+        # `uv tool upgrade` honors that pin by refusing to move ANYTHING
+        # — including a dependency fix the machine actually needs. A
+        # no-target update therefore reinstalls: re-resolve everything,
+        # clear the pin (task 000312 follow-up: "already on 0.5.3;
+        # nothing to do" while compute sat one fix behind).
+        seen: list[list[str]] = []
+        import subprocess
+
+        monkeypatch.setattr(
+            m, "_run",
+            lambda cmd, **k: (seen.append(cmd),
+                              subprocess.CompletedProcess(cmd, 0, "", ""))[1],
+        )
+        monkeypatch.setattr(m, "installed_versions", lambda: {m.DIST: "0.5.3"})
+        m.run_upgrade(m.Installation("uv-tool", ["/bin/uv", "tool", "upgrade", m.DIST], "x"))
+        assert seen[0] == ["/bin/uv", "tool", "install", "--reinstall", m.DIST]
+
     def test_uv_is_asked_for_the_exact_version(self, monkeypatch):
         seen: list[list[str]] = []
         import subprocess

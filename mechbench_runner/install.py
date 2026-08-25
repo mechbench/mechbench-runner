@@ -198,6 +198,17 @@ def run_upgrade(
         # and will refuse to move; naming the version explicitly is what
         # actually changes it, and is also what a rollback needs.
         cmd = [cmd[0], "tool", "install", "--reinstall", f"{DIST}=={target}"]
+    if not target and install.method == "uv-tool":
+        # No target means "bring this machine current" — the WHOLE
+        # environment, dependencies included. `uv tool upgrade` cannot
+        # do that here: targeted self-updates (above) pin the tool at an
+        # exact version, and uv honors that pin by refusing to move
+        # anything — which once left a machine reporting "already on
+        # 0.5.3; nothing to do" while the compute fix it needed sat one
+        # dependency below. A reinstall re-resolves everything and
+        # clears the pin as a side effect; the caller's before/after
+        # version map reports exactly what moved, per package.
+        cmd = [cmd[0], "tool", "install", "--reinstall", DIST]
     try:
         proc = _run(cmd, timeout=timeout)
     except (OSError, subprocess.SubprocessError) as exc:
