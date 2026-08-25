@@ -230,6 +230,7 @@ def update_now(report=None) -> int:
     changed = {k: (before[k], v) for k, v in after.items() if before.get(k) != v}
     if not changed:
         say(f"already on {after.get(install_mod.DIST)}; nothing to do.")
+        _restart_if_stale(after, say)
         return 0
     for name, (was, now) in changed.items():
         say(f"  {name}: {was} -> {now}")
@@ -242,3 +243,42 @@ def update_now(report=None) -> int:
     except service.UnsupportedPlatformError:
         pass
     return 0
+
+
+def _restart_if_stale(installed: dict, say) -> None:
+    """Restart a service still running code the disk no longer holds.
+
+    A manual `uv tool install` swaps the venv under a RUNNING service
+    without restarting it — which produced a night of tracebacks whose
+    printed source lines came from the NEW files at the OLD process's
+    line numbers (Python reads source at print time). `update` is where
+    people go to get current, so even a nothing-moved update checks the
+    running service's version against the disk and kicks it when they
+    disagree. (Compute-only drift with an identical runner version is
+    not detectable this way; every CLI-driven update restarts anyway,
+    so the gap is exactly the manual-uv case this covers.)"""
+    from . import install as install_mod
+    from . import service
+
+    try:
+        st = service.status()
+    except service.UnsupportedPlatformError:
+        return
+    if not (st.installed and st.running):
+        return
+    try:
+        from .control import request
+
+        running = str(request("status").get("runner_version") or "")
+    except Exception:  # noqa: BLE001 — no socket, nothing to compare
+        return
+    disk = installed.get(install_mod.DIST) or ""
+    if running and disk and running != disk:
+        if service.kickstart():
+            say(f"running service was v{running} while the disk has "
+                f"v{disk}; restarted it onto the current code.")
+        else:
+            say(f"running service is v{running} but the disk has v{disk} "
+                f"— restart it: mechbench uninstall-service && "
+                f"mechbench install-service")
+

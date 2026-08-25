@@ -133,6 +133,12 @@ class TestManualUpdate:
         assert "git pull" in capsys.readouterr().out
 
     def test_nothing_to_do_is_success_not_failure(self, monkeypatch, capsys):
+        # The no-op path now checks for a stale running service; a test
+        # about the EXIT CODE stubs that check quiet (not installed).
+        from mechbench_runner import service
+
+        monkeypatch.setattr(service, "status",
+                            lambda: service.ServiceStatus(False, False, False, None, "not installed"))
         monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
                             install_mod.Installation("venv", ["true"], "x"))
         monkeypatch.setattr(install_mod, "run_upgrade", lambda w, t=None: (True, ""))
@@ -169,3 +175,44 @@ class TestManualUpdate:
         assert kicked, "a changed version must restart the service"
         # Only what changed; an unchanged dependency is noise.
         assert "mechbench-compute" not in out
+
+
+class TestStaleServiceRestart:
+    """A manual uv install swaps the venv under a running service; a
+    no-op `update` must notice the running version disagrees with the
+    disk and kick the service (000312 follow-up: a night of tracebacks
+    printed from files the crashing process had never imported)."""
+
+    def _quiet(self, monkeypatch, running_version):
+        from mechbench_runner import service
+
+        monkeypatch.setattr(service, "status",
+                            lambda: service.ServiceStatus(True, True, True, None, "running"))
+        kicked = []
+        monkeypatch.setattr(service, "kickstart", lambda: kicked.append(True) or True)
+        import mechbench_runner.control as control
+        monkeypatch.setattr(control, "request",
+                            lambda op, **k: {"runner_version": running_version})
+        return kicked
+
+    def test_disagreement_kicks(self, monkeypatch, capsys):
+        kicked = self._quiet(monkeypatch, "0.5.4")
+        monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
+                            install_mod.Installation("uv-tool", ["true"], "x"))
+        monkeypatch.setattr(install_mod, "run_upgrade", lambda w, t=None: (True, ""))
+        monkeypatch.setattr(install_mod, "installed_versions",
+                            lambda: {install_mod.DIST: "0.5.6"})
+        updater.update_now()
+        assert kicked
+        assert "restarted" in capsys.readouterr().out
+
+    def test_agreement_leaves_it_alone(self, monkeypatch, capsys):
+        kicked = self._quiet(monkeypatch, "0.5.6")
+        monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
+                            install_mod.Installation("uv-tool", ["true"], "x"))
+        monkeypatch.setattr(install_mod, "run_upgrade", lambda w, t=None: (True, ""))
+        monkeypatch.setattr(install_mod, "installed_versions",
+                            lambda: {install_mod.DIST: "0.5.6"})
+        updater.update_now()
+        assert not kicked
+
