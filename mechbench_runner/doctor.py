@@ -56,6 +56,7 @@ def run(config: Config) -> int:
     checks.append(_service())
     checks.extend(_models())
     checks.append(_disk())
+    checks.append(_budget())
 
     print("mechbench doctor\n")
     for check in checks:
@@ -289,6 +290,22 @@ def _models() -> list[Check]:
             )
         )
     return checks
+
+
+def _budget() -> Check:
+    """"217 GB free" and "no budget" together are a prediction, not a
+    reassurance (000297): every model a job names is cached and nothing
+    bounds the cache unless the owner says so."""
+    from . import budget
+
+    b = budget.load()
+    if not b.is_set:
+        return Check(
+            "budget", WARN, "no model-cache budget is set",
+            "The cache grows until the disk is full. `mechbench budget "
+            "--keep-free 100` keeps 100 GB free.",
+        )
+    return Check("budget", OK, budget.describe(b))
 
 
 def _disk() -> Check:

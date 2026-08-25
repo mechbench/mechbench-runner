@@ -135,6 +135,7 @@ class JobRunner:
         # `login`, so hand them over explicitly rather than exporting a
         # key into the process environment (task 000284 follow-up).
         self._configure_bench()
+        self._sweep_cache(None)
         warm = self.config.warm_model_id
         if warm:
             print("[runner] loading model (first call is slow)...")
@@ -198,6 +199,11 @@ class JobRunner:
                     self._sleep(self.config.poll_interval_seconds)
                     continue
 
+                # Between jobs is the only safe moment to evict (000297):
+                # nothing is loaded, and whatever THIS job fetches comes
+                # after. Its own model is protected by name besides.
+                self._sweep_cache(job)
+
                 try:
                     self._handle(api, job)
                     self.state.job_finished(job["id"])
@@ -220,6 +226,29 @@ class JobRunner:
             )
         except Exception as exc:  # noqa: BLE001 — older compute, or no backend
             print(f"[runner] could not configure the bench emitter: {exc}")
+
+    def _sweep_cache(self, job: dict[str, Any] | None) -> None:
+        """Record use and enforce the cache budget (000297). A no-op in
+        microseconds when no budget is set; never allowed to fail a job."""
+        try:
+            from . import budget
+
+            protect: set[str] = set()
+            if self.config.warm_model_id:
+                protect.add(budget.repo_of(self.config.warm_model_id))
+            if job is not None:
+                spec = job.get("spec") or {}
+                model = spec.get("modelId") or _binding_model(spec)
+                if isinstance(model, str) and model:
+                    budget.record_use(model)
+                    protect.add(budget.repo_of(model))
+            budget.sweep(
+                protect=protect,
+                say=lambda m: print(f"[runner] {m}"),
+                emit=self.state.emit,
+            )
+        except Exception as exc:  # noqa: BLE001 — housekeeping, not the job
+            print(f"[runner] cache sweep skipped ({exc})")
 
     def _announce_stall(self, idle: float) -> None:
         """Say so on the way down, so the board shows a restart rather

@@ -23,6 +23,7 @@ def run(*, prune: bool = False, delete: list[str] | None = None) -> int:
     repos = inventory.scan()
     if not repos:
         print("No models cached yet.")
+        _print_checkpoints(_checkpoints(inventory), inventory)
         return 0
 
     for repo in repos:
@@ -41,10 +42,15 @@ def run(*, prune: bool = False, delete: list[str] | None = None) -> int:
             )
         print()
 
+    ckpts = _checkpoints(inventory)
+    _print_checkpoints(ckpts, inventory)
     total = sum(r.disk_bytes for r in repos)
     reclaimable = sum(r.reclaimable_bytes for r in repos)
     superseded = [(r.repo_id, rev) for r in repos for rev in r.superseded]
-    print(f"{len(repos)} models, {inventory.format_bytes(total)} on disk.")
+    print(f"{len(repos)} models, {inventory.format_bytes(total)} on disk"
+          + (f"; {len(ckpts)} checkpoint{'s' if len(ckpts) != 1 else ''}, "
+             f"{inventory.format_bytes(sum(c.size_bytes for c in ckpts))}."
+             if ckpts else "."))
 
     if not superseded:
         print("Nothing is superseded.")
@@ -80,3 +86,27 @@ def _delete(inventory, commits: list[str]) -> int:
         f"{inventory.format_bytes(freed)} returned."
     )
     return 0
+
+
+def _checkpoints(inventory):
+    """Materialized bench checkpoints (000297): they weigh what models
+    weigh, so they show up wherever models are counted."""
+    try:
+        from . import budget
+
+        return budget.checkpoint_candidates()
+    except Exception:  # noqa: BLE001 — an unreadable cache is an empty one
+        return []
+
+
+def _print_checkpoints(ckpts, inventory) -> None:
+    import datetime
+
+    if not ckpts:
+        return
+    print("Checkpoints (merged models materialized from the bench):")
+    for c in ckpts:
+        when = datetime.datetime.fromtimestamp(c.last_used).strftime("%Y-%m-%d")
+        print(f"    {c.name}  {inventory.format_bytes(c.size_bytes):>9}"
+              f"  last used {when}")
+    print()

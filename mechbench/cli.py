@@ -85,6 +85,33 @@ def main(argv: list[str] | None = None) -> int:
         help="Delete specific revisions, by full commit hash.",
     )
 
+    budget_p = sub.add_parser(
+        "budget",
+        help="Bound the model cache so an untended runner cannot fill "
+             "the disk.",
+    )
+    budget_p.add_argument(
+        "--keep-free", metavar="GB", type=float, dest="keep_free",
+        help="Evict least-recently-used models to keep this much disk free.",
+    )
+    budget_p.add_argument(
+        "--max", metavar="GB", type=float, dest="max_cache",
+        help="Cap the cache's total size.",
+    )
+    budget_p.add_argument(
+        "--recent-days", metavar="DAYS", type=float, dest="recent_days",
+        help="Never evict anything used this recently, even over budget "
+             "(default 3).",
+    )
+    budget_p.add_argument(
+        "--off", action="store_true",
+        help="Remove the budget entirely.",
+    )
+    budget_p.add_argument(
+        "--sweep", action="store_true",
+        help="Evict now instead of waiting for the runner's next claim.",
+    )
+
     sub.add_parser(
         "mcp",
         help="Run the MCP server over stdio (the agent-callable surface).",
@@ -152,6 +179,14 @@ def main(argv: list[str] | None = None) -> int:
         from mechbench_runner import models_cmd
 
         return models_cmd.run(prune=args.prune, delete=args.delete)
+
+    if args.cmd == "budget":
+        from mechbench_runner import budget_cmd
+
+        return budget_cmd.run(
+            keep_free=args.keep_free, max_cache=args.max_cache,
+            recent_days=args.recent_days, off=args.off, do_sweep=args.sweep,
+        )
 
     if args.cmd in SERVICE_COMMANDS:
         from mechbench_runner import service as service_mod

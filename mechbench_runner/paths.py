@@ -26,3 +26,11 @@ def mechbench_dir() -> Path:
 
 def config_path() -> Path:
     return mechbench_dir() / CONFIG_NAME
+
+
+def checkpoints_dir() -> Path:
+    """Where materialized bench checkpoints live. Not created here —
+    only the materializer makes it, and an absent directory is simply
+    an empty cache. Derived through `mechbench_dir` so the test fence
+    over that one name covers this cache too."""
+    return mechbench_dir() / "checkpoints"
