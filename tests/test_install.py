@@ -5,7 +5,10 @@ from mechbench_runner import install as m
 
 
 class TestDetect:
-    def test_uv_tool(self):
+    def test_uv_tool(self, monkeypatch):
+        # The host's PATH is not part of the contract: the first CI run
+        # (a VM with no uv installed) failed exactly here.
+        monkeypatch.setattr(m, "find_executable", lambda name: f"/stub/{name}")
         i = m.detect("/Users/x/.local/share/uv/tools/mechbench")
         assert i.method == "uv-tool"
         # `--reinstall` leaves satisfied dependencies alone -- observed
