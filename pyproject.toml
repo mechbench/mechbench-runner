@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mechbench"
-version = "0.6.1"
+version = "0.6.2"
 description = "The mechbench runner: claims jobs from mechbench-api, executes protocols against mechbench-compute, and emits results. Also exposes those primitives as MCP tools."
 readme = "README.md"
 # Capped on purpose, and only here. `uv tool install --managed-python`
@@ -38,17 +38,19 @@ classifiers = [
 ]
 
 dependencies = [
-    # Capped: mcp 2.0 removed `mcp.server.fastmcp` and restructured the
-    # server surface entirely (`mcpserver`, `apps`, `runner`). Porting is
-    # task 000298; until then an unbounded floor hands every fresh
-    # install a broken MCP server, which is what shipping 0.1.0 did.
-    "mcp>=1.2,<2",
+    # Every third-party dep is capped below its next major: an
+    # unbounded floor is a bet that the next major will not break you —
+    # a bet 0.1.0 made on mcp and lost (every fresh install resolved
+    # 2.0 and got a broken MCP server; the dev venv never saw it).
+    # Ported to the mcp 2.x surface in 000298. Our own packages stay
+    # floor-only: we publish them, so their majors are our choice.
+    "mcp>=2,<3",
     "mechbench-compute>=0.15.6",
     "mechbench-schema>=0.13",
     "certifi>=2024.2",
-    "httpx>=0.27",
-    "websockets>=13",
-    "pydantic>=2.7",
+    "httpx>=0.27,<1",
+    "websockets>=13,<16",
+    "pydantic>=2.7,<3",
 ]
 
 [project.optional-dependencies]

@@ -113,9 +113,13 @@ def main() -> None:
         proc = run([cli, "--help"], env=env)
         if proc.returncode != 0 or "install-service" not in proc.stdout:
             die("mechbench --help", proc)
+        # mcp_server is here by earned right: 0.1.0 shipped with an
+        # unbounded mcp floor, every fresh install resolved 2.0, and
+        # `mechbench mcp` raised ModuleNotFoundError (000298).
         proc = run([py, "-c",
                     "import mechbench.cli, mechbench_runner.job_runner, "
-                    "mechbench_runner.channel, mechbench_compute"], env=env)
+                    "mechbench_runner.channel, mechbench_runner.mcp_server, "
+                    "mechbench_compute"], env=env)
         if proc.returncode != 0:
             die("module imports", proc)
         for sub in ("whoami", "models"):

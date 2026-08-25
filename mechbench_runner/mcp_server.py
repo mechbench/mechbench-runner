@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 
 from .api_client import ApiClient
@@ -57,17 +57,20 @@ def _decode_object(raw: bytes) -> dict[str, Any]:
     return decoded
 
 
-def build_server(
+def build_tools(
     config: Config | None = None,
     executor: ProtocolExecutor | None = None,
-) -> FastMCP:
-    """Construct the MCP server. Factored out so in-process tests can
-    exercise the tools without spawning a stdio subprocess."""
+) -> dict[str, Any]:
+    """The three tools as PLAIN functions, keyed by their wire names.
+
+    The server registers these; the smoke test calls them directly.
+    Under mcp 1.x the smoke reached into `server._tool_manager` for the
+    bound functions — private access the 2.0 restructuring rightly
+    broke (000298). Plain functions need no way in at all.
+    """
     cfg = config or Config.from_env()
     _executor = executor or ProtocolExecutor()
-    mcp = FastMCP("mechbench")
 
-    @mcp.tool()
     def run_protocol(
         prompt: str,
         protocol_kind: str = "layer_ablation",
@@ -86,7 +89,6 @@ def build_server(
         payload = _executor.run(spec)
         return payload.model_dump(mode="json")
 
-    @mcp.tool()
     def get_result(path: str) -> dict[str, Any]:
         """Fetch a cached result from mechbench-api by its
         MechbenchPath, decoded to a plain structure."""
@@ -94,13 +96,30 @@ def build_server(
             raw = api.fetch_object(path)
         return _decode_object(raw)
 
-    @mcp.tool()
     def list_jobs() -> list[dict[str, Any]]:
         """List the caller's queued / running / completed jobs."""
         with ApiClient(cfg) as api:
             return api.list_jobs()
 
-    return mcp
+    return {
+        "run_protocol": run_protocol,
+        "get_result": get_result,
+        "list_jobs": list_jobs,
+    }
+
+
+def build_server(
+    config: Config | None = None,
+    executor: ProtocolExecutor | None = None,
+) -> MCPServer:
+    """Construct the MCP server (mcp 2.x, task 000298). The tool
+    names, signatures and docstrings are the contract an agent sees —
+    identical to the 1.x surface, because the library changing is not
+    a reason the contract should."""
+    server = MCPServer("mechbench")
+    for fn in build_tools(config, executor).values():
+        server.tool()(fn)
+    return server
 
 
 def run_stdio(config: Config | None = None) -> None:

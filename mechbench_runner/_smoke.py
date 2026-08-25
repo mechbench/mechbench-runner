@@ -18,7 +18,7 @@ import sys
 
 from .api_client import ApiClient
 from .config import Config
-from .mcp_server import build_server
+from .mcp_server import build_tools
 
 
 def main(full: bool = False) -> int:
@@ -30,10 +30,10 @@ def main(full: bool = False) -> int:
         )
         return 2
 
-    server = build_server(config)
-    # FastMCP stores tools on the internal manager; pull the bound
-    # functions directly so the smoke test doesn't need an MCP client.
-    tools = {t.name: t.fn for t in server._tool_manager.list_tools()}  # noqa: SLF001
+    # The tools are plain functions (000298): no server, no MCP
+    # client, no private access — the smoke calls what the server
+    # registers.
+    tools = build_tools(config)
 
     # --- list_jobs: sanity check that the runner can reach the API.
     jobs = tools["list_jobs"]()
