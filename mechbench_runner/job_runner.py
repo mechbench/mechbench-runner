@@ -16,6 +16,7 @@ import signal
 import time
 import traceback
 from contextlib import suppress
+from datetime import UTC
 from types import FrameType
 from typing import Any
 
@@ -30,6 +31,27 @@ from .exits import EXIT_CRASH, EXIT_OK
 from .watchdog import Watchdog
 
 BACKOFF_MAX_SECONDS = 30.0
+#: How often to compare the server's idea of this machine's work with
+#: local truth. Startup always reconciles; this is the steady-state
+#: cadence after that.
+RECONCILE_SECONDS = 300.0
+#: Transitional (000319): jobs claimed before attribution existed name
+#: no runner. Only an idle runner touches those, and only after this
+#: much silence — stale by any measure.
+LEGACY_STALE_SECONDS = 900.0
+
+
+def _seconds_since(iso: object) -> float:
+    """Age of an ISO timestamp; 0 (fresh, untouchable) when unreadable."""
+    from datetime import datetime
+
+    if not isinstance(iso, str) or not iso:
+        return 0.0
+    try:
+        then = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    return (datetime.now(UTC) - then).total_seconds()
 
 
 def _binding_model(spec: dict[str, Any]) -> str | None:
@@ -159,11 +181,19 @@ class JobRunner:
 
         with ApiClient(self.config) as api:
             backoff = self.config.poll_interval_seconds
+            # Startup is the reconciliation moment that matters most: if
+            # a previous process died holding a job, this is the first
+            # chance anyone has to say so.
+            self._reconcile_jobs(api)
+            last_reconcile = time.monotonic()
             while not self._shutdown:
                 # Every trip round is progress — including an empty poll,
                 # which is how an idle runner proves it is alive rather
                 # than stuck.
                 self._watchdog.stamp()
+                if time.monotonic() - last_reconcile >= RECONCILE_SECONDS:
+                    self._reconcile_jobs(api)
+                    last_reconcile = time.monotonic()
                 asked = self.state.exit_requested
                 if asked is not None:
                     code, reason = asked
@@ -231,6 +261,58 @@ class JobRunner:
             )
         except Exception as exc:  # noqa: BLE001 — older compute, or no backend
             print(f"[runner] could not configure the bench emitter: {exc}")
+
+    def _reconcile_jobs(self, api: ApiClient) -> None:
+        """Repair the server's idea of this machine's work (000319).
+
+        The runner is the authority on what it is actually executing. A
+        job the server shows in flight, CLAIMED BY THIS MACHINE, that is
+        not the job in hand was orphaned by a crash, a kill -9, or a
+        watchdog death whose dying breath never landed — and the next
+        process (this one) is the party that can notice. Jobs claimed by
+        other runners are never touched; attribution is what makes that
+        distinction safe."""
+        try:
+            listed = api.list_jobs()
+        except Exception as e:  # noqa: BLE001 — periodic; next pass retries
+            print(f"[runner] reconcile skipped ({e})")
+            return
+        for j in listed:
+            if j.get("status") not in ("preparing", "running"):
+                continue
+            job_id = j.get("id")
+            if not isinstance(job_id, str) or job_id == self._active_job:
+                continue
+            claimed_by = j.get("claimedByRunnerId")
+            if claimed_by is not None:
+                if (self.config.runner_id is None
+                        or claimed_by != self.config.runner_id):
+                    continue  # another machine's work — never ours to touch
+                reason = (
+                    "this machine holds the claim on this job but is not "
+                    "executing it — orphaned by a crash or restart, "
+                    "repaired by reconciliation"
+                )
+            else:
+                # Transitional: pre-attribution claims (API < 0048) name
+                # no runner. This clause retires itself as they drain.
+                if self._active_job is not None:
+                    continue
+                if _seconds_since(j.get("updatedAt")) < LEGACY_STALE_SECONDS:
+                    continue
+                reason = (
+                    "no runner holds a claim on this job and it has "
+                    f"reported nothing for {LEGACY_STALE_SECONDS / 60:.0f}+ "
+                    "minutes — orphaned before claims were attributed, "
+                    "repaired by reconciliation"
+                )
+            try:
+                api.fail_job(job_id, reason, timeout=15.0)
+            except Exception as e:  # noqa: BLE001 — the server may disagree
+                print(f"[runner] could not reconcile {job_id}: {e}")
+                continue
+            print(f"[runner] reconciled {job_id}: failed ({reason})")
+            self.state.emit("job.reconciled", {"id": job_id, "reason": reason})
 
     def _sweep_cache(self, job: dict[str, Any] | None) -> None:
         """Record use and enforce the cache budget (000297). A no-op in
