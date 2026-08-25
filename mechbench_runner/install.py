@@ -200,15 +200,17 @@ def run_upgrade(
         cmd = [cmd[0], "tool", "install", "--reinstall", f"{DIST}=={target}"]
     if not target and install.method == "uv-tool":
         # No target means "bring this machine current" — the WHOLE
-        # environment, dependencies included. `uv tool upgrade` cannot
-        # do that here: targeted self-updates (above) pin the tool at an
-        # exact version, and uv honors that pin by refusing to move
-        # anything — which once left a machine reporting "already on
-        # 0.5.3; nothing to do" while the compute fix it needed sat one
-        # dependency below. A reinstall re-resolves everything and
-        # clears the pin as a side effect; the caller's before/after
-        # version map reports exactly what moved, per package.
-        cmd = [cmd[0], "tool", "install", "--reinstall", DIST]
+        # environment, dependencies included. Two uv behaviors bit here
+        # in one afternoon: `uv tool upgrade` honors the exact pin a
+        # targeted self-update writes (refusing to move anything), and
+        # `--reinstall` rebuilds packages AT THEIR SATISFIED VERSIONS —
+        # it never lifts a dependency above its floor, so 0.5.4's
+        # "refresh" faithfully rebuilt compute 0.14.2 while 0.14.3 held
+        # the fix. `--upgrade` is the flag that means it; `--refresh`
+        # makes a minutes-old release visible past uv's index cache;
+        # installing UNPINNED clears the targeted-update pin. The
+        # caller's before/after version map reports what moved.
+        cmd = [cmd[0], "tool", "install", "--upgrade", "--refresh", DIST]
     try:
         proc = _run(cmd, timeout=timeout)
     except (OSError, subprocess.SubprocessError) as exc:
