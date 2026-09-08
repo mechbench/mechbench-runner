@@ -896,7 +896,7 @@ wheels = [
 
 [[package]]
 name = "mechbench"
-version = "0.7.0"
+version = "0.8.0"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
@@ -919,7 +919,7 @@ requires-dist = [
     { name = "certifi", specifier = ">=2024.2" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "mcp", specifier = ">=2,<3" },
-    { name = "mechbench-compute", specifier = ">=0.15.7" },
+    { name = "mechbench-compute", specifier = ">=0.20.0" },
     { name = "mechbench-schema", specifier = ">=0.13" },
     { name = "pydantic", specifier = ">=2.7,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
@@ -930,7 +930,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "mechbench-compute"
-version = "0.18.2"
+version = "0.20.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -945,9 +945,9 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "transformers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ee/79/9c4232832f56abcd51db98b79ffe317675b420df1330bb10c1f9cea050a2/mechbench_compute-0.18.2.tar.gz", hash = "sha256:d695033672f150877d4d7ed9e7f1399ca783930fd368485057577237b4c6ee43", size = 179847, upload-time = "2026-08-26T06:37:52.813Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1a/be/bc8d841aab0ea42d36a30f3a43ea3c6e469006477316a18cbb246cc2600b/mechbench_compute-0.20.0.tar.gz", hash = "sha256:784252134d51ad437ac08a3fd8bebf2724d57e6b329a09f99b55f0f1321feb3a", size = 197368, upload-time = "2026-09-08T05:49:33.256Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/43/61/bc1bd2597fae55c5c216b3bbe8bf4fc10aa9077b63834d9ddd43fb3874b7/mechbench_compute-0.18.2-py3-none-any.whl", hash = "sha256:22077b0ade6c90bd698eacbf7c341ecb8655eb169914cb11256dad84abf2d6c6", size = 179239, upload-time = "2026-08-26T06:37:51.484Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/5b/dd90121a12db9f0aca6b34a422c79db39a7689503c93771267de0c932bc4/mechbench_compute-0.20.0-py3-none-any.whl", hash = "sha256:8907ab278d5fb63193baa69d83b946e7d84e812ac866e8a4ec89ea4ca758bd5a", size = 189898, upload-time = "2026-09-08T05:49:32.047Z" },
 ]
 
 [[package]]
