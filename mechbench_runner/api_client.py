@@ -157,7 +157,8 @@ class ApiClient:
     def report_progress(self, job_id: str, num: int, den: int, *,
                         unit: str | None = None,
                         status: str | None = None,
-                        node: dict | None = None) -> None:
+                        node: dict | None = None,
+                        resumed_from: dict | None = None) -> None:
         """PATCH `/jobs/:id/progress` (task 000252). Best-effort by
         contract: callers should tolerate failures — progress display
         degrades to the plain status chip, never blocks the job.
@@ -175,6 +176,10 @@ class ApiClient:
             # Where in the graph the run is (000316): index/count over
             # nodes, done/total within the current one.
             body["node"] = node
+        if resumed_from is not None:
+            # Where a resumed job picked up (epic 000320); the server
+            # keeps it on the job row, never in the result.
+            body["resumedFrom"] = resumed_from
         res = self._client.patch(f"/jobs/{job_id}/progress", json=body)
         self._raise_for_status(res)
 
@@ -202,6 +207,19 @@ class ApiClient:
             # process is presumed stuck and MUST still exit.
             kwargs["timeout"] = timeout
         res = self._client.post(f"/jobs/{job_id}/fail", **kwargs)
+        self._raise_for_status(res)
+
+    def interrupt_job(self, job_id: str, message: str,
+                      timeout: float | None = None) -> None:
+        """POST `/jobs/:id/interrupt` (epic 000320) — the job had no
+        error of its own; the runner went quiet (watchdog death,
+        orphaned by a restart). Claim, progress and resultPath survive
+        on the server; this machine re-claims and resumes, or
+        completes late from its spool."""
+        kwargs: dict = {"json": {"message": message[:2000]}}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        res = self._client.post(f"/jobs/{job_id}/interrupt", **kwargs)
         self._raise_for_status(res)
 
     def complete_job_cbor(

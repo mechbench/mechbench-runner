@@ -4,8 +4,9 @@ On 2026-08-25 a healthy 10 GB checkpoint download was killed as a wedge
 (it reported nothing) and the job it belonged to read "running" on the
 board for an hour after its runner died. Three behaviors keep that from
 recurring: progress ticks stamp the watchdog, mid-run download bytes
-ride the node view's detail onto the board, and a stall FAILS the
-active job before the process dies.
+ride the node view's detail onto the board, and a stall INTERRUPTS the
+active job before the process dies (epic 000320: the process stalled,
+the job had no error — the next process resumes it).
 """
 
 from __future__ import annotations
@@ -22,15 +23,21 @@ class RecordingApi:
     def __init__(self):
         self.progress: list[dict] = []
         self.failed: list[dict] = []
+        self.interrupted: list[dict] = []
 
     def report_progress(self, job_id, num, den, *, unit=None, status=None,
-                        node=None):
+                        node=None, resumed_from=None):
         self.progress.append({"job": job_id, "num": num, "den": den,
-                              "node": node, "status": status})
+                              "node": node, "status": status,
+                              "resumed_from": resumed_from})
 
     def fail_job(self, job_id, message, timeout=None):
         self.failed.append({"job": job_id, "message": message,
                             "timeout": timeout})
+
+    def interrupt_job(self, job_id, message, timeout=None):
+        self.interrupted.append({"job": job_id, "message": message,
+                                 "timeout": timeout})
 
 
 def _runner(monkeypatch):
@@ -52,31 +59,31 @@ def _runner(monkeypatch):
     return jr.JobRunner(config)
 
 
-class TestStallFailsTheJob:
-    def test_active_job_is_failed_with_a_bounded_timeout(self, monkeypatch):
+class TestStallInterruptsTheJob:
+    def test_active_job_is_interrupted_with_a_bounded_timeout(self, monkeypatch):
         runner = _runner(monkeypatch)
         api = RecordingApi()
         runner._active_job = "j_1"
         runner._active_api = api
         runner._announce_stall(908.0)
-        assert len(api.failed) == 1
-        f = api.failed[0]
+        assert len(api.interrupted) == 1 and api.failed == []
+        f = api.interrupted[0]
         assert f["job"] == "j_1"
         assert "908s" in f["message"] and "watchdog" in f["message"]
         assert f["timeout"] is not None  # the dying breath must be bounded
 
-    def test_no_active_job_means_nothing_to_fail(self, monkeypatch):
+    def test_no_active_job_means_nothing_to_interrupt(self, monkeypatch):
         runner = _runner(monkeypatch)
         api = RecordingApi()
         runner._active_api = api
         runner._announce_stall(908.0)
-        assert api.failed == []
+        assert api.interrupted == [] and api.failed == []
 
-    def test_a_failing_fail_report_does_not_stop_the_death(self, monkeypatch):
+    def test_a_failing_interrupt_report_does_not_stop_the_death(self, monkeypatch):
         runner = _runner(monkeypatch)
 
         class Grumpy(RecordingApi):
-            def fail_job(self, *a, **k):
+            def interrupt_job(self, *a, **k):
                 raise ConnectionError("network is the thing that is stuck")
 
         runner._active_job = "j_1"

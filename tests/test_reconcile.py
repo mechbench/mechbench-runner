@@ -29,6 +29,7 @@ class RecordingApi:
     def __init__(self, jobs):
         self.jobs = jobs
         self.failed: list[str] = []
+        self.interrupted: list[str] = []
 
     def list_jobs(self):
         return self.jobs
@@ -36,6 +37,16 @@ class RecordingApi:
     def fail_job(self, job_id, message, timeout=None):
         assert timeout is not None  # reconciliation must be bounded
         self.failed.append(job_id)
+
+    def interrupt_job(self, job_id, message, timeout=None):
+        assert timeout is not None  # reconciliation must be bounded
+        self.interrupted.append(job_id)
+
+    def get_job(self, job_id):
+        for j in self.jobs:
+            if j["id"] == job_id:
+                return j
+        raise KeyError(job_id)
 
 
 def _runner(monkeypatch, runner_id="r_mine"):
@@ -64,11 +75,16 @@ def job(job_id, *, status="running", claimed_by=None, updated_minutes_ago=1.0):
 
 
 class TestOwnClaims:
-    def test_an_orphan_this_machine_claims_is_failed(self, monkeypatch):
+    def test_an_orphan_this_machine_claims_is_interrupted_not_failed(
+        self, monkeypatch
+    ):
+        # Epic 000320: our orphan had no error of its own. Interrupted
+        # keeps the claim so THIS process re-claims and resumes it.
         runner = _runner(monkeypatch)
         api = RecordingApi([job("j_orphan", claimed_by="r_mine")])
         runner._reconcile_jobs(api)
-        assert api.failed == ["j_orphan"]
+        assert api.interrupted == ["j_orphan"]
+        assert api.failed == []
 
     def test_the_job_in_hand_is_never_touched(self, monkeypatch):
         runner = _runner(monkeypatch)
@@ -78,13 +94,13 @@ class TestOwnClaims:
             job("j_orphan", claimed_by="r_mine"),
         ])
         runner._reconcile_jobs(api)
-        assert api.failed == ["j_orphan"]
+        assert api.interrupted == ["j_orphan"]
 
     def test_another_machines_claim_is_never_touched(self, monkeypatch):
         runner = _runner(monkeypatch)
         api = RecordingApi([job("j_theirs", claimed_by="r_other")])
         runner._reconcile_jobs(api)
-        assert api.failed == []
+        assert api.failed == [] and api.interrupted == []
 
     def test_terminal_jobs_are_not_in_scope(self, monkeypatch):
         runner = _runner(monkeypatch)
@@ -93,7 +109,7 @@ class TestOwnClaims:
             job("j_failed", status="failed", claimed_by="r_mine"),
         ])
         runner._reconcile_jobs(api)
-        assert api.failed == []
+        assert api.failed == [] and api.interrupted == []
 
     def test_without_a_runner_identity_attributed_jobs_are_left_alone(
         self, monkeypatch
@@ -103,7 +119,7 @@ class TestOwnClaims:
         runner = _runner(monkeypatch, runner_id=None)
         api = RecordingApi([job("j_x", claimed_by="r_somebody")])
         runner._reconcile_jobs(api)
-        assert api.failed == []
+        assert api.failed == [] and api.interrupted == []
 
 
 class TestLegacyClaims:
@@ -154,14 +170,14 @@ class TestResilience:
         runner = _runner(monkeypatch)
 
         class Choosy(RecordingApi):
-            def fail_job(self, job_id, message, timeout=None):
+            def interrupt_job(self, job_id, message, timeout=None):
                 if job_id == "j_refused":
                     raise ValueError("NOT_CLAIMANT")
-                super().fail_job(job_id, message, timeout=timeout)
+                super().interrupt_job(job_id, message, timeout=timeout)
 
         api = Choosy([
             job("j_refused", claimed_by="r_mine"),
             job("j_orphan", claimed_by="r_mine"),
         ])
         runner._reconcile_jobs(api)
-        assert api.failed == ["j_orphan"]
+        assert api.interrupted == ["j_orphan"]

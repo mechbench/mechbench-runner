@@ -28,6 +28,18 @@ def config_path() -> Path:
     return mechbench_dir() / CONFIG_NAME
 
 
+def spool_dir() -> Path:
+    """Where a job's work-in-progress survives the process (epic
+    000320): `~/.mechbench/spool/<job>/`. A finished result is written
+    here BEFORE the upload is attempted, so a server that has stopped
+    listening cannot make the runner discard an hour of compute; items
+    and training checkpoints follow (000323, second half). Created on
+    demand under the 0700 directory."""
+    d = mechbench_dir() / "spool"
+    d.mkdir(mode=0o700, exist_ok=True)
+    return d
+
+
 def checkpoints_dir() -> Path:
     """Where materialized bench checkpoints live. Not created here —
     only the materializer makes it, and an absent directory is simply

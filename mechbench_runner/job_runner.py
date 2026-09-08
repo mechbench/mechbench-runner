@@ -12,6 +12,8 @@ bottleneck.
 from __future__ import annotations
 
 import hashlib
+import os
+import shutil
 import signal
 import time
 import traceback
@@ -28,6 +30,7 @@ from .channel import LiveChannel
 from .config import Config
 from .control import ControlServer, RunnerState, probe, socket_path
 from .exits import EXIT_CRASH, EXIT_OK
+from .paths import spool_dir
 from .watchdog import Watchdog
 
 BACKOFF_MAX_SECONDS = 30.0
@@ -39,6 +42,39 @@ RECONCILE_SECONDS = 300.0
 #: no runner. Only an idle runner touches those, and only after this
 #: much silence — stale by any measure.
 LEGACY_STALE_SECONDS = 900.0
+
+
+def _spool_result(job_id: str, cbor_bytes: bytes, digest: str) -> None:
+    """Persist a finished result BEFORE the upload is attempted (epic
+    000320). Written whole-then-renamed so a crash mid-write leaves no
+    half file; the digest rides alongside so reconciliation can
+    re-deliver without re-hashing a file it did not write."""
+    d = spool_dir() / job_id
+    d.mkdir(mode=0o700, parents=True, exist_ok=True)
+    tmp = d / "result.cbor.tmp"
+    tmp.write_bytes(cbor_bytes)
+    os.replace(tmp, d / "result.cbor")
+    (d / "result.sha256").write_text(digest)
+
+
+def _spooled_result(job_id: str) -> tuple[bytes, str] | None:
+    d = spool_dir() / job_id
+    blob, sha = d / "result.cbor", d / "result.sha256"
+    if not (blob.is_file() and sha.is_file()):
+        return None
+    return blob.read_bytes(), sha.read_text().strip()
+
+
+def _clear_spool(job_id: str) -> None:
+    shutil.rmtree(spool_dir() / job_id, ignore_errors=True)
+
+
+def _spooled_job_ids() -> list[str]:
+    root = spool_dir()
+    return sorted(
+        p.name for p in root.iterdir()
+        if p.is_dir() and (p / "result.cbor").is_file()
+    )
 
 
 def _seconds_since(iso: object) -> float:
@@ -262,6 +298,54 @@ class JobRunner:
         except Exception as exc:  # noqa: BLE001 — older compute, or no backend
             print(f"[runner] could not configure the bench emitter: {exc}")
 
+    def _flush_spool(self, api: ApiClient) -> None:
+        """Deliver every spooled result whose job will still take it.
+
+        `interrupted` takes a late completion outright. A job the
+        server still shows in flight under this machine is interrupted
+        first (it is not executing here — the result IS its finish),
+        then completed. A job that ended otherwise (`done`, `failed`)
+        has nothing to gain from an old result; the spool is cleared."""
+        try:
+            spooled = _spooled_job_ids()
+        except OSError:
+            return
+        for job_id in spooled:
+            if job_id == self._active_job:
+                continue
+            found = _spooled_result(job_id)
+            if found is None:
+                continue
+            cbor_bytes, digest = found
+            try:
+                j = api.get_job(job_id)
+            except Exception as e:  # noqa: BLE001 — next pass retries
+                print(f"[runner] spool: could not look up {job_id} ({e})")
+                continue
+            status = j.get("status")
+            if status in ("done", "failed", "queued"):
+                _clear_spool(job_id)
+                continue
+            claimed_by = j.get("claimedByRunnerId")
+            if claimed_by is not None and claimed_by != self.config.runner_id:
+                continue  # another machine holds it now; not ours to deliver
+            try:
+                if status in ("preparing", "running"):
+                    api.interrupt_job(
+                        job_id,
+                        "the result was ready but its upload never landed; "
+                        "delivered from this machine's spool",
+                        timeout=15.0,
+                    )
+                api.complete_job_cbor(job_id, cbor_bytes, f"sha256:{digest}")
+            except Exception as e:  # noqa: BLE001 — keep the spool, retry later
+                print(f"[runner] spool: {job_id} not accepted yet ({e})")
+                continue
+            _clear_spool(job_id)
+            print(f"[runner] {job_id} delivered from spool "
+                  f"({len(cbor_bytes)} CBOR bytes)")
+            self.state.emit("job.delivered_late", {"id": job_id})
+
     def _reconcile_jobs(self, api: ApiClient) -> None:
         """Repair the server's idea of this machine's work (000319).
 
@@ -272,6 +356,11 @@ class JobRunner:
         process (this one) is the party that can notice. Jobs claimed by
         other runners are never touched; attribution is what makes that
         distinction safe."""
+        # Results that exist on this disk but not on the server come
+        # first (epic 000320): a finished job is worth more than a
+        # tidy board, and delivering it may retire an orphan below
+        # before it is ever reported.
+        self._flush_spool(api)
         try:
             listed = api.list_jobs()
         except Exception as e:  # noqa: BLE001 — periodic; next pass retries
@@ -288,11 +377,23 @@ class JobRunner:
                 if (self.config.runner_id is None
                         or claimed_by != self.config.runner_id):
                     continue  # another machine's work — never ours to touch
+                # An orphan of OURS had no error of its own — it was
+                # interrupted (epic 000320), and this process is the
+                # one that resumes it: the server hands it back on the
+                # next /jobs/next, ahead of new work.
                 reason = (
                     "this machine holds the claim on this job but is not "
-                    "executing it — orphaned by a crash or restart, "
-                    "repaired by reconciliation"
+                    "executing it — interrupted by a crash or restart; "
+                    "it resumes with this process"
                 )
+                try:
+                    api.interrupt_job(job_id, reason, timeout=15.0)
+                except Exception as e:  # noqa: BLE001 — the server may disagree
+                    print(f"[runner] could not reconcile {job_id}: {e}")
+                    continue
+                print(f"[runner] reconciled {job_id}: interrupted ({reason})")
+                self.state.emit("job.reconciled", {"id": job_id, "reason": reason})
+                continue
             else:
                 # Transitional: pre-attribution claims (API < 0048) name
                 # no runner. This clause retires itself as they drain.
@@ -352,11 +453,15 @@ class JobRunner:
             {"idle_seconds": round(idle, 1), "job": self._active_job},
         )
         if self._active_job is not None and self._active_api is not None:
+            # The job had no error of its own — the PROCESS stalled. It
+            # is interrupted (epic 000320); the next process re-claims
+            # and resumes it.
             with suppress(Exception):
-                self._active_api.fail_job(
+                self._active_api.interrupt_job(
                     self._active_job,
                     f"the runner made no progress for {idle:.0f}s and was "
-                    f"restarted by its watchdog; this job died with it",
+                    f"restarted by its watchdog; the job is interrupted and "
+                    f"resumes with the next process",
                     timeout=10.0,
                 )
         time.sleep(0.25)  # give the channel a moment to flush
@@ -411,6 +516,24 @@ class JobRunner:
 
         if kind == "layer_ablation" and not prompt:
             raise ValueError(f"job {job_id}: spec.prompt missing or empty")
+
+        resumed = bool(job.get("resume"))
+        if resumed:
+            print(f"[runner] resuming {job_id} (attempt {job.get('resumeCount', '?')})")
+        spooled = _spooled_result(job_id)
+        if spooled is not None:
+            # The whole result already exists here: the previous process
+            # finished but its upload never landed. Nothing to compute.
+            cbor_bytes, digest = spooled
+            print(f"[runner] {job_id}: finished result found in spool; delivering")
+            self.state.job_claimed(job_id, kind, model_id)
+            with suppress(Exception):
+                api.report_progress(
+                    job_id, 1, 1, unit=_unit_for(kind), status="running",
+                    resumed_from={"node": "", "reused": 1},
+                )
+            self._deliver(api, job_id, cbor_bytes, digest)
+            return
 
         print(f"[runner] running {job_id} kind={kind}")
         self.state.job_claimed(job_id, kind, model_id)
@@ -469,12 +592,22 @@ class JobRunner:
             if (promoted and done % 5 != 0 and done != total
                     and node_index == reported_node):
                 return
+            # Phase 1 resumes from scratch (no item spool yet): the first
+            # report says so honestly — nothing reused. The keyword is
+            # only passed when it carries a value, so older API clients
+            # and test doubles keep their signatures.
+            extra: dict[str, Any] = {}
+            if resumed and not promoted:
+                extra["resumed_from"] = {
+                    "node": str((node or {}).get("id", "")), "reused": 0,
+                }
             try:
                 api.report_progress(
                     job_id, done, total,
                     unit=_unit_for(kind),
                     status=None if promoted else "running",
                     node=node,
+                    **extra,
                 )
                 # Only on success: a failed first report must leave the
                 # promotion owed, not silently spent.
@@ -491,13 +624,35 @@ class JobRunner:
 
             cbor_bytes = dump_canonical(payload)
             digest = hashlib.sha256(cbor_bytes).hexdigest()
-            api.complete_job_cbor(job_id, cbor_bytes, f"sha256:{digest}")
-            print(f"[runner] {job_id} done ({len(cbor_bytes)} CBOR bytes)")
+            # Spool first (epic 000320): from here on the result exists
+            # on disk, and no server state can make this process discard
+            # it. The upload is attempted now and, failing that, by
+            # reconciliation until the server takes it.
+            _spool_result(job_id, cbor_bytes, digest)
+            self._deliver(api, job_id, cbor_bytes, digest)
         finally:
             self._active_job = None
             self._active_api = None
             secrets.clear()
             job.pop("integrations", None)
+
+    def _deliver(self, api: ApiClient, job_id: str,
+                 cbor_bytes: bytes, digest: str) -> None:
+        """Upload a spooled result. Refusal is not failure: the job's
+        result exists; the server's state is what has to catch up. A
+        409 (reaped meanwhile, or still `preparing` after a re-claim)
+        and a dead network both leave the spool in place for
+        `_flush_spool` — the job is never FAILED over a delivery
+        problem."""
+        try:
+            api.complete_job_cbor(job_id, cbor_bytes, f"sha256:{digest}")
+        except Exception as e:  # noqa: BLE001 — keep the spool, retry later
+            print(f"[runner] {job_id}: result spooled; upload not accepted "
+                  f"yet ({e}) — reconciliation retries")
+            self.state.emit("job.spooled", {"id": job_id})
+            return
+        _clear_spool(job_id)
+        print(f"[runner] {job_id} done ({len(cbor_bytes)} CBOR bytes)")
 
     def _report_error(
         self, api: ApiClient, job: dict[str, Any], exc: Exception
