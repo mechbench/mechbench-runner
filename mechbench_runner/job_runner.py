@@ -12,9 +12,11 @@ bottleneck.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import os
 import shutil
 import signal
+import subprocess
 import time
 import traceback
 from contextlib import suppress
@@ -31,6 +33,7 @@ from .config import Config
 from .control import ControlServer, RunnerState, probe, socket_path
 from .exits import EXIT_CRASH, EXIT_OK
 from .paths import spool_dir
+from .spool import JobSpool
 from .watchdog import Watchdog
 
 BACKOFF_MAX_SECONDS = 30.0
@@ -118,10 +121,25 @@ class JobRunner:
         # follow-up: the checkpoint fetch that reported nothing).
         self._last_node: dict[str, Any] | None = None
         self._last_scalar: tuple[int, int] = (0, 0)
-        self._executor = ProtocolExecutor(
-            on_download=self._announce_download,
-            on_download_bytes=self._announce_download_bytes,
-        )
+        # The active job's spool (epic 000320). The executor is built
+        # once; its resume hooks dispatch to whichever spool is current,
+        # so partial work lands on disk as it is made.
+        self._spool: JobSpool | None = None
+        self._caffeinate: subprocess.Popen | None = None
+        try:
+            self._executor = ProtocolExecutor(
+                on_download=self._announce_download,
+                on_download_bytes=self._announce_download_bytes,
+                on_node_start=self._spool_node_start,
+                on_spool_item=self._spool_item,
+                on_checkpoint=self._spool_checkpoint,
+                on_node_done=self._spool_node_done,
+            )
+        except TypeError:  # an older compute without resume hooks
+            self._executor = ProtocolExecutor(
+                on_download=self._announce_download,
+                on_download_bytes=self._announce_download_bytes,
+            )
         try:
             from . import __version__ as runner_version
         except ImportError:  # version is optional metadata, not a dependency
@@ -537,6 +555,21 @@ class JobRunner:
 
         print(f"[runner] running {job_id} kind={kind}")
         self.state.job_claimed(job_id, kind, model_id)
+        self._spool = JobSpool(job_id)
+        self._hold_awake()
+        # A re-claimed job resumes from whatever this machine spooled
+        # (epic 000320). The executor re-derives every node's
+        # fingerprint and honours an entry only under equality, so a
+        # stale partial costs nothing but the read.
+        resume_map: dict = {}
+        resume_summary: dict | None = None
+        if resumed and "resume" in inspect.signature(self._executor.run).parameters:
+            with suppress(Exception):
+                resume_map = self._spool.resume_map()
+                resume_summary = self._spool.summary() if resume_map else None
+            if resume_map:
+                print(f"[runner] {job_id}: resuming from spool — "
+                      f"{resume_summary}")
         # The download callbacks come from the compute layer, which knows
         # nothing about jobs; this is how they find the one to report against.
         self._active_job = job_id
@@ -598,7 +631,7 @@ class JobRunner:
             # and test doubles keep their signatures.
             extra: dict[str, Any] = {}
             if resumed and not promoted:
-                extra["resumed_from"] = {
+                extra["resumed_from"] = resume_summary or {
                     "node": str((node or {}).get("id", "")), "reused": 0,
                 }
             try:
@@ -617,8 +650,11 @@ class JobRunner:
                 print(f"[runner] progress report failed ({e}); continuing")
 
         try:
+            run_kwargs: dict[str, Any] = {}
+            if resume_map:
+                run_kwargs["resume"] = resume_map
             payload = self._executor.run(spec, on_progress=on_progress,
-                                       secrets=secrets)
+                                       secrets=secrets, **run_kwargs)
             if hasattr(payload, "model_dump"):
                 payload = payload.model_dump(mode="json")
 
@@ -633,8 +669,53 @@ class JobRunner:
         finally:
             self._active_job = None
             self._active_api = None
+            self._spool = None
+            self._release_awake()
             secrets.clear()
             job.pop("integrations", None)
+
+    # Spool hooks: best-effort by contract. A spool that cannot be
+    # written costs resumability, never the job.
+    def _spool_node_start(self, nid: str, fingerprint: str) -> None:
+        if self._spool is not None:
+            with suppress(Exception):
+                self._spool.node_start(nid, fingerprint)
+
+    def _spool_item(self, nid: str, key: str, item) -> None:
+        if self._spool is not None:
+            with suppress(Exception):
+                self._spool.item(nid, key, item)
+
+    def _spool_checkpoint(self, nid: str, state) -> None:
+        if self._spool is not None:
+            with suppress(Exception):
+                self._spool.checkpoint(nid, state)
+
+    def _spool_node_done(self, nid: str, path, fingerprint: str) -> None:
+        if self._spool is not None:
+            with suppress(Exception):
+                self._spool.node_done(nid, path, fingerprint)
+
+    def _hold_awake(self) -> None:
+        """Keep the machine from idle-sleeping while a job is in
+        flight (macOS `caffeinate -i`, tied to this pid so it can
+        never outlive us). It cannot beat a closed lid on battery —
+        that is an operational rule — but it removes the common case
+        on AC, which is what interrupted the 023 series."""
+        if self._caffeinate is not None or shutil.which("caffeinate") is None:
+            return
+        with suppress(Exception):
+            self._caffeinate = subprocess.Popen(
+                ["caffeinate", "-i", "-w", str(os.getpid())],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+    def _release_awake(self) -> None:
+        proc, self._caffeinate = self._caffeinate, None
+        if proc is not None:
+            with suppress(Exception):
+                proc.terminate()
 
     def _deliver(self, api: ApiClient, job_id: str,
                  cbor_bytes: bytes, digest: str) -> None:
@@ -666,6 +747,9 @@ class JobRunner:
             api.fail_job(job_id, message)
         except Exception:  # noqa: BLE001 — best-effort
             print(f"[runner] failed to report failure for {job_id}")
+        # A job that FAILED (the block raised) is not coming back;
+        # its partials would only mislead a later reader.
+        _clear_spool(job_id)
 
     def _claim_control_socket(self) -> None:
         """Refuse to start beside another runner; adopt a dead one's socket.
