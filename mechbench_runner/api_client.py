@@ -145,10 +145,16 @@ class ApiClient:
 
     # --- job queue ---------------------------------------------------------
 
+    #: What this machine can run. `remote` (epic 000334) says only that
+    #: it has a network and can hold the owner's provider credentials —
+    #: every runner does — so a job whose only non-pure work is calling
+    #: someone else's API is claimable here.
+    CAPABILITIES = "mlx-local,pure,remote"
+
     def claim_next_job(self) -> dict[str, Any] | None:
         """Call `GET /jobs/next`. Returns None on 204 (no work)."""
         res = self._client.get(
-            "/jobs/next", params={"capabilities": "mlx-local,pure"})
+            "/jobs/next", params={"capabilities": self.CAPABILITIES})
         if res.status_code == 204:
             return None
         self._raise_for_status(res)
