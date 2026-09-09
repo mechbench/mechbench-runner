@@ -83,6 +83,10 @@ class JobView:
     #: Structured position for pipelines (000316): {index, count, id,
     #: done, total} — which node, and how far through it.
     node: dict | None = None
+    #: What this job has spent with external providers, and its cap
+    #: (task 000338). None until a remote node actually spends.
+    spent_usd: float | None = None
+    cap_usd: float | None = None
 
     @property
     def elapsed_seconds(self) -> float:
@@ -96,6 +100,10 @@ class RunnerState:
     critical sections trivial — no I/O, no model calls — so a `status`
     request can never be blocked behind real work.
     """
+
+    #: Set by the job runner to the machine's rate limiter (000338), so
+    #: `status` can show buckets without RunnerState knowing what one is.
+    limits_snapshot = None
 
     def __init__(self, *, version: str, api_url: str) -> None:
         self._lock = threading.Lock()
@@ -123,11 +131,18 @@ class RunnerState:
     # -- reads
 
     def snapshot(self) -> dict[str, Any]:
+        # The limiter has its own lock, and a status request must never
+        # wait behind real work — so this happens outside ours.
+        limits = None
+        if self.limits_snapshot is not None:
+            with suppress(Exception):
+                limits = self.limits_snapshot()
         with self._lock:
             job = asdict(self._job) if self._job else None
             if job is not None and self._job is not None:
                 job["elapsed_seconds"] = round(self._job.elapsed_seconds, 3)
             return {
+                **({"limits": limits} if limits else {}),
                 "phase": "paused" if self._paused and self._job is None else self._phase,
                 "paused": self._paused,
                 "job": job,
@@ -191,6 +206,18 @@ class RunnerState:
         if node is not None:
             data["node"] = node
         self.emit("job.progress", data)
+
+    def job_spend(self, spent_usd: float, cap_usd: float | None = None) -> None:
+        """A metered job's running total. Cosmetic like progress, and
+        reported the same way — the authority is the job row."""
+        with self._lock:
+            if self._job is None:
+                return
+            self._job.spent_usd = spent_usd
+            self._job.cap_usd = cap_usd
+            job_id = self._job.id
+        self.emit("job.spend", {"id": job_id, "spent_usd": spent_usd,
+                                "cap_usd": cap_usd})
 
     def job_finished(self, job_id: str) -> None:
         with self._lock:

@@ -306,6 +306,11 @@ def _render(data: dict) -> str:
             f"{phase}: {job.get('protocol_kind')} ({job.get('id')}){pct}"
             f"  {job.get('elapsed_seconds', 0):.0f}s elapsed"
         )
+        spent = job.get("spent_usd")
+        if spent is not None:
+            cap = job.get("cap_usd")
+            against = f" of ${cap:.2f}" if cap else ""
+            lines.append(f"spend    ${spent:.4f}{against}")
     else:
         lines.append(phase + (" (paused)" if data.get("paused") and phase != "paused" else ""))
     lines.append(f"model    {data.get('model_id') or '(none loaded)'}")
@@ -313,6 +318,20 @@ def _render(data: dict) -> str:
     lines.append(
         f"jobs     {data.get('completed', 0)} completed, {data.get('failed', 0)} failed"
     )
+    limits = data.get("limits") or {}
+    for hold in limits.get("holds", []):
+        # A rate-limit hold is the difference between "wedged" and
+        # "waiting", and it is exactly what a person checks status for.
+        lines.append(
+            f"limited  {hold['provider']} held {hold['seconds']:.0f}s more"
+        )
+    tight = [b for b in limits.get("buckets", [])
+             if b.get("capacity") and b["available"] < b["capacity"] / 4]
+    for b in tight[:3]:
+        lines.append(
+            f"quota    {b['provider']} {b['currency']}: "
+            f"{b['available']:.0f} of {b['capacity']:.0f} left"
+        )
     up = data.get("uptime_seconds", 0)
     lines.append(
         f"runner   v{data.get('runner_version')} pid {data.get('pid')}, up {up / 60:.0f}m"

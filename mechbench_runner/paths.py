@@ -40,6 +40,13 @@ def spool_dir() -> Path:
     return d
 
 
+def limits_path() -> Path:
+    """Where the shared rate limiter keeps its buckets between restarts
+    (task 000338): `~/.mechbench/limits.json`. It holds counts and
+    deadlines only — the key SCOPE is a hash, never a credential."""
+    return mechbench_dir() / "limits.json"
+
+
 def checkpoints_dir() -> Path:
     """Where materialized bench checkpoints live. Not created here —
     only the materializer makes it, and an absent directory is simply

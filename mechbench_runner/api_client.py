@@ -164,7 +164,8 @@ class ApiClient:
                         unit: str | None = None,
                         status: str | None = None,
                         node: dict | None = None,
-                        resumed_from: dict | None = None) -> None:
+                        resumed_from: dict | None = None,
+                        spent_usd: float | None = None) -> None:
         """PATCH `/jobs/:id/progress` (task 000252). Best-effort by
         contract: callers should tolerate failures — progress display
         degrades to the plain status chip, never blocks the job.
@@ -186,6 +187,11 @@ class ApiClient:
             # Where a resumed job picked up (epic 000320); the server
             # keeps it on the job row, never in the result.
             body["resumedFrom"] = resumed_from
+        if spent_usd is not None:
+            # What this job has spent with external providers so far
+            # (000338). The running TOTAL, never a delta, so a dropped
+            # report costs nothing.
+            body["spentUsd"] = round(float(spent_usd), 6)
         res = self._client.patch(f"/jobs/{job_id}/progress", json=body)
         self._raise_for_status(res)
 

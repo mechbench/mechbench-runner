@@ -32,7 +32,8 @@ from .channel import LiveChannel
 from .config import Config
 from .control import ControlServer, RunnerState, probe, socket_path
 from .exits import EXIT_CRASH, EXIT_OK
-from .paths import spool_dir
+from .paths import limits_path, spool_dir
+from .spend import SharedLimiter, SpendLedger
 from .spool import JobSpool
 from .watchdog import Watchdog
 
@@ -126,6 +127,12 @@ class JobRunner:
         # so partial work lands on disk as it is made.
         self._spool: JobSpool | None = None
         self._caffeinate: subprocess.Popen | None = None
+        # The machine's rate limiter and the active job's spend ledger
+        # (task 000338). The limiter is shared by every node and job
+        # here — one account, one set of buckets — and survives a
+        # restart; the ledger is per job.
+        self._limiter = SharedLimiter(limits_path())
+        self._spend: SpendLedger | None = None
         try:
             self._executor = ProtocolExecutor(
                 on_download=self._announce_download,
@@ -134,6 +141,7 @@ class JobRunner:
                 on_spool_item=self._spool_item,
                 on_checkpoint=self._spool_checkpoint,
                 on_node_done=self._spool_node_done,
+                limiter=self._limiter,
             )
         except TypeError:  # an older compute without resume hooks
             self._executor = ProtocolExecutor(
@@ -145,6 +153,7 @@ class JobRunner:
         except ImportError:  # version is optional metadata, not a dependency
             runner_version = "unknown"
         self.state = RunnerState(version=runner_version, api_url=config.api_base_url)
+        self.state.limits_snapshot = self._limiter.snapshot
         self._control = ControlServer(self.state)
         # The live channel is best-effort by construction: it dials out on
         # its own thread and a runner with no channel at all claims and
@@ -595,6 +604,10 @@ class JobRunner:
         # held in memory, passed explicitly, and disposed in the
         # finally below — never env, never specs, never logs.
         secrets = job.get("integrations") or {}
+        # The run's own cap (000338), when it declared one. Node caps
+        # are mandatory and bind individually; this binds their sum,
+        # and compute chains every node budget under it.
+        self._spend = SpendLedger(spec_dict.get("budgetUsd"))
 
         # Flips on the first progress report, which is also what carries
         # the job from "preparing" to "running". The claim put it in
@@ -634,6 +647,13 @@ class JobRunner:
                 extra["resumed_from"] = resume_summary or {
                     "node": str((node or {}).get("id", "")), "reused": 0,
                 }
+            ledger = self._spend
+            if ledger is not None and ledger.changed():
+                # Money rides with progress: the running total, so the
+                # board can show spend against cap while it happens
+                # rather than after the bill.
+                extra["spent_usd"] = ledger.spent_usd
+                self.state.job_spend(ledger.spent_usd, ledger.cap_usd)
             try:
                 api.report_progress(
                     job_id, done, total,
@@ -646,6 +666,8 @@ class JobRunner:
                 # promotion owed, not silently spent.
                 promoted = True
                 reported_node = node_index
+                if "spent_usd" in extra and self._spend is not None:
+                    self._spend.mark_reported()
             except Exception as e:  # noqa: BLE001 — best-effort by design
                 print(f"[runner] progress report failed ({e}); continuing")
 
@@ -653,6 +675,9 @@ class JobRunner:
             run_kwargs: dict[str, Any] = {}
             if resume_map:
                 run_kwargs["resume"] = resume_map
+            if ("budget" in inspect.signature(self._executor.run).parameters
+                    and self._spend is not None):
+                run_kwargs["budget"] = self._spend.budget
             payload = self._executor.run(spec, on_progress=on_progress,
                                        secrets=secrets, **run_kwargs)
             if hasattr(payload, "model_dump"):
@@ -667,6 +692,14 @@ class JobRunner:
             _spool_result(job_id, cbor_bytes, digest)
             self._deliver(api, job_id, cbor_bytes, digest)
         finally:
+            # The last word on what this job cost, even if it failed:
+            # a budget refusal is exactly the case where the number
+            # matters most.
+            if self._spend is not None and self._spend.spent_usd > 0:
+                with suppress(Exception):
+                    api.report_progress(job_id, *self._last_scalar or (0, 1),
+                                        spent_usd=self._spend.spent_usd)
+            self._spend = None
             self._active_job = None
             self._active_api = None
             self._spool = None
