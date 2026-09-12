@@ -155,8 +155,16 @@ def main(argv: list[str] | None = None) -> int:
     watch_p.add_argument("jobs", nargs="+", help="Job ids to watch.")
 
     result_p = sub.add_parser(
-        "result", help="Read one result node: <job>/<node>, envelope stripped.")
-    result_p.add_argument("spec", help="<job>/<node>")
+        "result", help="Read one result node: <job>/<node>, or <node> with "
+                       "--protocol/--bind. Envelope stripped.")
+    result_p.add_argument("spec", help="<job>/<node>, or just <node> with --protocol.")
+    result_p.add_argument(
+        "--protocol", metavar="REF",
+        help="Find the job by what it RAN instead of a job id: pair with "
+             "--bind (task 000449, kills the job-id sidecars).")
+    result_p.add_argument(
+        "--bind", action="append", metavar="NAME=VALUE",
+        help="A binding to match when --protocol is given.")
     fmt_g = result_p.add_mutually_exclusive_group()
     fmt_g.add_argument("--json", dest="fmt", action="store_const", const="json",
                        help="Force JSON output.")
@@ -275,7 +283,8 @@ def main(argv: list[str] | None = None) -> int:
                                      args.budget, args.wait)
             if args.cmd == "watch":
                 return bench_cmd.watch(config, args.jobs)
-            return bench_cmd.result(config, args.spec, args.fmt, args.out)
+            return bench_cmd.result(config, args.spec, args.fmt, args.out,
+                                    args.protocol, args.bind)
 
     if args.cmd == "run":
         from mechbench_runner.exits import EXIT_CRASH

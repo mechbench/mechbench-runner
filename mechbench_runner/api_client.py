@@ -269,6 +269,16 @@ class ApiClient:
         self._raise_for_status(res)
         return res.json()
 
+    def find_runs(self, protocol: str,
+                  bindings: dict[str, str] | None = None) -> list[dict[str, Any]]:
+        """`GET /protocols/:ref/runs?binding.k=v` (task 000449) — the
+        protocol's runs, newest first, filtered by binding value, each
+        with its job id and result path. The end of the job-id sidecars."""
+        params = {f"binding.{k}": v for k, v in (bindings or {}).items()}
+        res = self._client.get(f"/protocols/{protocol}/runs", params=params)
+        self._raise_for_status(res)
+        return res.json()
+
     def get_job(self, job_id: str) -> dict[str, Any]:
         res = self._client.get(f"/jobs/{job_id}")
         self._raise_for_status(res)

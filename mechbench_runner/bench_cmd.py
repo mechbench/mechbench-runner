@@ -186,23 +186,51 @@ def _cell(v: Any) -> str:
     return str(v)
 
 
-def result(config: Config, spec: str, fmt: str, out_path: str | None) -> int:
-    """Read one node's output: `<job>/<node>`. Prints a table for a
-    metric table and JSON for anything else — with no envelope — or
-    writes the JSON to `-o file`."""
+def _resolve_result_path(api: ApiClient, spec: str, protocol: str | None,
+                         binds: list[str] | None) -> tuple[str, str] | int:
+    """`(result_base, node)` for a `result` request — from a `<job>/<node>`
+    spec, or from `--protocol <ref> --bind k=v <node>`, which finds the
+    job by what it RAN (task 000449) so no job-id sidecar is needed."""
+    if protocol is not None:
+        node = spec
+        wanted = {k: (v if isinstance(v, str) else json.dumps(v, sort_keys=True))
+                  for k, v in _binds(binds).items()}
+        runs = api.find_runs(protocol, {k: v for k, v in wanted.items()
+                                        if isinstance(v, str)})
+        # find_runs already filtered on the server; take the newest that
+        # actually has a finished job with a result.
+        done = [r for r in runs if r.get("resultPath")]
+        if not done:
+            print(f"no run of {protocol} with those bindings has a result yet",
+                  file=sys.stderr)
+            return 1
+        return f"{done[0]['resultPath']}", node
     if "/" not in spec:
-        print("result wants <job>/<node>", file=sys.stderr)
+        print("result wants <job>/<node>, or <node> with --protocol", file=sys.stderr)
         return 2
     job_id, _, node = spec.partition("/")
+    job = api.get_job(job_id)
+    job = job.get("job", job)
+    base = job.get("resultPath")
+    if not base:
+        print(f"job {job_id} has no result yet (status {job.get('status')})",
+              file=sys.stderr)
+        return 1
+    return base, node
+
+
+def result(config: Config, spec: str, fmt: str, out_path: str | None,
+           protocol: str | None = None, binds: list[str] | None = None) -> int:
+    """Read one node's output — `<job>/<node>`, or `--protocol <ref>
+    --bind k=v <node>` to find it by what it ran. Prints a table for a
+    metric table and JSON for anything else (no envelope), or writes the
+    JSON to `-o file`."""
     try:
         with ApiClient(config) as api:
-            job = api.get_job(job_id)
-            job = job.get("job", job)
-            base = job.get("resultPath")
-            if not base:
-                print(f"job {job_id} has no result yet (status "
-                      f"{job.get('status')})", file=sys.stderr)
-                return 1
+            resolved = _resolve_result_path(api, spec, protocol, binds)
+            if isinstance(resolved, int):
+                return resolved
+            base, node = resolved
             raw = api.fetch_object(f"{base}/{node}")
     except ApiError as e:
         print(f"result failed: {e}", file=sys.stderr)

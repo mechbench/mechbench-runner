@@ -25,6 +25,23 @@ with both headings.
 
 ## Unreleased
 
+## 0.11.0 — 2026-09-13
+
+### Changes that raise
+
+- _None._
+
+### Changes that alter results without raising
+
+- **`mechbench result` can find the job by what it RAN**:
+  `mechbench result <node> --protocol <ref> --bind corpus=<path>`
+  instead of `<job>/<node>`. It queries `GET /protocols/:ref/runs?
+  binding.corpus=…` (mechbench-api, task 000449), takes the newest
+  matching run with a result, and reads the node — so the six
+  hand-maintained job-id sidecars an experiment kept (and that once
+  published a wrong number when one drifted) can be deleted.
+  `api_client` gains `find_runs`.
+
 ## 0.10.0 — 2026-09-13
 
 ### Changes that raise

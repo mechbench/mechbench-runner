@@ -74,12 +74,14 @@ class TestProgressLine:
 class FakeApi:
     """A stand-in for ApiClient: scripted responses, recorded calls."""
 
-    def __init__(self, *, create=None, jobs=None, obj=None, error=None):
+    def __init__(self, *, create=None, jobs=None, obj=None, error=None, runs=None):
         self._create = create
         self._jobs = jobs or {}
         self._obj = obj
         self._error = error
+        self._runs = runs
         self.created = None
+        self.find_args = None
 
     def __enter__(self):
         return self
@@ -97,6 +99,12 @@ class FakeApi:
         seq = self._jobs.get(job_id)
         return seq.pop(0) if isinstance(seq, list) and len(seq) > 1 else (
             seq[0] if isinstance(seq, list) else seq)
+
+    def find_runs(self, protocol, bindings=None):
+        self.find_args = (protocol, bindings)
+        if self._error:
+            raise self._error
+        return self._runs or []
 
     def fetch_object(self, path):
         if self._error:
@@ -210,3 +218,38 @@ class TestResult:
         out = tmp_path / "r.json"
         assert b.result(CFG, "j/n", "auto", str(out)) == 0
         assert json.loads(out.read_text()) == {"k": 1}
+
+
+class TestResultByBinding:
+    """`result <node> --protocol X --bind corpus=Y` — find the job by
+    what it ran, the end of the job-id sidecars (task 000449)."""
+
+    def _obj(self, payload):
+        import mechbench_schema as ms
+        return ms.dump_canonical(payload)
+
+    def test_it_finds_the_run_by_binding_and_reads_the_node(self, patched, capsys):
+        env = {"payload": {"kind": "document_collection", "items": [1]},
+               "provenance": {"created_at": "now"}}
+        fake = patched(FakeApi(
+            runs=[{"jobId": "j_new", "resultPath": "o/p/results/j_new"}],
+            obj=self._obj(env)))
+        rc = b.result(CFG, "grade", "auto", None,
+                      protocol="024-variety", binds=["corpus=benji/c/animals"])
+        assert rc == 0
+        # the binding filter went to the server
+        assert fake.find_args == ("024-variety", {"corpus": "benji/c/animals"})
+        assert json.loads(capsys.readouterr().out) == {"kind": "document_collection",
+                                                       "items": [1]}
+
+    def test_no_matching_run_is_a_clean_failure(self, patched, capsys):
+        patched(FakeApi(runs=[]))
+        rc = b.result(CFG, "grade", "auto", None,
+                      protocol="024-variety", binds=["corpus=nope"])
+        assert rc == 1 and "no run of 024-variety" in capsys.readouterr().err
+
+    def test_a_run_without_a_result_yet_is_skipped(self, patched, capsys):
+        # a matching run exists but its job has not produced a result
+        patched(FakeApi(runs=[{"jobId": "j", "resultPath": None}]))
+        assert b.result(CFG, "grade", "auto", None,
+                        protocol="p", binds=["corpus=x"]) == 1
