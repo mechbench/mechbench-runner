@@ -105,9 +105,11 @@ class RunnerState:
     #: `status` can show buckets without RunnerState knowing what one is.
     limits_snapshot = None
 
-    def __init__(self, *, version: str, api_url: str) -> None:
+    def __init__(self, *, version: str, api_url: str,
+                 compute_version: str = "") -> None:
         self._lock = threading.Lock()
         self._phase = "starting"
+        self._compute_version = compute_version
         self._job: JobView | None = None
         self._model_id: str | None = None
         self._paused = False
@@ -151,6 +153,10 @@ class RunnerState:
                 "failed": self._failed,
                 "uptime_seconds": round(time.time() - self._started_at, 3),
                 "runner_version": self._version,
+                # The compute version of the RUNNING process — the one
+                # that matters, and the one that goes stale in an editable
+                # install's dist metadata (task 000452).
+                "compute_version": self._compute_version,
                 "api_url": self._api_url,
                 "pid": os.getpid(),
             }

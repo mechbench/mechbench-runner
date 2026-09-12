@@ -152,7 +152,12 @@ class JobRunner:
             from . import __version__ as runner_version
         except ImportError:  # version is optional metadata, not a dependency
             runner_version = "unknown"
-        self.state = RunnerState(version=runner_version, api_url=config.api_base_url)
+        try:
+            from mechbench_compute import __version__ as compute_version
+        except ImportError:
+            compute_version = ""
+        self.state = RunnerState(version=runner_version, api_url=config.api_base_url,
+                                 compute_version=compute_version)
         self.state.limits_snapshot = self._limiter.snapshot
         self._control = ControlServer(self.state)
         # The live channel is best-effort by construction: it dials out on

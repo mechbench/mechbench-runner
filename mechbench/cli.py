@@ -190,6 +190,15 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("pause", help="Stop claiming new jobs; finish the current one.")
     sub.add_parser("resume", help="Start claiming jobs again.")
 
+    restart_p = sub.add_parser(
+        "restart",
+        help="Restart the runner through the service manager (picks up a "
+             "code change). Refuses to interrupt a running job.")
+    restart_p.add_argument(
+        "--force", action="store_true",
+        help="Restart even while a job is running (it will be interrupted "
+             "and re-claimed).")
+
     smoke = sub.add_parser(
         "smoke",
         help="Run the in-process smoke test (skips model load by default).",
@@ -255,6 +264,51 @@ def main(argv: list[str] | None = None) -> int:
         except service_mod.UnsupportedPlatformError as exc:
             print(str(exc), file=sys.stderr)
             return 1
+
+    if args.cmd == "restart":
+        from mechbench_runner import service as service_mod
+
+        # Refuse to interrupt a running job — its progress and spend are
+        # on the server, but a mid-run restart wastes what it was doing.
+        if not args.force:
+            from mechbench_runner.control import ControlError, request
+
+            try:
+                st = request("status")
+                busy = st.get("job") is not None or st.get("phase") in (
+                    "preparing", "running", "loading-model", "downloading-model")
+                if busy:
+                    job = (st.get("job") or {}).get("id", "?")
+                    print(f"a job is running ({st.get('phase')}, {job}); "
+                          f"restart with --force to interrupt it, or wait.",
+                          file=sys.stderr)
+                    return 1
+            except ControlError:
+                pass  # no runner answering — nothing to interrupt; go ahead
+        try:
+            st = service_mod.restart()
+        except service_mod.UnsupportedPlatformError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(f"restart  {st.detail}")
+        if st.running:
+            import time
+
+            from mechbench_runner.control import ControlError, request
+
+            # The service manager reports "running" the moment the process
+            # exists, but the control socket is not answering until the
+            # runner has finished importing and bound it — poll a short
+            # window so the compute line is there when it can be.
+            for _ in range(20):
+                try:
+                    data = request("status")
+                    compute = data.get("compute_version")
+                    print(f"runner   up{f' (compute {compute})' if compute else ''}")
+                    break
+                except ControlError:
+                    time.sleep(0.5)
+        return 0 if st.running else 1
 
     if args.cmd in {"login", "logout", "whoami"}:
         from mechbench_runner import login as login_mod
@@ -391,8 +445,11 @@ def _render(data: dict) -> str:
             f"{b['available']:.0f} of {b['capacity']:.0f} left"
         )
     up = data.get("uptime_seconds", 0)
+    compute = data.get("compute_version")
+    compute_note = f" (compute {compute})" if compute else ""
     lines.append(
-        f"runner   v{data.get('runner_version')} pid {data.get('pid')}, up {up / 60:.0f}m"
+        f"runner   v{data.get('runner_version')}{compute_note} "
+        f"pid {data.get('pid')}, up {up / 60:.0f}m"
     )
     return "\n".join(lines)
 

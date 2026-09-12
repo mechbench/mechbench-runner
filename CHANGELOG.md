@@ -25,6 +25,28 @@ with both headings.
 
 ## Unreleased
 
+## 0.13.0 — 2026-09-13
+
+### Changes that raise
+
+- _None._
+
+### Changes that alter results without raising
+
+- **`mechbench restart` restarts THIS runner through its own service
+  manager** (task 000452): `launchctl kickstart -k` on macOS,
+  `systemctl --user restart` on Linux. It refuses while a job is in
+  flight unless `--force`, waits for the runner to come back (the
+  status poll, not the command's exit, is the source of truth — on
+  macOS `kickstart -k` blocks past a short timeout even on success),
+  and prints the compute version it came back on. `kill <run-child>`
+  looked right but took the supervisor with it; this does not.
+- **`mechbench status` shows the compute version** the running process
+  actually imported, next to the runner version — an editable install
+  can be paused on stale bytes, and the number now says so. The runner
+  reads `mechbench_compute.__version__` at start and carries it on the
+  status snapshot; `""` when compute is not importable.
+
 ## 0.12.0 — 2026-09-13
 
 ### Changes that raise

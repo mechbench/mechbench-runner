@@ -280,14 +280,46 @@ def linger_hint() -> str | None:
 # --- plumbing ----------------------------------------------------------------
 
 
+def restart() -> ServiceStatus:
+    """Restart the service through the service manager, then wait until
+    it is up (task 000452).
+
+    On macOS the working incantation is `launchctl kickstart -k`: it
+    kills the running instance and relaunches under the SAME supervisor
+    — `kill <run-child-pid>` looks right but takes the supervisor with
+    it, leaving no runner and a stale socket. On Linux it is
+    `systemctl --user restart`.
+    """
+    path = unit_path()
+    if not path.exists():
+        return ServiceStatus(False, False, False, path,
+                             "not installed — `mechbench install-service` first")
+    # `kickstart -k` blocks until the relaunch completes, which can take
+    # longer than the default timeout (module imports, channel connect);
+    # give it room, and let the status poll — not the command's exit — be
+    # the source of truth for "did it come back".
+    if is_macos():
+        result = _run(["launchctl", "kickstart", "-k", f"{_domain()}/{LABEL}"],
+                      check=False, timeout=90)
+    else:
+        result = _run(["systemctl", "--user", "restart", UNIT_NAME],
+                      check=False, timeout=90)
+    settled = _settled_status(attempts=40, pause=1.0)
+    if not settled.running and result.returncode != 0:
+        return ServiceStatus(True, settled.loaded, False, path,
+                             f"restart failed: {_msg(result)}")
+    return settled
+
+
 def _domain() -> str:
     return f"gui/{os.getuid()}"
 
 
-def _run(cmd: list[str], *, check: bool) -> subprocess.CompletedProcess[str]:
+def _run(cmd: list[str], *, check: bool,
+         timeout: float = 30) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(  # noqa: S603
-            cmd, capture_output=True, text=True, check=check, timeout=30
+            cmd, capture_output=True, text=True, check=check, timeout=timeout
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
