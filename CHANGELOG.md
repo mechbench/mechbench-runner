@@ -25,6 +25,31 @@ with both headings.
 
 ## Unreleased
 
+## 0.10.0 — 2026-09-13
+
+### Changes that raise
+
+- **`mechbench run` overloads.** With a PROTOCOL argument it now
+  *launches* a protocol (bind, queue, record, optionally `--wait`) —
+  the researcher's verb (task 000448). With none it is the runner
+  polling loop, exactly as before (what the supervisor invokes). A
+  bare `mechbench run` is unchanged; a typo that names a protocol no
+  longer silently starts a loop.
+
+### Changes that alter results without raising
+
+- **Three bench verbs, the ones every experiment rewrote by hand
+  (epic 000447):** `mechbench run <protocol> --bind k=v --budget N
+  [--wait]`, `mechbench watch <job>…`, `mechbench result <job>/<node>
+  [--json|--table|-o file]`. `run` records the job id before anything
+  else (to stdout and `~/.mechbench/runs.jsonl`), and finds it wherever
+  the response hides it (the `{run,jobId}` inconsistency, task 000451).
+  `watch` prints only on change and exits non-zero if any job did not
+  finish `done`. `result` strips the Emitted envelope, prints a table
+  for a metric table and JSON otherwise. A `--bind` value starting with
+  `{` or `[` is JSON (a model-ref binding is an object).
+
+
 Versions before this file existed are **not classified**. The
 convention was adopted on 2026-09-11 (task 000434) and applied
 backwards only in `mechbench-compute`, where experiment 024's numbers

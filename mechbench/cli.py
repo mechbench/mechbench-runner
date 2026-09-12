@@ -123,13 +123,48 @@ def main(argv: list[str] | None = None) -> int:
     )
     run_p = sub.add_parser(
         "run",
-        help="Run the job-runner polling loop against mechbench-api.",
+        help="Run a protocol (with a PROTOCOL arg), or the job-runner "
+             "polling loop (with none).",
     )
+    run_p.add_argument(
+        "protocol",
+        nargs="?",
+        help="A protocol ref or id to run. With none, this is the runner "
+             "loop (what the supervisor invokes).",
+    )
+    run_p.add_argument(
+        "--bind",
+        action="append",
+        metavar="NAME=VALUE",
+        help="Bind a protocol hole. A VALUE starting with { or [ is JSON "
+             "(a model-ref binding is an object).",
+    )
+    run_p.add_argument("--budget", type=float, metavar="USD",
+                       help="Spend cap for the run; required for endpoint models.")
+    run_p.add_argument("--wait", action="store_true",
+                       help="After queuing, watch to a terminal state and "
+                            "exit non-zero on failure.")
     run_p.add_argument(
         "--no-log-file",
         action="store_true",
-        help="Print to the terminal only, without the rotating log.",
+        help="Runner loop only: print to the terminal without the rotating log.",
     )
+
+    watch_p = sub.add_parser(
+        "watch", help="Watch jobs to a terminal state, printing on change.")
+    watch_p.add_argument("jobs", nargs="+", help="Job ids to watch.")
+
+    result_p = sub.add_parser(
+        "result", help="Read one result node: <job>/<node>, envelope stripped.")
+    result_p.add_argument("spec", help="<job>/<node>")
+    fmt_g = result_p.add_mutually_exclusive_group()
+    fmt_g.add_argument("--json", dest="fmt", action="store_const", const="json",
+                       help="Force JSON output.")
+    fmt_g.add_argument("--table", dest="fmt", action="store_const", const="table",
+                       help="Force table output (metric tables only).")
+    result_p.add_argument("-o", dest="out", metavar="FILE",
+                          help="Write the JSON payload to FILE.")
+    result_p.set_defaults(fmt="auto")
     status = sub.add_parser(
         "status",
         help="Ask the running runner what it is doing.",
@@ -227,6 +262,20 @@ def main(argv: list[str] | None = None) -> int:
 
         run_stdio(config)
         return 0
+
+    if args.cmd in {"run", "watch", "result"}:
+        # `run` overloads: with a PROTOCOL it launches (the researcher's
+        # verb, task 000448); with none it is the runner loop (what the
+        # supervisor invokes). `watch`/`result` are always the researcher.
+        if args.cmd != "run" or args.protocol is not None:
+            from mechbench_runner import bench_cmd
+
+            if args.cmd == "run":
+                return bench_cmd.run(config, args.protocol, args.bind,
+                                     args.budget, args.wait)
+            if args.cmd == "watch":
+                return bench_cmd.watch(config, args.jobs)
+            return bench_cmd.result(config, args.spec, args.fmt, args.out)
 
     if args.cmd == "run":
         from mechbench_runner.exits import EXIT_CRASH

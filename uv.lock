@@ -896,7 +896,7 @@ wheels = [
 
 [[package]]
 name = "mechbench"
-version = "0.8.0"
+version = "0.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
@@ -919,8 +919,8 @@ requires-dist = [
     { name = "certifi", specifier = ">=2024.2" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "mcp", specifier = ">=2,<3" },
-    { name = "mechbench-compute", specifier = ">=0.20.0" },
-    { name = "mechbench-schema", specifier = ">=0.13" },
+    { name = "mechbench-compute", specifier = ">=0.26.0" },
+    { name = "mechbench-schema", specifier = ">=0.14" },
     { name = "pydantic", specifier = ">=2.7,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
@@ -930,7 +930,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "mechbench-compute"
-version = "0.20.0"
+version = "0.60.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -944,23 +944,24 @@ dependencies = [
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "scikit-learn" },
     { name = "transformers" },
+    { name = "wasmtime" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1a/be/bc8d841aab0ea42d36a30f3a43ea3c6e469006477316a18cbb246cc2600b/mechbench_compute-0.20.0.tar.gz", hash = "sha256:784252134d51ad437ac08a3fd8bebf2724d57e6b329a09f99b55f0f1321feb3a", size = 197368, upload-time = "2026-09-08T05:49:33.256Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6e/d9/e57e8312209b442aa6632944376e9120f23f23751b760e688e09492cf1d5/mechbench_compute-0.60.0.tar.gz", hash = "sha256:70ba52d3cbac5087f107eaa6a0db70fa840d6ed22536b946e6249f441f29e8e6", size = 379948, upload-time = "2026-09-12T18:49:05.153Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/5b/dd90121a12db9f0aca6b34a422c79db39a7689503c93771267de0c932bc4/mechbench_compute-0.20.0-py3-none-any.whl", hash = "sha256:8907ab278d5fb63193baa69d83b946e7d84e812ac866e8a4ec89ea4ca758bd5a", size = 189898, upload-time = "2026-09-08T05:49:32.047Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/23/086906558fac7020ef9adc82002c35496f3aee8b28ee4e0a8bfccea0cc54/mechbench_compute-0.60.0-py3-none-any.whl", hash = "sha256:f767d77c3fb778d7c9035a3460cc1cf41b222e521e13979a0e94333f39f0ec31", size = 326571, upload-time = "2026-09-12T18:49:03.867Z" },
 ]
 
 [[package]]
 name = "mechbench-schema"
-version = "0.13.0"
+version = "0.14.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cbor2" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2b/e0/b68ef7625d546ef57d7d112d4e3894091fe0878f76ad4fcf409c40e49cd8/mechbench_schema-0.13.0.tar.gz", hash = "sha256:7aa794a59d0cb306dd46cbffd1ecc2fc3da6b8e0d27c613c93877cfbd629d557", size = 29851, upload-time = "2026-08-23T06:17:43.322Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f1/d6/4c6758c28cffb2df60ee6cb7f0d56266370c017e6777fd1d1676026f9e3d/mechbench_schema-0.14.0.tar.gz", hash = "sha256:5412d37d421d33f2605e64982df65aae804411ca7ebed51aeaef4278e66a90bc", size = 33531, upload-time = "2026-09-09T02:43:39.249Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d1/5a/e83d2050ce03c0b5b32ad89d33a32686528118fd3210bc61ff3adfb273fb/mechbench_schema-0.13.0-py3-none-any.whl", hash = "sha256:8099320d43c47aaa5674a0df2b17fb60080a9cfff8d5f61e988585e70161a6df", size = 32059, upload-time = "2026-08-23T06:17:42.198Z" },
+    { url = "https://files.pythonhosted.org/packages/07/a2/f9d0427a528556116778d0e8b2e3f13b3fc0222139d854d77010579afceb/mechbench_schema-0.14.0-py3-none-any.whl", hash = "sha256:5ca36d7129db2fc426ed64c1936ba83f05dc779a08c3ea6da956458cf90a7d88", size = 36282, upload-time = "2026-09-09T02:43:38.175Z" },
 ]
 
 [[package]]
@@ -2297,6 +2298,25 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f2/0f/3f86e61397dd33bf2ccf28188c40db6a740658aeebbbf6e7dbc101a1f487/uvicorn-0.52.4.tar.gz", hash = "sha256:73acfee47a0b133c5de13d219492d62d8a31e935f4fe6e41a232451a15379f86", size = 100627, upload-time = "2026-08-19T06:27:41.821Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/79/4a20b54ab0491485ccd8c077db2d39187c7f12b3e15485d38a7be37c81b4/uvicorn-0.52.4-py3-none-any.whl", hash = "sha256:f86e41a149d7d05a9969337e3946a9c171c06a5d42680896daaba624aeac8da1", size = 79871, upload-time = "2026-08-19T06:27:40.36Z" },
+]
+
+[[package]]
+name = "wasmtime"
+version = "48.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/42/1f/03a286dc84d83cc3274d5599543558442ba9332b676e6408ee9e1c171199/wasmtime-48.0.0.tar.gz", hash = "sha256:dba27d59209fac703e7d5753af78c2af2c1cd1ed735f520ec76dc31c60a05815", size = 128804, upload-time = "2026-08-20T19:31:57.29Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ad/e6/39da2f4047a281bce7d4651e21785942d630033931eb397cf734e7ccc048/wasmtime-48.0.0-py3-none-android_26_arm64_v8a.whl", hash = "sha256:a55abf132fe238b843a963c68cd1a30d8f686c1bc75d8fbf042d8b7a1d51ee36", size = 8800816, upload-time = "2026-08-20T19:31:28.761Z" },
+    { url = "https://files.pythonhosted.org/packages/be/d0/f4f107166a65ddf8a6d8cf74f0cea33c06a08c74fe686f8e83b194e57e8b/wasmtime-48.0.0-py3-none-android_26_x86_64.whl", hash = "sha256:d8e94276ff6c0c5ce73ee16ccbacb00b3512a4b3a664749380705d81ee06a23c", size = 9731711, upload-time = "2026-08-20T19:31:31.905Z" },
+    { url = "https://files.pythonhosted.org/packages/95/15/20fad0cb2b9cff130c225bf827e16365e02883f504297eccf172c6bb7228/wasmtime-48.0.0-py3-none-any.whl", hash = "sha256:49c9ee43e9cf59ad7453ac65dce0cc4b885837904dd3cfd45faafe930defe14a", size = 8157926, upload-time = "2026-08-20T19:31:34.74Z" },
+    { url = "https://files.pythonhosted.org/packages/89/93/911434c6c4406e6979b6cb67ba889c85633ff8d92eb0cb569fec6e2a43f7/wasmtime-48.0.0-py3-none-macosx_10_13_x86_64.whl", hash = "sha256:50e1ea81a3bec537d00e076722dfdc48978a56ea24619d8153aa1f75b11796b9", size = 9395773, upload-time = "2026-08-20T19:31:37.312Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/a6/91c9c19ed7f8e164f4db6405d872c9397be9f53e4f325d0adcd5e67598f4/wasmtime-48.0.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:ea69889a3c51702e9da5f5f441027ca934f7758f8926a4ed167b0d6877f092e8", size = 8343024, upload-time = "2026-08-20T19:31:39.922Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/92/e144fcf578fc394678c24b042efe45f3b0614acdb87ea95d8b839b208842/wasmtime-48.0.0-py3-none-manylinux1_x86_64.whl", hash = "sha256:58544d539053dff7bd4cf30c40d7a540862d683013c0dfa6ba46a063f5b682f7", size = 9796354, upload-time = "2026-08-20T19:31:42.325Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/c3/a957b226979daaeb09ec024562e9aac05e475a954537e6f150eb60bca84d/wasmtime-48.0.0-py3-none-manylinux2014_aarch64.whl", hash = "sha256:26fce3613fefbe29a28e9d659dca3326e800593858e5758cad086eb802b3b766", size = 8734885, upload-time = "2026-08-20T19:31:44.966Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/bf/00e44d1971307620d6660760ed04796405a5fb1819c8b43ec03ad85efac6/wasmtime-48.0.0-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:77f6b75db20be065e205e7af814d4e4f06784c3a00eb346e8c76148ecb4afe5a", size = 8786289, upload-time = "2026-08-20T19:31:47.99Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/55/ce68af7734a5a9424dd66a301b11c810215ec7f70230b35bed10ed312e97/wasmtime-48.0.0-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:62b241c8d5dfb59ff8af1ccaa5351f0ab7aba8cc872f7d80e0e3c95d54c13562", size = 9889697, upload-time = "2026-08-20T19:31:50.854Z" },
+    { url = "https://files.pythonhosted.org/packages/9d/12/5266bebece874ebfa3196c973b917091dd4c55e9e9da55401e312c403044/wasmtime-48.0.0-py3-none-win_amd64.whl", hash = "sha256:21fa500e70f3819a8c0539c3f0be6b3b81ec3c630bb90c47dba4d8a2c1d4c698", size = 8157931, upload-time = "2026-08-20T19:31:53.312Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/a4/bb6c90d99ad893bd42f33aa7fb386deecb55987f012c0c2f5fcaba83106d/wasmtime-48.0.0-py3-none-win_arm64.whl", hash = "sha256:09cd5e14df80a3a8d447428a548583181c568ea2e617419d23600deff21d4b82", size = 7044651, upload-time = "2026-08-20T19:31:55.63Z" },
 ]
 
 [[package]]

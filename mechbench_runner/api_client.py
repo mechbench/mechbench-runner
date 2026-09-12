@@ -260,6 +260,15 @@ class ApiClient:
         )
         self._raise_for_status(res)
 
+    def create_run(self, protocol: str, body: dict[str, Any]) -> dict[str, Any]:
+        """`POST /protocols/:ref/runs` — bind a protocol and queue its job.
+        `body` is `{bindings, budgetUsd?}`. Returns the server's reply
+        (a run and a job id); the caller records the job id at once."""
+        res = self._client.post(f"/protocols/{protocol}/runs", json=body,
+                                timeout=httpx.Timeout(90.0))
+        self._raise_for_status(res)
+        return res.json()
+
     def get_job(self, job_id: str) -> dict[str, Any]:
         res = self._client.get(f"/jobs/{job_id}")
         self._raise_for_status(res)
