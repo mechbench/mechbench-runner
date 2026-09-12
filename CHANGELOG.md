@@ -25,6 +25,24 @@ with both headings.
 
 ## Unreleased
 
+## 0.15.0 — 2026-09-13
+
+### Changes that raise
+
+- **`mechbench run` with a launch flag but no PROTOCOL exits 2.**
+  `mechbench run --wait` (or `--bind`, `--budget`) used to fall through
+  to the bare form and start the runner daemon loop in the foreground,
+  silently dropping the flag. A launch flag is a request to launch;
+  without a protocol it is a typo, and it now says so.
+
+### Changes that alter results without raising
+
+- **`mechbench restart`'s busy guard names the phases the runner
+  actually reports** — `executing`, `loading-model`, `downloading-model`
+  (control.py) — instead of `preparing`/`running`, which never occur.
+  The phase clause was dead; the `job is not None` clause carried the
+  guard, so no restart was ever wrongly allowed. Now both clauses work.
+
 ## 0.14.0 — 2026-09-13
 
 ### Changes that raise

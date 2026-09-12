@@ -275,8 +275,11 @@ def main(argv: list[str] | None = None) -> int:
 
             try:
                 st = request("status")
+                # The phases the runner actually reports while it holds
+                # work (control.py): a job in flight is `executing`, and
+                # weights on the way are `loading-model`/`downloading-model`.
                 busy = st.get("job") is not None or st.get("phase") in (
-                    "preparing", "running", "loading-model", "downloading-model")
+                    "executing", "loading-model", "downloading-model")
                 if busy:
                     job = (st.get("job") or {}).get("id", "?")
                     print(f"a job is running ({st.get('phase')}, {job}); "
@@ -329,6 +332,15 @@ def main(argv: list[str] | None = None) -> int:
         # `run` overloads: with a PROTOCOL it launches (the researcher's
         # verb, task 000448); with none it is the runner loop (what the
         # supervisor invokes). `watch`/`result` are always the researcher.
+        #
+        # A launch flag with no protocol is a typo, not a request to start
+        # the daemon in the foreground: `mechbench run --wait` used to do
+        # exactly that, silently dropping the flag. Refuse it.
+        if args.cmd == "run" and args.protocol is None and (
+                args.bind or args.budget is not None or args.wait):
+            print("run: --bind/--budget/--wait need a PROTOCOL to launch; "
+                  "a bare `run` is the runner loop.", file=sys.stderr)
+            return 2
         if args.cmd != "run" or args.protocol is not None:
             from mechbench_runner import bench_cmd
 
