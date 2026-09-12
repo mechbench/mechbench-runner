@@ -25,6 +25,21 @@ with both headings.
 
 ## Unreleased
 
+## 0.12.0 — 2026-09-13
+
+### Changes that raise
+
+- _None._
+
+### Changes that alter results without raising
+
+- **The bench verbs read the ONE response shape** now that the API has
+  one (mechbench-api, task 000451): `run` reads the bare run (`id` +
+  `jobId` at the top), and `watch`/`result` read the bare job — the
+  defensive `x.get("thing", x)` accessors and the "find the job id
+  wherever it hides" fallback are gone. Requires an API on or after the
+  000451 change (deployed the same day).
+
 ## 0.11.0 — 2026-09-13
 
 ### Changes that raise

@@ -128,26 +128,21 @@ CFG = object()  # config is passed straight to ApiClient, which is faked
 
 class TestRun:
     def test_it_records_the_job_id_before_returning(self, patched, capsys):
-        fake = patched(FakeApi(create={"run": {"id": "r1"}, "jobId": "j_abc"}))
+        # One shape now (task 000451): the bare run, with jobId on it.
+        fake = patched(FakeApi(create={"id": "r1", "jobId": "j_abc"}))
         rc = b.run(CFG, "owner/p/proto", ["model=gemma"], 1.0, wait=False)
         assert rc == 0
         # the job id is the first line of stdout, for JOB=$(mechbench run …)
         assert capsys.readouterr().out.splitlines()[0] == "j_abc"
-        # …and it is on disk, with the binding and the cap
+        # …and it is on disk, with the run id, the binding and the cap
         rec = json.loads(b.HISTORY.read_text().strip())
-        assert rec["job"] == "j_abc" and rec["bindings"] == {"model": "gemma"}
-        assert rec["budget_usd"] == 1.0
+        assert rec["job"] == "j_abc" and rec["run"] == "r1"
+        assert rec["bindings"] == {"model": "gemma"} and rec["budget_usd"] == 1.0
         assert fake.created == ("owner/p/proto", {"bindings": {"model": "gemma"},
                                                   "budgetUsd": 1.0})
 
-    def test_it_finds_the_job_id_wherever_the_response_hides_it(self, patched):
-        # task 000451: {run,jobId} vs run.jobId vs {job:{id}}
-        for resp in ({"jobId": "j1"}, {"run": {"jobId": "j2"}}, {"job": {"id": "j3"}}):
-            patched(FakeApi(create=resp))
-            assert b.run(CFG, "p", None, None, wait=False) == 0
-
     def test_no_job_id_is_a_clean_failure(self, patched, capsys):
-        patched(FakeApi(create={"run": {"id": "r1"}}))
+        patched(FakeApi(create={"id": "r1"}))  # a run with no jobId
         assert b.run(CFG, "p", None, None, wait=False) == 1
         assert "no job id" in capsys.readouterr().err
 

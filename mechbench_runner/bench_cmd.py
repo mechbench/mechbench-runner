@@ -73,12 +73,9 @@ def run(config: Config, protocol: str, binds: list[str] | None,
     except ApiError as e:
         print(f"run failed: {e}", file=sys.stderr)
         return 1
-    run_obj = out.get("run") or {}
-    run_id = run_obj.get("id") or out.get("runId")
-    # The response shape is inconsistent (task 000451): jobId at the top,
-    # or inside run, or a job object. Take the first that answers.
-    job = (out.get("jobId") or run_obj.get("jobId")
-           or (out.get("job") or {}).get("id"))
+    # One shape now (task 000451): the bare run, with `jobId` on it.
+    run_id = out.get("id")
+    job = out.get("jobId")
     if not job:
         print(f"no job id in response: {json.dumps(out)[:300]}", file=sys.stderr)
         return 1
@@ -125,8 +122,7 @@ def watch(config: Config, jobs: list[str], interval: float = 4.0) -> int:
                     print(f"{time.strftime('%H:%M:%S')} {job[:14]} (fetch error: {e})",
                           flush=True)
                     continue
-                j = j.get("job", j)
-                line = _line(j)
+                line = _line(j)  # GET /jobs/:id is the bare job (task 000451)
                 if line != last.get(job):
                     print(f"{time.strftime('%H:%M:%S')} {job[:14]} {line}", flush=True)
                     last[job] = line
@@ -209,8 +205,7 @@ def _resolve_result_path(api: ApiClient, spec: str, protocol: str | None,
         print("result wants <job>/<node>, or <node> with --protocol", file=sys.stderr)
         return 2
     job_id, _, node = spec.partition("/")
-    job = api.get_job(job_id)
-    job = job.get("job", job)
+    job = api.get_job(job_id)  # the bare job (task 000451)
     base = job.get("resultPath")
     if not base:
         print(f"job {job_id} has no result yet (status {job.get('status')})",
