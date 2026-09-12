@@ -25,6 +25,29 @@ with both headings.
 
 ## Unreleased
 
+## 0.14.0 — 2026-09-13
+
+### Changes that raise
+
+- **The bench verbs need mechbench-compute >= 0.61.0.** `run`, `watch`
+  and `result` are now thin wrappers over the bench client library
+  (`mechbench_compute.bench.launch` / `watch` / `results_for` /
+  `result`, task 000450) — one implementation of the launch/watch/find/
+  read plumbing, shared with the experiment scripts, instead of a second
+  copy in the runner. An older compute has no such functions, so the pin
+  floor moves to 0.61.0.
+
+### Changes that alter results without raising
+
+- **The verbs' transport and envelope handling are the library's now.**
+  `ApiClient.create_run` and `find_runs` are removed — the library owns
+  binding a protocol and finding a run by binding; `get_job` and
+  `fetch_object` stay for the job loop and the MCP server. Output is
+  unchanged: the same job-id line, change-only progress and metric
+  table, applied to the payload the library already unwrapped. A
+  transient poll error during `watch` is now shown as a `(fetch error:
+  …)` line and retried, rather than swallowed.
+
 ## 0.13.0 — 2026-09-13
 
 ### Changes that raise

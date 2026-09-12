@@ -260,24 +260,11 @@ class ApiClient:
         )
         self._raise_for_status(res)
 
-    def create_run(self, protocol: str, body: dict[str, Any]) -> dict[str, Any]:
-        """`POST /protocols/:ref/runs` — bind a protocol and queue its job.
-        `body` is `{bindings, budgetUsd?}`. Returns the server's reply
-        (a run and a job id); the caller records the job id at once."""
-        res = self._client.post(f"/protocols/{protocol}/runs", json=body,
-                                timeout=httpx.Timeout(90.0))
-        self._raise_for_status(res)
-        return res.json()
-
-    def find_runs(self, protocol: str,
-                  bindings: dict[str, str] | None = None) -> list[dict[str, Any]]:
-        """`GET /protocols/:ref/runs?binding.k=v` (task 000449) — the
-        protocol's runs, newest first, filtered by binding value, each
-        with its job id and result path. The end of the job-id sidecars."""
-        params = {f"binding.{k}": v for k, v in (bindings or {}).items()}
-        res = self._client.get(f"/protocols/{protocol}/runs", params=params)
-        self._raise_for_status(res)
-        return res.json()
+    # Binding a protocol and finding a run by binding moved to the bench
+    # client library (mechbench_compute.bench.launch / results_for, task
+    # 000450) — the `run`/`result` verbs are thin wrappers over it, so the
+    # runner keeps no second copy of that transport. `get_job` and
+    # `fetch_object` stay: the job loop and the MCP server use them.
 
     def get_job(self, job_id: str) -> dict[str, Any]:
         res = self._client.get(f"/jobs/{job_id}")
