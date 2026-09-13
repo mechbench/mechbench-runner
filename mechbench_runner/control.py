@@ -246,6 +246,17 @@ class RunnerState:
             self._phase = "idle"
         self.emit("job.failed", {"id": job_id, "message": message})
 
+    def job_interrupted(self, job_id: str, message: str) -> None:
+        """The job stopped without being wrong (000464): the API was
+        unreachable while storing a result. Deliberately NOT counted in
+        `_failed` — `mechbench status` reporting a failure for a job that
+        is about to resume and finish is a lie the operator then has to
+        un-learn."""
+        with self._lock:
+            self._job = None
+            self._phase = "idle"
+        self.emit("job.interrupted", {"id": job_id, "message": message})
+
     def signed_out(self, message: str) -> None:
         """The API rejected this machine's credential (task 000284).
 

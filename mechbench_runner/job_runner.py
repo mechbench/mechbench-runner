@@ -325,7 +325,10 @@ class JobRunner:
                     self.state.job_finished(job["id"])
                 except Exception as exc:  # noqa: BLE001 — report + continue
                     traceback.print_exc()
-                    self.state.job_failed(job.get("id", "?"), str(exc))
+                    if self._is_transport(exc):
+                        self.state.job_interrupted(job.get("id", "?"), str(exc))
+                    else:
+                        self.state.job_failed(job.get("id", "?"), str(exc))
                     self._report_error(api, job, exc)
 
         self._stop_channel()
@@ -786,6 +789,30 @@ class JobRunner:
         _clear_spool(job_id)
         print(f"[runner] {job_id} done ({len(cbor_bytes)} CBOR bytes)")
 
+    @staticmethod
+    def _is_transport(exc: BaseException) -> bool:
+        """Did the job die because the API was unreachable, rather than
+        because its own compute was wrong? (000464)
+
+        Asked by class, not by string match, so compute owns the
+        judgement: `bench.BenchTransportError` is raised only after the
+        bounded retry has exhausted itself on a dead socket, a timeout, or
+        a 5xx. Older compute has no such class and every failure stays a
+        failure, which is the previous behaviour.
+        """
+        try:
+            from mechbench_compute.bench import BenchTransportError
+        except Exception:  # noqa: BLE001 — older compute: nothing to match
+            return False
+        seen: set[int] = set()
+        cur: BaseException | None = exc
+        while cur is not None and id(cur) not in seen:
+            if isinstance(cur, BenchTransportError):
+                return True
+            seen.add(id(cur))
+            cur = cur.__cause__ or cur.__context__
+        return False
+
     def _report_error(
         self, api: ApiClient, job: dict[str, Any], exc: Exception
     ) -> None:
@@ -794,6 +821,25 @@ class JobRunner:
             return
         import re as _re
         message = _re.sub(r"hf_[A-Za-z0-9]{8,}", "hf_[redacted]", str(exc))
+
+        # A job whose compute succeeded and whose UPLOAD did not has not
+        # failed; the platform has. Interrupt it instead — claim,
+        # progress and resultPath survive, the spool stays, and the next
+        # claim resumes from the node boundary rather than from zero.
+        # Experiment 014 lost 35 minutes of generation twice to a single
+        # un-retried PUT before this branch existed (000464).
+        if self._is_transport(exc):
+            reason = (f"the API was unreachable while storing a result, after "
+                      f"retries: {message}")
+            try:
+                api.interrupt_job(job_id, reason, timeout=15.0)
+            except Exception:  # noqa: BLE001 — reconciliation retries
+                print(f"[runner] {job_id}: could not report the interrupt; "
+                      f"reconciliation will")
+            print(f"[runner] {job_id}: interrupted, not failed — transport "
+                  f"({message}); spool kept for resume")
+            return
+
         try:
             api.fail_job(job_id, message)
         except Exception:  # noqa: BLE001 — best-effort

@@ -25,6 +25,39 @@ with both headings.
 
 ## Unreleased
 
+## 0.18.0 — 2026-09-12
+
+### Changes that raise
+
+- _None._
+
+### Changes that alter results without raising
+
+- **A job whose UPLOAD failed is now `interrupted`, not `failed`** (task
+  000464). The old path called `fail_job` and then `_clear_spool`, which is
+  correct for a block that raised — its partials would mislead a later
+  reader — and wrong when the compute succeeded and only the upload did
+  not. In that case the spool was the only surviving copy of the work, and
+  deleting it threw the work away.
+
+  The job is now interrupted instead, which is the state epic 000320 built
+  for exactly this: claim, progress and `resultPath` survive on the server,
+  the spool stays on disk, and the next claim resumes from the items
+  already spooled rather than from zero. Experiment 014 lost about 35
+  minutes of generation twice to the old behaviour.
+
+  The distinction is drawn by exception CLASS, not by matching the message:
+  compute raises `bench.BenchTransportError` only after its bounded retry
+  has exhausted itself (compute 0.68.0), and the cause chain is walked so a
+  wrapped node error is still recognised. Against older compute there is no
+  such class and every failure remains a failure, which is the previous
+  behaviour.
+
+- **`job.interrupted` on the control channel**, and an interrupt is no
+  longer counted as a failure in `mechbench status`. Reporting a failure
+  for a job that is about to resume and finish is a lie an operator then
+  has to un-learn.
+
 ## 0.17.0 — 2026-09-13
 
 ### Changes that raise
