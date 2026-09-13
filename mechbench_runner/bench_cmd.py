@@ -103,6 +103,26 @@ def run(config: Config, protocol: str, binds: list[str] | None,
     return 0
 
 
+def cancel(config: Config, jobs: list[str], reason: str = "") -> int:
+    """Withdraw queued work (task 000463). Takes several ids, because
+    draining a queue is the reason this exists; reports each one and
+    exits non-zero if any could not be cancelled."""
+    _connect(config)
+    failed = 0
+    for job in jobs:
+        try:
+            out = bench.cancel(job, reason=reason)
+        except bench.BenchError as e:
+            print(f"{job}: {e}", file=sys.stderr)
+            failed += 1
+            continue
+        if out.get("alreadyCancelled"):
+            print(f"{job} was already cancelled")
+        else:
+            print(f"{job} cancelled (was {out.get('from')})")
+    return 1 if failed else 0
+
+
 def _line(j: dict[str, Any]) -> str:
     num, den = j.get("progressNum"), j.get("progressDen")
     node = (j.get("progressNode") or {}).get("id")

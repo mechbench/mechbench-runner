@@ -154,6 +154,14 @@ def main(argv: list[str] | None = None) -> int:
         "watch", help="Watch jobs to a terminal state, printing on change.")
     watch_p.add_argument("jobs", nargs="+", help="Job ids to watch.")
 
+    cancel_p = sub.add_parser(
+        "cancel",
+        help="Withdraw queued jobs before a runner claims them.")
+    cancel_p.add_argument("jobs", nargs="+", help="Job ids to cancel.")
+    cancel_p.add_argument(
+        "--reason", default="",
+        help="Why, recorded on the job and in the audit log.")
+
     result_p = sub.add_parser(
         "result", help="Read one result node: <job>/<node>, or <node> with "
                        "--protocol/--bind. Envelope stripped.")
@@ -363,6 +371,11 @@ def main(argv: list[str] | None = None) -> int:
 
         run_stdio(config)
         return 0
+
+    if args.cmd == "cancel":
+        from mechbench_runner import bench_cmd
+
+        return bench_cmd.cancel(config, args.jobs, args.reason)
 
     if args.cmd in {"run", "watch", "result"}:
         # `run` overloads: with a PROTOCOL it launches (the researcher's

@@ -142,6 +142,40 @@ class TestWatch:
         assert rc == 0
 
 
+class TestCancel:
+    """Draining a queue is the reason this verb exists, so it takes
+    several ids and reports each one (task 000463)."""
+
+    def test_it_cancels_each_id_and_says_what_each_was(self, patched, capsys):
+        seen = []
+
+        def cancel(job, reason=""):
+            seen.append((job, reason))
+            return {"ok": True, "status": "cancelled", "from": "queued"}
+        patched(cancel=cancel)
+        assert b.cancel(CFG, ["j_a", "j_b"], "duplicate") == 0
+        assert seen == [("j_a", "duplicate"), ("j_b", "duplicate")]
+        out = capsys.readouterr().out
+        assert "j_a cancelled (was queued)" in out and "j_b cancelled" in out
+
+    def test_an_already_cancelled_job_is_not_an_error(self, patched, capsys):
+        patched(cancel=lambda job, reason="": {"ok": True, "status": "cancelled",
+                                               "alreadyCancelled": True})
+        assert b.cancel(CFG, ["j_a"], "") == 0
+        assert "already cancelled" in capsys.readouterr().out
+
+    def test_a_refusal_exits_non_zero_but_still_tries_the_rest(self, patched, capsys):
+        def cancel(job, reason=""):
+            if job == "j_running":
+                raise BenchError("409: a running job cannot be cancelled")
+            return {"ok": True, "status": "cancelled", "from": "queued"}
+        patched(cancel=cancel)
+        assert b.cancel(CFG, ["j_running", "j_queued"], "") == 1
+        cap = capsys.readouterr()
+        assert "running job cannot be cancelled" in cap.err
+        assert "j_queued cancelled" in cap.out  # the rest were still done
+
+
 class TestResult:
     def test_a_document_payload_prints_json(self, patched, capsys):
         seen = {}

@@ -25,6 +25,22 @@ with both headings.
 
 ## Unreleased
 
+## 0.17.0 — 2026-09-13
+
+### Changes that raise
+
+- **Pin floor moves to mechbench-compute >= 0.67.0** for `bench.cancel`.
+
+### Changes that alter results without raising
+
+- **`mechbench cancel <job>…`** withdraws queued work (task 000463).
+  Takes several ids, because draining a queue is the reason it exists,
+  and reports each one (`cancelled (was queued)`, or `was already
+  cancelled`); a refusal goes to stderr and the others are still tried,
+  with a non-zero exit if any failed. `--reason` is recorded on the job
+  and in the audit log. A thin wrapper over `bench.cancel`, like the
+  other bench verbs.
+
 ## 0.16.0 — 2026-09-13
 
 ### Changes that raise
