@@ -25,6 +25,20 @@ with both headings.
 
 ## Unreleased
 
+## 0.21.0 — 2026-09-13
+
+### Changes that raise
+
+- **Floors compute at 0.71.0**, whose `bench.emit` refuses a body over
+  the API's 64 MiB object limit before sending it (task 000484). A
+  runner on this version therefore fails such a job in one line with the
+  size named, instead of retrying an upload the API now answers with 413
+  and then interrupting for a resume. No runner code changed.
+
+### Changes that alter results without raising
+
+- _None._
+
 ## 0.20.0 — 2026-09-13
 
 ### Changes that raise
