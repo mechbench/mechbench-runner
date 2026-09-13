@@ -120,9 +120,19 @@ class ApiClient:
             headers={"authorization": f"Bearer {api_key}"},
             timeout=httpx.Timeout(30.0),
         )
+        #: Per-claim tokens by job id (000491): the secret the claim
+        #: returned, sent as X-Claim-Token on every job-scoped write so
+        #: the server can tell THIS claim from a stale process holding the
+        #: same key. Kept in memory; the spool persists it beside the
+        #: result for a late delivery after a restart.
+        self.claim_tokens: dict[str, str] = {}
 
     def close(self) -> None:
         self._client.close()
+
+    def _job_headers(self, job_id: str) -> dict[str, str]:
+        tok = self.claim_tokens.get(job_id)
+        return {"x-claim-token": tok} if tok else {}
 
     def __enter__(self) -> ApiClient:
         return self
@@ -153,12 +163,21 @@ class ApiClient:
 
     def claim_next_job(self) -> dict[str, Any] | None:
         """Call `GET /jobs/next`. Returns None on 204 (no work)."""
+        # Ask for a per-claim token (000491). An API from before this
+        # ignores the header and returns none; an API with it issues one
+        # only to runners that ask, so neither side breaks the other.
         res = self._client.get(
-            "/jobs/next", params={"capabilities": self.CAPABILITIES})
+            "/jobs/next", params={"capabilities": self.CAPABILITIES},
+            headers={"x-claim-token-supported": "1"})
         if res.status_code == 204:
             return None
         self._raise_for_status(res)
-        return res.json()
+        job = res.json()
+        # The claim's secret rides in the claim response, once (000491).
+        tok = job.get("claimToken") if isinstance(job, dict) else None
+        if tok and job.get("id"):
+            self.claim_tokens[str(job["id"])] = str(tok)
+        return job
 
     def report_progress(self, job_id: str, num: int, den: int, *,
                         unit: str | None = None,
@@ -192,21 +211,24 @@ class ApiClient:
             # (000338). The running TOTAL, never a delta, so a dropped
             # report costs nothing.
             body["spentUsd"] = round(float(spent_usd), 6)
-        res = self._client.patch(f"/jobs/{job_id}/progress", json=body)
+        res = self._client.patch(f"/jobs/{job_id}/progress", json=body,
+                                 headers=self._job_headers(job_id))
         self._raise_for_status(res)
 
     def declare_preparing(self, job_id: str, steps: list[dict]) -> None:
         """PATCH `/jobs/:id/preparing` with the whole plan, so the board can
         show what is going to happen before any of it has."""
         self._raise_for_status(
-            self._client.patch(f"/jobs/{job_id}/preparing", json={"steps": steps})
+            self._client.patch(f"/jobs/{job_id}/preparing", json={"steps": steps},
+                               headers=self._job_headers(job_id))
         )
 
     def report_preparing_step(self, job_id: str, step: dict) -> None:
         """PATCH one step by key. Best-effort, like progress: a failed report
         degrades the display, it never fails the job."""
         self._raise_for_status(
-            self._client.patch(f"/jobs/{job_id}/preparing", json={"step": step})
+            self._client.patch(f"/jobs/{job_id}/preparing", json={"step": step},
+                               headers=self._job_headers(job_id))
         )
 
     def fail_job(self, job_id: str, message: str,
@@ -218,7 +240,8 @@ class ApiClient:
             # The watchdog's dying breath: a bounded wait, because the
             # process is presumed stuck and MUST still exit.
             kwargs["timeout"] = timeout
-        res = self._client.post(f"/jobs/{job_id}/fail", **kwargs)
+        res = self._client.post(f"/jobs/{job_id}/fail",
+                                headers=self._job_headers(job_id), **kwargs)
         self._raise_for_status(res)
 
     def interrupt_job(self, job_id: str, message: str,
@@ -231,7 +254,8 @@ class ApiClient:
         kwargs: dict = {"json": {"message": message[:2000]}}
         if timeout is not None:
             kwargs["timeout"] = timeout
-        res = self._client.post(f"/jobs/{job_id}/interrupt", **kwargs)
+        res = self._client.post(f"/jobs/{job_id}/interrupt",
+                                headers=self._job_headers(job_id), **kwargs)
         self._raise_for_status(res)
 
     def complete_job_cbor(
@@ -244,6 +268,7 @@ class ApiClient:
             f"/jobs/{job_id}/complete",
             content=cbor_bytes,
             headers={
+                **self._job_headers(job_id),
                 "content-type": "application/cbor",
                 "x-content-hash": content_hash,
             },
@@ -257,6 +282,7 @@ class ApiClient:
         res = self._client.post(
             f"/jobs/{job_id}/complete",
             json={"resultJson": result_json, "contentHash": content_hash},
+            headers=self._job_headers(job_id),
         )
         self._raise_for_status(res)
 

@@ -64,17 +64,47 @@ MAX_TRANSPORT_RESUMES = 2
 TRANSPORT_INTERRUPT_PREFIX = "the API was unreachable while storing a result"
 
 
-def _spool_result(job_id: str, cbor_bytes: bytes, digest: str) -> None:
+def _spool_result(job_id: str, cbor_bytes: bytes, digest: str,
+                  claim_token: str | None = None) -> None:
     """Persist a finished result BEFORE the upload is attempted (epic
     000320). Written whole-then-renamed so a crash mid-write leaves no
     half file; the digest rides alongside so reconciliation can
-    re-deliver without re-hashing a file it did not write."""
+    re-deliver without re-hashing a file it did not write.
+
+    The claim token rides alongside too (000491): a late delivery after a
+    restart is only accepted if it carries the token of the claim that
+    produced the result, and the process that knew it is gone."""
     d = spool_dir() / job_id
     d.mkdir(mode=0o700, parents=True, exist_ok=True)
     tmp = d / "result.cbor.tmp"
     tmp.write_bytes(cbor_bytes)
     os.replace(tmp, d / "result.cbor")
     (d / "result.sha256").write_text(digest)
+    if claim_token:
+        tok = d / "claim.token"
+        tok.write_text(claim_token)
+        tok.chmod(0o600)
+
+
+def _spooled_claim_token(job_id: str) -> str | None:
+    tok = spool_dir() / job_id / "claim.token"
+    return tok.read_text().strip() if tok.is_file() else None
+
+
+def _claim_token_of(api: Any, job_id: str) -> str | None:
+    """The token the client holds for this job, if the client keeps any:
+    an ApiClient does; a test's recording fake need not."""
+    store = getattr(api, "claim_tokens", None)
+    return store.get(job_id) if isinstance(store, dict) else None
+
+
+def _remember_claim_token(api: Any, job_id: str, token: str) -> None:
+    """Hand a spooled token back to the client for a late delivery,
+    never overriding one the client already holds for the job — a
+    re-claim in this process issued a fresher one."""
+    store = getattr(api, "claim_tokens", None)
+    if isinstance(store, dict):
+        store.setdefault(job_id, token)
 
 
 def _spooled_result(job_id: str) -> tuple[bytes, str] | None:
@@ -385,6 +415,11 @@ class JobRunner:
             if found is None:
                 continue
             cbor_bytes, digest = found
+            # The claim that produced this result (000491): the process
+            # that knew the token is gone; the spool remembers it.
+            tok = _spooled_claim_token(job_id)
+            if tok:
+                _remember_claim_token(api, job_id, tok)
             try:
                 j = api.get_job(job_id)
             except Exception as e:  # noqa: BLE001 — next pass retries
@@ -595,6 +630,14 @@ class JobRunner:
             # The whole result already exists here: the previous process
             # finished but its upload never landed. Nothing to compute.
             cbor_bytes, digest = spooled
+            # Deliver under the CURRENT claim (000491). A re-claim in this
+            # process already holds the fresh token, and that is the one
+            # the server now expects; the spooled token is only for a
+            # delivery by a process that never claimed — reconciliation —
+            # where the row's hash is still the one that produced the bytes.
+            tok = _spooled_claim_token(job_id)
+            if tok:
+                _remember_claim_token(api, job_id, tok)
             print(f"[runner] {job_id}: finished result found in spool; delivering")
             self.state.job_claimed(job_id, kind, model_id)
             with suppress(Exception):
@@ -732,7 +775,8 @@ class JobRunner:
             # on disk, and no server state can make this process discard
             # it. The upload is attempted now and, failing that, by
             # reconciliation until the server takes it.
-            _spool_result(job_id, cbor_bytes, digest)
+            _spool_result(job_id, cbor_bytes, digest,
+                          _claim_token_of(api, job_id))
             self._deliver(api, job_id, cbor_bytes, digest)
         finally:
             # The last word on what this job cost, even if it failed:

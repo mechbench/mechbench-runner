@@ -25,6 +25,26 @@ with both headings.
 
 ## Unreleased
 
+## 0.22.0 — 2026-09-13
+
+### Changes that raise
+
+- _None._
+
+### Changes that alter results without raising
+
+- **Every job-scoped write carries the claim's token** (task 000491). The
+  claim response now returns a per-claim secret once, as `claimToken`;
+  the runner sends it as `X-Claim-Token` on progress, preparing, interrupt,
+  fail and complete, and persists it beside the spooled result so a late
+  delivery after a restart still carries the claim that produced it. The
+  server rotates the token on every re-claim, so a stale process holding
+  the same key can no longer act on a job that has since been claimed
+  again — which is the case the key check alone could not express. An
+  API from before this returns no token and the runner sends no header;
+  a job claimed before this has no hash and the server lets it pass. No
+  result changes.
+
 ## 0.21.0 — 2026-09-13
 
 ### Changes that raise
