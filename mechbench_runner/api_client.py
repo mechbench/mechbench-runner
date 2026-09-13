@@ -275,6 +275,56 @@ class ApiClient:
         )
         self._raise_for_status(res)
 
+    # --- the presigned result upload (000492) -------------------------------
+    #
+    # A result larger than the API instance can hold never passes through
+    # it: ask for a GRANT (a presigned PUT bound to the job's own result
+    # key, the exact length and the sha256), PUT the bytes straight to
+    # object storage, then FINALIZE with the hash. The API confirms the
+    # store's account of what landed before the job is done.
+
+    def request_result_upload(self, job_id: str, content_hash: str,
+                              size_bytes: int,
+                              kind: str | None = None) -> dict[str, Any] | None:
+        """`POST /jobs/:id/result-upload`. Returns the grant, or None when
+        this deployment's store cannot grant one (501) — the caller then
+        takes the direct path. Any other refusal raises."""
+        body: dict[str, Any] = {"contentHash": content_hash, "sizeBytes": size_bytes}
+        if kind:
+            body["kind"] = kind
+        res = self._client.post(f"/jobs/{job_id}/result-upload", json=body,
+                                headers=self._job_headers(job_id))
+        if res.status_code == 501:
+            return None
+        self._raise_for_status(res)
+        return res.json()
+
+    @staticmethod
+    def upload_to_grant(grant: dict[str, Any], cbor_bytes: bytes,
+                        timeout: float = 600.0) -> None:
+        """PUT the bytes to the grant's URL with exactly the headers the
+        grant names — they are part of the signature. No bearer token:
+        this is object storage, not the API, and the URL is the
+        capability."""
+        up = grant["upload"]
+        res = httpx.put(up["url"], content=cbor_bytes, headers=dict(up["headers"]),
+                        timeout=httpx.Timeout(timeout))
+        if res.status_code >= 400:
+            raise RuntimeError(
+                f"upload to object storage refused: {res.status_code} "
+                f"{res.text[:300]}")
+
+    def complete_job_uploaded(self, job_id: str, content_hash: str,
+                              kind: str | None = None) -> None:
+        """Finalize a presigned upload: `POST /jobs/:id/complete` with
+        `{uploaded: true, contentHash}` and no body."""
+        body: dict[str, Any] = {"uploaded": True, "contentHash": content_hash}
+        if kind:
+            body["kind"] = kind
+        res = self._client.post(f"/jobs/{job_id}/complete", json=body,
+                                headers=self._job_headers(job_id))
+        self._raise_for_status(res)
+
     def complete_job_json(
         self, job_id: str, result_json: str, content_hash: str
     ) -> None:

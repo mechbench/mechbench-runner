@@ -25,6 +25,28 @@ with both headings.
 
 ## Unreleased
 
+## 0.23.0 — 2026-09-13
+
+### Changes that raise
+
+- _None._
+
+### Changes that alter results without raising
+
+- **A large result goes straight to object storage under a grant** (task
+  000492). Above 8 MiB the runner asks `POST /jobs/:id/result-upload` for
+  a presigned PUT bound to the job's own result key, the exact length and
+  the sha256; PUTs the bytes there — no bearer token, the URL is the
+  capability, and the store rejects any other bytes; then finalizes with
+  `/complete {uploaded: true, contentHash}`. Below the threshold, or when
+  the deployment's store answers 501 `UPLOAD_GRANT_UNSUPPORTED`, the
+  direct completion is used as before. Both the first delivery and a
+  reconcile-time late delivery take the same chooser, so a large result
+  is never pushed at the API's 64 MiB body cap by either.
+  `MECHBENCH_PRESIGN_THRESHOLD_BYTES` overrides the threshold; 0 forces
+  the grant path, which is how it is exercised live. No result changes;
+  what changes is that results the instance could not hold now land.
+
 ## 0.22.0 — 2026-09-13
 
 ### Changes that raise

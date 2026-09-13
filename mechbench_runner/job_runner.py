@@ -57,6 +57,24 @@ LEGACY_STALE_SECONDS = 900.0
 #: 35-minute generation node turned that into an unbounded loop, so the
 #: bound is the thing that makes resuming safe rather than optimistic.
 MAX_TRANSPORT_RESUMES = 2
+#: Results above this go to object storage under a grant rather than
+#: through the API (000492). Well under the API's 64 MiB body cap, so a
+#: result that would be refused directly is never attempted directly;
+#: high enough that the two extra round trips are not paid on the small
+#: results that are the common case. MECHBENCH_PRESIGN_THRESHOLD_BYTES
+#: overrides it — set to 0 to force every result through the grant path,
+#: which is how the path is exercised live without a multi-megabyte job.
+PRESIGN_THRESHOLD_BYTES = 8 * 1024 * 1024
+
+
+def _presign_threshold() -> int:
+    raw = os.environ.get("MECHBENCH_PRESIGN_THRESHOLD_BYTES")
+    if raw is None or not raw.strip():
+        return PRESIGN_THRESHOLD_BYTES
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return PRESIGN_THRESHOLD_BYTES
 #: The interrupt reason a transport failure is recorded under. The server
 #: keeps it as the job's `errorMessage` across the resume, which is how
 #: a later claim — by this process or via reconciliation — can tell a
@@ -440,7 +458,7 @@ class JobRunner:
                         "delivered from this machine's spool",
                         timeout=15.0,
                     )
-                api.complete_job_cbor(job_id, cbor_bytes, f"sha256:{digest}")
+                self._upload_result(api, job_id, cbor_bytes, digest)
             except Exception as e:  # noqa: BLE001 — keep the spool, retry later
                 print(f"[runner] spool: {job_id} not accepted yet ({e})")
                 continue
@@ -854,6 +872,26 @@ class JobRunner:
             with suppress(Exception):
                 proc.terminate()
 
+    @staticmethod
+    def _upload_result(api: ApiClient, job_id: str,
+                       cbor_bytes: bytes, digest: str) -> None:
+        """Get the finished result onto the server, by whichever path its
+        size wants (000492): above the threshold, a grant, a PUT straight
+        to object storage, and a finalize; otherwise, or when this
+        deployment's store cannot grant, the direct completion. Both the
+        first delivery and a reconcile-time late delivery come through
+        here, so a large result is never attempted through the API's
+        body cap by either."""
+        content_hash = f"sha256:{digest}"
+        grant = None
+        if len(cbor_bytes) > _presign_threshold():
+            grant = api.request_result_upload(job_id, content_hash, len(cbor_bytes))
+        if grant is not None:
+            api.upload_to_grant(grant, cbor_bytes)
+            api.complete_job_uploaded(job_id, content_hash)
+        else:
+            api.complete_job_cbor(job_id, cbor_bytes, content_hash)
+
     def _deliver(self, api: ApiClient, job_id: str,
                  cbor_bytes: bytes, digest: str) -> None:
         """Upload a spooled result. Refusal is not failure: the job's
@@ -861,9 +899,13 @@ class JobRunner:
         409 (reaped meanwhile, or still `preparing` after a re-claim)
         and a dead network both leave the spool in place for
         `_flush_spool` — the job is never FAILED over a delivery
-        problem."""
+        problem.
+
+        A large result takes the presigned path (000492): grant, PUT to
+        object storage, finalize. A store that cannot grant says so and
+        the direct path is taken instead."""
         try:
-            api.complete_job_cbor(job_id, cbor_bytes, f"sha256:{digest}")
+            self._upload_result(api, job_id, cbor_bytes, digest)
         except Exception as e:  # noqa: BLE001 — keep the spool, retry later
             print(f"[runner] {job_id}: result spooled; upload not accepted "
                   f"yet ({e}) — reconciliation retries")
