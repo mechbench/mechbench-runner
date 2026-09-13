@@ -266,43 +266,79 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     if args.cmd == "restart":
+        import os
+        import signal as signal_mod
+        import time
+
         from mechbench_runner import service as service_mod
+        from mechbench_runner.control import ControlError, request
 
-        # Refuse to interrupt a running job — its progress and spend are
-        # on the server, but a mid-run restart wastes what it was doing.
-        if not args.force:
-            from mechbench_runner.control import ControlError, request
+        # Who is serving, and are they busy? Both matter: the pid is the
+        # identity a restart has to change, and a job in flight is work
+        # that must be handed back to the server rather than dropped.
+        before: int | None = None
+        busy_job: str | None = None
+        try:
+            snap = request("status")
+            pid = snap.get("pid")
+            before = int(pid) if isinstance(pid, int) else None
+            if snap.get("orphaned"):
+                print(f"note: pid {before} is an ORPHAN — its supervisor is "
+                      f"gone, so the service manager cannot reach it "
+                      f"(task 000462).")
+            if snap.get("job") is not None or snap.get("phase") in (
+                    "executing", "loading-model", "downloading-model"):
+                busy_job = (snap.get("job") or {}).get("id")
+        except ControlError:
+            pass  # nothing answering — nothing to interrupt
 
+        if busy_job and not args.force:
+            print(f"a job is running ({busy_job}), and SIGTERM means "
+                  f"'finish it first' — so a restart now would wait, not "
+                  f"restart.\n  `restart --force` interrupts it on the server "
+                  f"(its claim, progress and result path survive, and it can "
+                  f"resume), or wait for it to finish.", file=sys.stderr)
+            return 1
+
+        if busy_job:
+            # --force abandons the job NOW, and that has to reach the
+            # SERVER first: an interrupted job keeps its claim, progress
+            # and resultPath and is re-claimable (epic 000320), where a
+            # job whose runner merely vanished waits on the watchdog.
+            print(f"interrupting {busy_job} so it can be resumed…")
             try:
-                st = request("status")
-                # The phases the runner actually reports while it holds
-                # work (control.py): a job in flight is `executing`, and
-                # weights on the way are `loading-model`/`downloading-model`.
-                busy = st.get("job") is not None or st.get("phase") in (
-                    "executing", "loading-model", "downloading-model")
-                if busy:
-                    job = (st.get("job") or {}).get("id", "?")
-                    print(f"a job is running ({st.get('phase')}, {job}); "
-                          f"restart with --force to interrupt it, or wait.",
-                          file=sys.stderr)
-                    return 1
-            except ControlError:
-                pass  # no runner answering — nothing to interrupt; go ahead
+                from mechbench_runner.api_client import ApiClient
+
+                with ApiClient(config) as api:
+                    api.interrupt_job(busy_job, "mechbench restart --force")
+            except Exception as exc:  # noqa: BLE001 — advisory, never fatal
+                print(f"  could not interrupt it on the server: {exc}",
+                      file=sys.stderr)
+
         try:
             st = service_mod.restart()
+            # SIGTERM is a request the runner is entitled to finish a job
+            # under, and an orphan is not the service manager's to stop at
+            # all. A FORCED restart therefore escalates, by pid, once.
+            if args.force and before and service_mod.serving_pid() == before:
+                print(f"  pid {before} did not yield; stopping it.")
+                try:
+                    os.kill(before, signal_mod.SIGKILL)
+                except (ProcessLookupError, PermissionError) as exc:
+                    print(f"  could not stop pid {before}: {exc}",
+                          file=sys.stderr)
+                time.sleep(2.0)
+                st = service_mod.restart()
         except service_mod.UnsupportedPlatformError as exc:
             print(str(exc), file=sys.stderr)
             return 1
+
         print(f"restart  {st.detail}")
         if st.running:
-            import time
-
-            from mechbench_runner.control import ControlError, request
-
             # The service manager reports "running" the moment the process
             # exists, but the control socket is not answering until the
             # runner has finished importing and bound it — poll a short
-            # window so the compute line is there when it can be.
+            # window so the version line is there when it can be.
             for _ in range(20):
                 try:
                     data = request("status")
@@ -436,7 +472,8 @@ def _render(data: dict) -> str:
             against = f" of ${cap:.2f}" if cap else ""
             lines.append(f"spend    ${spent:.4f}{against}")
     else:
-        lines.append(phase + (" (paused)" if data.get("paused") and phase != "paused" else ""))
+        lines.append(phase + (" (paused)" if data.get("paused")
+                              and phase != "paused" else ""))
     lines.append(f"model    {data.get('model_id') or '(none loaded)'}")
     lines.append(f"api      {data.get('api_url')}")
     lines.append(
@@ -459,9 +496,19 @@ def _render(data: dict) -> str:
     up = data.get("uptime_seconds", 0)
     compute = data.get("compute_version")
     compute_note = f" (compute {compute})" if compute else ""
+    # Whose answer this is (task 000462). An orphan answers `status` as
+    # readily as the live runner, with its own stale version, and the
+    # service manager cannot reach it — so say so on the line a reader
+    # takes the version from.
+    if data.get("orphaned"):
+        whose = " ORPHAN — supervisor gone; `restart --force` to replace it"
+    elif data.get("supervised"):
+        whose = ""
+    else:
+        whose = " (unsupervised)"
     lines.append(
         f"runner   v{data.get('runner_version')}{compute_note} "
-        f"pid {data.get('pid')}, up {up / 60:.0f}m"
+        f"pid {data.get('pid')}, up {up / 60:.0f}m{whose}"
     )
     return "\n".join(lines)
 

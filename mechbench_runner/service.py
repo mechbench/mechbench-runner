@@ -280,35 +280,79 @@ def linger_hint() -> str | None:
 # --- plumbing ----------------------------------------------------------------
 
 
-def restart() -> ServiceStatus:
-    """Restart the service through the service manager, then wait until
-    it is up (task 000452).
+def serving_pid() -> int | None:
+    """The pid of whatever answers the control socket, or None.
+
+    The identity a restart has to change. Liveness is not enough: an
+    orphan answers too (task 000462).
+    """
+    from .control import ControlError, request
+
+    try:
+        pid = request("status", timeout=3.0).get("pid")
+    except (ControlError, OSError):
+        return None
+    return int(pid) if isinstance(pid, int) else None
+
+
+def restart(*, settle: float = 60.0) -> ServiceStatus:
+    """Restart the service through the service manager, and return only
+    once a DIFFERENT process is serving (tasks 000452, 000462).
 
     On macOS the working incantation is `launchctl kickstart -k`: it
     kills the running instance and relaunches under the SAME supervisor
     — `kill <run-child-pid>` looks right but takes the supervisor with
     it, leaving no runner and a stale socket. On Linux it is
     `systemctl --user restart`.
+
+    The first version of this asked the service manager whether something
+    was running and reported success when it said yes. Something always
+    was: the process we had just asked to leave. A restart's claim is
+    about IDENTITY, so the pid serving the control socket before has to
+    differ from the pid serving it after, and `detail` says so.
     """
+    import time
+
     path = unit_path()
     if not path.exists():
         return ServiceStatus(False, False, False, path,
                              "not installed — `mechbench install-service` first")
+    before = serving_pid()
     # `kickstart -k` blocks until the relaunch completes, which can take
     # longer than the default timeout (module imports, channel connect);
-    # give it room, and let the status poll — not the command's exit — be
-    # the source of truth for "did it come back".
+    # give it room, and let the poll below — not the command's exit — be
+    # the source of truth.
     if is_macos():
         result = _run(["launchctl", "kickstart", "-k", f"{_domain()}/{LABEL}"],
                       check=False, timeout=90)
     else:
         result = _run(["systemctl", "--user", "restart", UNIT_NAME],
                       check=False, timeout=90)
-    settled = _settled_status(attempts=40, pause=1.0)
-    if not settled.running and result.returncode != 0:
+
+    deadline = time.monotonic() + settle
+    now = before
+    while time.monotonic() < deadline:
+        now = serving_pid()
+        if now is not None and now != before:
+            st = status()
+            return ServiceStatus(True, st.loaded, True, path,
+                                 f"running (pid {now}, was {before})"
+                                 if before else f"running (pid {now})")
+        time.sleep(1.0)
+
+    settled = _settled_status(attempts=1, pause=0)
+    if now is not None and now == before:
+        return ServiceStatus(True, settled.loaded, settled.running, path,
+                             f"pid {before} is still serving after "
+                             f"{settle:.0f}s — it is finishing a job, or it is "
+                             f"an orphan no restart can reach (see `status`). "
+                             f"Use --force to interrupt it.")
+    if result.returncode != 0:
         return ServiceStatus(True, settled.loaded, False, path,
                              f"restart failed: {_msg(result)}")
-    return settled
+    return ServiceStatus(True, settled.loaded, settled.running, path,
+                         f"nothing is answering the control socket after "
+                         f"{settle:.0f}s — check `mechbench logs`")
 
 
 def _domain() -> str:

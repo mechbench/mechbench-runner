@@ -17,6 +17,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import time
 import traceback
 from contextlib import suppress
@@ -27,6 +28,7 @@ from typing import Any
 from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 from mechbench_schema import dump_canonical
 
+from . import supervisor as supervisor_mod
 from .api_client import ApiClient, ApiError
 from .channel import LiveChannel
 from .config import Config
@@ -259,6 +261,17 @@ class JobRunner:
                 # which is how an idle runner proves it is alive rather
                 # than stuck.
                 self._watchdog.stamp()
+                # Have we outlived the supervisor that owns us? An orphan
+                # keeps the control socket and answers `status` with its
+                # own stale version, which is how a dead deployment reads
+                # as the live one (task 000462). Checked between jobs, so
+                # work in flight still finishes.
+                if supervisor_mod.orphaned():
+                    print("[runner] the supervisor that started this runner is "
+                          "gone; exiting so a fresh one can take the socket.",
+                          flush=True)
+                    self._stop_channel()
+                    return EXIT_OK
                 if time.monotonic() - last_reconcile >= RECONCILE_SECONDS:
                     self._reconcile_jobs(api)
                     last_reconcile = time.monotonic()
@@ -799,11 +812,21 @@ class JobRunner:
         """
         existing = probe()
         if existing is not None:
-            raise SystemExit(
+            # DELIBERATE exit, not a crash (task 000462). This used to be
+            # `SystemExit(<message>)`, which exits 1 — and 1 means "come
+            # back" to both supervisors, so a runner that could never have
+            # the socket was restarted forever: the supervisor hit its
+            # crash limit, launchd restarted the supervisor, and round it
+            # went, every message going to a log nobody was watching.
+            # "Something else is already running here" is a reason to stop
+            # and stay stopped.
+            print(
                 f"[runner] another runner (pid {existing.get('pid')}) is already "
                 f"listening at {socket_path()}. Stop it first, or ask it what it "
-                f"is doing with `mechbench status`."
+                f"is doing with `mechbench status`.",
+                file=sys.stderr, flush=True,
             )
+            raise SystemExit(EXIT_OK)
         path = socket_path()
         if path.exists():
             print(f"[runner] replacing stale socket at {path}")

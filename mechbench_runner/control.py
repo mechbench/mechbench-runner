@@ -159,6 +159,13 @@ class RunnerState:
                 "compute_version": self._compute_version,
                 "api_url": self._api_url,
                 "pid": os.getpid(),
+                # Whose answer is this? A `status` reply carries no
+                # authority on its own: an ORPHANED runner answers just as
+                # readily, with its own stale version, and reads as the
+                # live one (task 000462). `supervised` false is normal for
+                # a runner started by hand; `orphaned` true never is.
+                "supervised": _supervisor_pid() is not None,
+                "orphaned": _orphaned(),
             }
 
     @property
@@ -524,6 +531,18 @@ def _error(code: str, message: str) -> dict[str, Any]:
 
 
 # --- client ------------------------------------------------------------------
+
+
+def _supervisor_pid() -> int | None:
+    from .supervisor import supervisor_pid
+
+    return supervisor_pid()
+
+
+def _orphaned() -> bool:
+    from .supervisor import orphaned
+
+    return orphaned()
 
 
 class ControlError(RuntimeError):

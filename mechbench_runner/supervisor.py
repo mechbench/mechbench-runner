@@ -32,9 +32,11 @@ import signal
 import subprocess
 import sys
 import time
+from contextlib import suppress
 from types import FrameType
 
 from .exits import EXIT_CRASH, EXIT_OK, EXIT_RESTART
+from .service import STOP_TIMEOUT_SECONDS
 
 #: Backoff between restarts of a crashing child.
 BACKOFF_MIN = 1.0
@@ -50,7 +52,37 @@ CRASH_LIMIT = 5
 HEALTHY_SECONDS = 60.0
 
 #: How long to let a child finish after SIGTERM before insisting.
-STOP_GRACE = 300.0
+#:
+#: Strictly LESS than the OS supervisor's own stop timeout, and that is
+#: the whole point (task 000462): launchd sends us SIGTERM and SIGKILLs
+#: us at `ExitTimeOut`. When both waits were 300 s we lost the race — the
+#: kill landed while we were still waiting on a long job, the child was
+#: re-parented to pid 1, and it went on holding the control socket and
+#: answering `status` for another hour on code nobody had installed. We
+#: must always finish reaping the child before we can be killed.
+STOP_GRACE = float(STOP_TIMEOUT_SECONDS) - 60.0
+
+#: Set in the child's environment so the child can tell whether the
+#: parent that owns it is still there. macOS has no PR_SET_PDEATHSIG, so
+#: "my supervisor died" is something the child has to look for.
+SUPERVISOR_PID_ENV = "MECHBENCH_SUPERVISOR_PID"
+
+
+def supervisor_pid() -> int | None:
+    """The pid of the supervisor that started this process, if one did.
+
+    None means this runner was started directly (`mechbench run` in a
+    terminal), which is a supported way to run and must not be mistaken
+    for an orphan.
+    """
+    raw = os.environ.get(SUPERVISOR_PID_ENV, "")
+    return int(raw) if raw.isdigit() else None
+
+
+def orphaned() -> bool:
+    """True when a supervised child has outlived its supervisor."""
+    parent = supervisor_pid()
+    return parent is not None and os.getppid() != parent
 
 
 class Supervisor:
@@ -72,6 +104,16 @@ class Supervisor:
 
     def run(self) -> int:
         self._install_signal_handlers()
+        try:
+            return self._supervise()
+        finally:
+            # EVERY exit path — the crash limit, an unhandled exception,
+            # a KeyboardInterrupt — reaps the child. A supervisor that
+            # returns while its child runs on produces the orphan of
+            # task 000462.
+            self._stop_child("the supervisor is exiting")
+
+    def _supervise(self) -> int:
         backoff = BACKOFF_MIN
         crashes = 0
 
@@ -134,7 +176,10 @@ class Supervisor:
     # -- the child
 
     def _run_child(self) -> int:
-        self._child = subprocess.Popen(self.child_argv)  # noqa: S603
+        # The child is told which pid owns it, so it can notice being
+        # orphaned (see `orphaned()`).
+        env = {**os.environ, SUPERVISOR_PID_ENV: str(os.getpid())}
+        self._child = subprocess.Popen(self.child_argv, env=env)  # noqa: S603
         try:
             return self._child.wait()
         except KeyboardInterrupt:
@@ -216,22 +261,30 @@ class Supervisor:
 
     # -- signals
 
+    def _stop_child(self, why: str) -> None:
+        """Ask the child to finish, then insist. Never returns with the
+        child still running."""
+        child = self._child
+        if child is None or child.poll() is not None:
+            return
+        print(f"[supervisor] {why}; asking the runner to finish "
+              f"(up to {STOP_GRACE:.0f}s).")
+        try:
+            child.send_signal(signal.SIGTERM)
+            child.wait(timeout=STOP_GRACE)
+        except subprocess.TimeoutExpired:
+            print("[supervisor] the runner did not stop; killing it.")
+            with suppress(ProcessLookupError, OSError):
+                child.kill()
+            with suppress(subprocess.TimeoutExpired):
+                child.wait(timeout=10)
+        except (ProcessLookupError, OSError):
+            pass
+
     def _install_signal_handlers(self) -> None:
         def stop(signum: int, _frame: FrameType | None) -> None:
             self._stopping = True
-            name = signal.Signals(signum).name
-            child = self._child
-            if child is None:
-                return
-            print(f"[supervisor] {name}; asking the runner to finish.")
-            try:
-                child.send_signal(signal.SIGTERM)
-                child.wait(timeout=STOP_GRACE)
-            except subprocess.TimeoutExpired:
-                print("[supervisor] the runner did not stop; killing it.")
-                child.kill()
-            except (ProcessLookupError, OSError):
-                pass
+            self._stop_child(signal.Signals(signum).name)
 
         signal.signal(signal.SIGINT, stop)
         signal.signal(signal.SIGTERM, stop)

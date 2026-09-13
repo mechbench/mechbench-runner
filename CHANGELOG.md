@@ -25,6 +25,49 @@ with both headings.
 
 ## Unreleased
 
+## 0.16.0 — 2026-09-13
+
+### Changes that raise
+
+- **A second runner on one machine now stops DELIBERATELY.** Finding the
+  control socket held by a live runner used to exit 1, and 1 means "come
+  back" to both supervisors — so a runner that could never have the
+  socket was restarted forever: the parent hit its crash limit, launchd
+  restarted the parent, round it went, every message going to a log
+  nobody was watching. It exits 0 now, naming the pid that holds the
+  socket. `mechbench run` beside a running runner therefore returns 0,
+  not 1, with the same message on stderr.
+- **`mechbench restart` reports failure when nothing changed.** It used
+  to ask the service manager whether SOMETHING was running and report
+  success when it said yes; something always was — the process it had
+  just asked to leave. A restart is now judged by the pid serving the
+  control socket before versus after, and says `running (pid N, was M)`.
+  A restart that did not take exits 1 and explains why.
+- **A busy runner refuses a plain `restart` with the real reason.**
+  SIGTERM means "finish the current job" by contract, so a restart
+  during a job would wait, not restart. It says that, and points at
+  `--force`.
+
+### Changes that alter results without raising
+
+- **`restart --force` abandons the job on the SERVER first**, with
+  `POST /jobs/:id/interrupt` — the job keeps its claim, progress and
+  result path and can be resumed (epic 000320) instead of waiting for
+  the watchdog to reap it. Then, if the same pid is still serving, it
+  escalates once by pid. An orphan is not the service manager's to stop,
+  so nothing short of this could reach one.
+- **A supervisor never leaves its child behind** (task 000462). Its
+  stop grace is now strictly less than the service manager's own kill
+  timeout — when both were 300 s, launchd killed the parent mid-wait and
+  the child was re-parented to pid 1, where it held the socket and
+  answered `status` with a version nobody had installed for another
+  hour. Every exit path reaps the child, and the child is told which pid
+  owns it so it can notice being orphaned and stand down between jobs.
+- **`status` says whose answer it is:** a pid that has lost its
+  supervisor is marked `ORPHAN`, and a hand-started runner
+  `(unsupervised)`. The version on that line is only as trustworthy as
+  the process reporting it.
+
 ## 0.15.0 — 2026-09-13
 
 ### Changes that raise
