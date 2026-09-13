@@ -25,6 +25,36 @@ with both headings.
 
 ## Unreleased
 
+## 0.19.0 — 2026-09-12
+
+### Changes that raise
+
+- **A job whose result the API will not accept now FAILS after two
+  resumes**, instead of being resumed indefinitely (task 000483). This
+  corrects 0.18.0, which is one hour old: interrupt-and-resume assumes the
+  failure was transient, and for a deterministic one — a payload over the
+  API's body limit — each resume re-runs the node that produced it to reach
+  the same rejection. Experiment 014 turned a 35-minute generation node
+  into exactly that loop. Before 0.18.0 such a job failed once; for one
+  hour it looped forever; it now fails after a bounded retry, which is the
+  behaviour both of the others were reaching for.
+
+  The count is `max(in-process tally, the server's resumeCount)`. The tally
+  alone resets on a runner restart, which is precisely when a loop would
+  restart too; `resumeCount` alone counts resumes this branch did not
+  cause, such as a watchdog kill. Taking the max can trip the bound early
+  for an unrelated reason — the right way to be wrong here, since a
+  premature failure costs a re-launch and the loop costs half an hour per
+  cycle, indefinitely.
+
+  The failure message names the API's body limit as the thing to check,
+  because the next reader's question is "network or payload" and a repeat
+  at the same node has already answered it.
+
+### Changes that alter results without raising
+
+- _None._
+
 ## 0.18.0 — 2026-09-12
 
 ### Changes that raise
@@ -42,9 +72,17 @@ with both headings.
 
   The job is now interrupted instead, which is the state epic 000320 built
   for exactly this: claim, progress and `resultPath` survive on the server,
-  the spool stays on disk, and the next claim resumes from the items
-  already spooled rather than from zero. Experiment 014 lost about 35
-  minutes of generation twice to the old behaviour.
+  the spool stays on disk, and the next claim resumes from the node
+  boundary. Experiment 014 lost about 35 minutes of generation twice to the
+  old behaviour.
+
+  **Corrected in 0.19.0, and read that entry with this one.** Two claims
+  here were wrong. A resume recovers only what a node has spooled, and the
+  generation node spools nothing (task 000485), so this kept far less than
+  "the items already spooled" implied. And resuming is only safe when the
+  failure is transient; 014's was not, so 0.18.0 on its own loops (task
+  000483). The real cause was an API that stalls on an oversized body
+  instead of returning 413 (task 000484).
 
   The distinction is drawn by exception CLASS, not by matching the message:
   compute raises `bench.BenchTransportError` only after its bounded retry

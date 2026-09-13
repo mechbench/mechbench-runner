@@ -48,6 +48,15 @@ RECONCILE_SECONDS = 300.0
 #: no runner. Only an idle runner touches those, and only after this
 #: much silence — stale by any measure.
 LEGACY_STALE_SECONDS = 900.0
+#: How many times a job may be resumed after a TRANSPORT failure before
+#: the runner calls it a failure instead (000483).
+#:
+#: Two, not more. Interrupt-and-resume pays off when the failure was a
+#: blip; when it is deterministic — a result the server will not accept —
+#: each cycle re-runs the whole node to reach the same rejection. A
+#: 35-minute generation node turned that into an unbounded loop, so the
+#: bound is the thing that makes resuming safe rather than optimistic.
+MAX_TRANSPORT_RESUMES = 2
 
 
 def _spool_result(job_id: str, cbor_bytes: bytes, digest: str) -> None:
@@ -129,6 +138,10 @@ class JobRunner:
         # so partial work lands on disk as it is made.
         self._spool: JobSpool | None = None
         self._caffeinate: subprocess.Popen | None = None
+        # Transport interrupts issued per job id, bounding the
+        # resume loop (000483). In-process only; the server's
+        # `resumeCount` carries the bound across a restart.
+        self._transport_interrupts: dict[str, int] = {}
         # The machine's rate limiter and the active job's spend ledger
         # (task 000338). The limiter is shared by every node and job
         # here — one account, one set of buckets — and survives a
@@ -323,6 +336,8 @@ class JobRunner:
                 try:
                     self._handle(api, job)
                     self.state.job_finished(job["id"])
+                    # A job that finished has no resume budget to carry.
+                    self._transport_interrupts.pop(job["id"], None)
                 except Exception as exc:  # noqa: BLE001 — report + continue
                     traceback.print_exc()
                     if self._is_transport(exc):
@@ -813,6 +828,21 @@ class JobRunner:
             cur = cur.__cause__ or cur.__context__
         return False
 
+    def _transport_resumes(self, job_id: str, job: dict[str, Any]) -> int:
+        """How many times this job has already been resumed after a
+        transport failure.
+
+        The server's `resumeCount` is the floor rather than the whole
+        answer: it survives a runner restart (an in-process tally does
+        not), but it also counts resumes this branch had nothing to do
+        with, such as a watchdog kill. Taking the max of the two means the
+        bound can trip early for an unrelated reason — acceptable, because
+        the failure mode it prevents costs half an hour per cycle and the
+        operator gets told exactly why.
+        """
+        local = self._transport_interrupts.get(job_id, 0)
+        return max(local, int(job.get("resumeCount") or 0))
+
     def _report_error(
         self, api: ApiClient, job: dict[str, Any], exc: Exception
     ) -> None:
@@ -828,17 +858,37 @@ class JobRunner:
         # claim resumes from the node boundary rather than from zero.
         # Experiment 014 lost 35 minutes of generation twice to a single
         # un-retried PUT before this branch existed (000464).
+        #
+        # But only a BOUNDED number of times. Interrupt-and-resume assumes
+        # the failure was transient; when it is deterministic — a payload
+        # the server will not accept, say — resuming re-runs the same
+        # expensive node to reach the same rejected upload, forever. 014
+        # turned a 35-minute node into exactly that loop (000483).
         if self._is_transport(exc):
-            reason = (f"the API was unreachable while storing a result, after "
-                      f"retries: {message}")
-            try:
-                api.interrupt_job(job_id, reason, timeout=15.0)
-            except Exception:  # noqa: BLE001 — reconciliation retries
-                print(f"[runner] {job_id}: could not report the interrupt; "
-                      f"reconciliation will")
-            print(f"[runner] {job_id}: interrupted, not failed — transport "
-                  f"({message}); spool kept for resume")
-            return
+            resumes = self._transport_resumes(job_id, job)
+            if resumes < MAX_TRANSPORT_RESUMES:
+                self._transport_interrupts[job_id] = resumes + 1
+                reason = (f"the API was unreachable while storing a result, "
+                          f"after retries: {message}")
+                try:
+                    api.interrupt_job(job_id, reason, timeout=15.0)
+                except Exception:  # noqa: BLE001 — reconciliation retries
+                    print(f"[runner] {job_id}: could not report the interrupt; "
+                          f"reconciliation will")
+                print(f"[runner] {job_id}: interrupted, not failed — transport "
+                      f"({message}); spool kept, resume "
+                      f"{resumes + 1}/{MAX_TRANSPORT_RESUMES}")
+                return
+            # Out of resumes: say so in the failure itself, because the
+            # next reader's question is "was it the network or the
+            # payload", and a repeat at the same node answers it.
+            self._transport_interrupts.pop(job_id, None)
+            message = (
+                f"the API would not accept a result after {resumes} "
+                f"resume(s) and the per-attempt retries: {message}. A "
+                f"transport failure that repeats at the same node is not "
+                f"transient — check the result's size against the API's "
+                f"body limit before resuming again.")
 
         try:
             api.fail_job(job_id, message)

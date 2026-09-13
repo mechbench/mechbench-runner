@@ -140,6 +140,14 @@ class TestReporting:
         _, message = api.interrupted[0]
         assert "unreachable" in message and "retries" in message
 
+    def test_hf_tokens_are_still_redacted(self, monkeypatch):
+        runner = _runner(monkeypatch)
+        api = RecordingApi()
+        runner._report_error(api, {"id": "j_6"}, BenchTransportError(
+            "PUT https://api/x?token=hf_abcdefgh12345678 unreachable"))
+        _, message = api.interrupted[0]
+        assert "hf_[redacted]" in message and "abcdefgh" not in message
+
     def test_an_unreportable_interrupt_is_not_fatal(self, monkeypatch):
         """Reconciliation interrupts our own orphan on the next pass."""
         runner = _runner(monkeypatch)
@@ -153,10 +161,65 @@ class TestReporting:
                              BenchTransportError("unreachable"))
         assert _spooled("j_5")
 
-    def test_hf_tokens_are_still_redacted(self, monkeypatch):
+class TestTheResumeBoundIsNotOptional:
+    """Interrupt-and-resume assumes the failure was transient. When it is
+    deterministic — a result the server will not accept — each resume
+    re-runs the whole node to reach the same rejection (000483).
+
+    014 demonstrated it: a 35-minute generation node, an upload the API
+    stalled on every time, and a loop that would have run until the
+    battery died. The retry is only safe because it is bounded.
+    """
+
+    def test_the_first_failures_interrupt(self, monkeypatch):
         runner = _runner(monkeypatch)
         api = RecordingApi()
-        runner._report_error(api, {"id": "j_6"}, BenchTransportError(
-            "PUT https://api/x?token=hf_abcdefgh12345678 unreachable"))
-        _, message = api.interrupted[0]
-        assert "hf_[redacted]" in message and "abcdefgh" not in message
+        exc = BenchTransportError("unreachable")
+        for _ in range(jr.MAX_TRANSPORT_RESUMES):
+            runner._report_error(api, {"id": "j_1"}, exc)
+        assert len(api.interrupted) == jr.MAX_TRANSPORT_RESUMES
+        assert api.failed == []
+
+    def test_the_next_one_fails(self, monkeypatch):
+        runner = _runner(monkeypatch)
+        api = RecordingApi()
+        exc = BenchTransportError("unreachable")
+        for _ in range(jr.MAX_TRANSPORT_RESUMES + 1):
+            runner._report_error(api, {"id": "j_1"}, exc)
+        assert [j for j, _ in api.failed] == ["j_1"]
+
+    def test_the_failure_says_it_is_not_transient(self, monkeypatch):
+        runner = _runner(monkeypatch)
+        api = RecordingApi()
+        exc = BenchTransportError("PUT /objects/x unreachable")
+        for _ in range(jr.MAX_TRANSPORT_RESUMES + 1):
+            runner._report_error(api, {"id": "j_1"}, exc)
+        _, message = api.failed[0]
+        assert "not" in message and "transient" in message
+        assert "body limit" in message, "point the reader at the real cause"
+
+    def test_the_servers_resume_count_carries_the_bound(self, monkeypatch):
+        """A restart empties the in-process tally; `resumeCount` does not,
+        so the bound survives the runner dying mid-loop."""
+        runner = _runner(monkeypatch)
+        api = RecordingApi()
+        runner._report_error(api, {"id": "j_1", "resumeCount": 9},
+                            BenchTransportError("unreachable"))
+        assert api.interrupted == []
+        assert [j for j, _ in api.failed] == ["j_1"]
+
+    def test_the_bound_is_per_job(self, monkeypatch):
+        runner = _runner(monkeypatch)
+        api = RecordingApi()
+        exc = BenchTransportError("unreachable")
+        for _ in range(jr.MAX_TRANSPORT_RESUMES + 1):
+            runner._report_error(api, {"id": "j_1"}, exc)
+        runner._report_error(api, {"id": "j_2"}, exc)
+        assert [j for j, _ in api.interrupted][-1] == "j_2"
+        assert [j for j, _ in api.failed] == ["j_1"]
+
+    def test_a_finished_job_releases_its_budget(self, monkeypatch):
+        runner = _runner(monkeypatch)
+        runner._transport_interrupts["j_1"] = jr.MAX_TRANSPORT_RESUMES
+        runner._transport_interrupts.pop("j_1", None)
+        assert runner._transport_resumes("j_1", {"id": "j_1"}) == 0
