@@ -47,6 +47,9 @@ class JobSpool:
     def __init__(self, job_id: str) -> None:
         self.job_id = job_id
         self.root = spool_dir() / job_id
+        #: Items that could not be written, per node — kept so a resume
+        #: that recovers less than it should can say why (000485).
+        self.dropped: dict[str, int] = {}
 
     # --- hooks --------------------------------------------------------------
 
@@ -173,6 +176,9 @@ class JobSpool:
             "node": first_partial or (done_nodes[-1] if done_nodes else ""),
             "reused": reused_items + len(done_nodes),
             **({"step": step} if step else {}),
+            # Items that never reached disk, by node (000485): the reason a
+            # resume can recover less than the block produced.
+            **({"dropped": dict(self.dropped)} if self.dropped else {}),
         }
 
     def clear(self) -> None:

@@ -25,6 +25,41 @@ with both headings.
 
 ## Unreleased
 
+## 0.20.0 — 2026-09-13
+
+### Changes that raise
+
+- **The transport-resume bound now holds on every resume path** (task
+  000483, the hole found the day 0.19.0 shipped). 0.19.0 bounded resumes
+  only in the error handler; a job could still come back through
+  reconciliation — claimed here, nothing executing it — and that path
+  resumed around the bound: "resume 1/2", then "attempt 2", "attempt 3",
+  until the runner was stopped by hand. The check now lives at the
+  resume decision every claim passes through: a job whose last interrupt
+  was a transport failure and whose server-side `resumeCount` has
+  reached the bound is FAILED with the same message, whichever path
+  brought it back. A crash or watchdog resume is not bounded here — those
+  may legitimately resume many times. The interrupt reason is matched by
+  a shared prefix constant, so the writer and the reader cannot drift.
+
+### Changes that alter results without raising
+
+- **An item the spool cannot write is counted and logged, never silently
+  dropped** (task 000485, corrected). `_spool_item` wrapped
+  `JobSpool.item` in `suppress(Exception)`. For weeks every item of an
+  adapted generate node raised `CBOREncodeError` inside it — the item
+  carried a live `ModelRef` (000488) — and every one was discarded
+  without a word, so the node's spool held only its fingerprint and a
+  resume recovered nothing. The job still does not fail on a drop (the
+  item exists in memory; the run continues), but the drop is now logged
+  once per node with the key and the reason, counted per node on the
+  spool, and reported as `dropped` in the resume summary. No result
+  changes; what changes is that "resume recovered nothing" can no longer
+  read as "nothing was there".
+
+  Requires compute 0.70.0, whose fingerprint and hash-before-emit changes
+  close the other two places the same error was being hidden.
+
 ## 0.19.0 — 2026-09-12
 
 ### Changes that raise
