@@ -158,9 +158,10 @@ def watch(config: Config, jobs: list[str], interval: float = 4.0) -> int:
 
 def _as_table(payload: Any) -> str | None:
     """A metric table renders as a table; everything else does not."""
-    if not (isinstance(payload, dict) and payload.get("kind") == "metric_table"):
+    if not (isinstance(payload, dict)
+            and payload.get("kind") in ("records/table", "metric_table")):
         return None
-    rows = payload.get("rows") or payload.get("records") or []
+    rows = payload.get("rows") or []
     if not rows:
         return "(empty table)"
     cols: list[str] = []
