@@ -25,6 +25,30 @@ with both headings.
 
 ## Unreleased
 
+## 0.24.0 — 2026-09-16
+
+### Changes that raise
+
+- _None._
+
+### Changes that alter results without raising
+
+- **The service runs as a standard process, not a background one.**
+  `mechbench install-service` wrote the launchd agent with
+  `ProcessType: Background` — launchd's class for housekeeping, which
+  on Apple Silicon steers the process to the efficiency cores at low
+  priority (scheduling priority 4, where a process started from a
+  terminal gets 31). Every model forward is a Python-bound graph build,
+  so a job ran about 1.8× slower under the service than the same code
+  run from a shell: a 312-condition decision read with rollout took 7.2
+  minutes as a service and 3.9 in-process on the same idle machine, and
+  the runs of August, launched from a terminal before the runner became
+  a service, took 4. The agent is now `ProcessType: Standard`: no
+  priority over the user's own work, and no penalty. Run
+  `mechbench install-service` once to rewrite the agent; the numbers a
+  job produces do not change, only how long it takes. (Compute task
+  000506 has the measurements.)
+
 ## 0.23.0 — 2026-09-13
 
 ### Changes that raise

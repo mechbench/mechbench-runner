@@ -116,8 +116,18 @@ def launchd_plist() -> dict[str, object]:
         "KeepAlive": {"SuccessfulExit": False},
         "ThrottleInterval": THROTTLE_SECONDS,
         "ExitTimeOut": STOP_TIMEOUT_SECONDS,
-        # Background: lower priority than anything the user is looking at.
-        "ProcessType": "Background",
+        # Standard, not Background. The runner's whole job is heavy
+        # compute, and launchd's Background class is for housekeeping:
+        # on Apple Silicon it steers the process to the efficiency cores
+        # at low priority (scheduling priority 4 where a terminal's
+        # process gets 31), which made every model forward — a
+        # Python-bound graph build per call — about 1.8× slower than
+        # the same code run from a shell. A 312-condition decision
+        # read took 7.2 minutes as a service and 3.9 in-process on the
+        # same idle machine; August's runs, launched from a terminal
+        # before this became a service, took 4. Standard is the default
+        # class: no priority over the user's own work, no penalty either.
+        "ProcessType": "Standard",
         "StandardOutPath": str(boot_log()),
         "StandardErrorPath": str(boot_log()),
         "WorkingDirectory": str(Path.home()),
