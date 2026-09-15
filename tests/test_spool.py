@@ -181,6 +181,63 @@ class TestFlushAtReconciliation:
         runner._flush_spool(api)  # must not raise
         assert _spooled("j_1")
 
+    def test_a_cancelled_job_clears_its_stale_result(self, monkeypatch):
+        # Task 000511: cancel now reaches an interrupted job, so a spool
+        # can outlive the job its owner withdrew. Nothing to deliver.
+        runner = _runner(monkeypatch)
+        api = RecordingApi([{"id": "j_gone", "status": "cancelled",
+                             "claimedByRunnerId": "r_mine"}])
+        jr._spool_result("j_gone", b"\xa0", "00")
+        runner._flush_spool(api)
+        assert api.completed == [] and api.interrupted == []
+        assert not _spooled("j_gone")
+
+    def test_a_standing_refusal_disowns_the_result_instead_of_looping(
+        self, monkeypatch
+    ):
+        # The five-minute loop of 000511: a claim the server will not
+        # honour was retried on every pass, forever. Said once now — and
+        # the bytes are kept, because somebody computed them.
+        runner = _runner(monkeypatch)
+        api = RecordingApi([{"id": "j_1", "status": "interrupted",
+                             "claimedByRunnerId": "r_mine"}])
+
+        def refuse(job_id, cbor_bytes, content_hash):
+            raise jr.ApiError(403, {"code": "NOT_CLAIMANT",
+                                    "error": "another key holds the claim"})
+
+        monkeypatch.setattr(api, "complete_job_cbor", refuse)
+        jr._spool_result("j_1", b"\xa0", "00")
+        runner._flush_spool(api)
+        assert not _spooled("j_1")
+        kept = spool_dir() / "j_1" / "result.cbor.disowned"
+        assert kept.read_bytes() == b"\xa0"
+        assert "another key holds the claim" in (
+            spool_dir() / "j_1" / "disowned.txt").read_text()
+        # …and the next pass has nothing to offer.
+        runner._flush_spool(api)
+        assert api.completed == []
+
+    def test_a_transient_refusal_is_still_retried(self, monkeypatch):
+        runner = _runner(monkeypatch)
+        api = RecordingApi([{"id": "j_1", "status": "interrupted",
+                             "claimedByRunnerId": "r_mine"}])
+        calls: list[str] = []
+
+        def flaky(job_id, cbor_bytes, content_hash):
+            calls.append(job_id)
+            if len(calls) == 1:
+                raise jr.ApiError(503, {"error": "gateway"})
+            api.completed.append((job_id, cbor_bytes, content_hash))
+
+        monkeypatch.setattr(api, "complete_job_cbor", flaky)
+        jr._spool_result("j_1", b"\xa0", "00")
+        runner._flush_spool(api)
+        assert _spooled("j_1")  # kept for the next pass
+        runner._flush_spool(api)
+        assert [c[0] for c in api.completed] == ["j_1"]
+        assert not _spooled("j_1")
+
     def test_reconciliation_flushes_before_it_reports_orphans(self, monkeypatch):
         # The spooled orphan is delivered (interrupted + completed) and is
         # therefore NOT reported as an orphan by the pass that follows.

@@ -166,6 +166,53 @@ class TestResilience:
 
         runner._reconcile_jobs(Down())  # must not raise
 
+    def test_a_standing_refusal_is_heard_once_not_every_five_minutes(
+        self, monkeypatch
+    ):
+        # Task 000511: a claim the server will not honour was re-reported
+        # on every pass, which is a loop, not a repair. The job is left to
+        # the server's own reaper and this process stops asking.
+        runner = _runner(monkeypatch)
+
+        class Refusing(RecordingApi):
+            def __init__(self, jobs):
+                super().__init__(jobs)
+                self.attempts = 0
+
+            def interrupt_job(self, job_id, message, timeout=None):
+                self.attempts += 1
+                raise jr.ApiError(403, {
+                    "code": "BAD_CLAIM_TOKEN",
+                    "error": "missing x-claim-token: this write is scoped "
+                             "to the claim",
+                })
+
+        api = Refusing([job("j_stuck", claimed_by="r_mine")])
+        runner._reconcile_jobs(api)
+        runner._reconcile_jobs(api)
+        runner._reconcile_jobs(api)
+        assert api.attempts == 1
+        assert api.interrupted == [] and api.failed == []
+
+    def test_a_transient_refusal_is_tried_again_next_pass(self, monkeypatch):
+        runner = _runner(monkeypatch)
+
+        class Flaky(RecordingApi):
+            def __init__(self, jobs):
+                super().__init__(jobs)
+                self.attempts = 0
+
+            def interrupt_job(self, job_id, message, timeout=None):
+                self.attempts += 1
+                if self.attempts == 1:
+                    raise ConnectionError("api unreachable")
+                super().interrupt_job(job_id, message, timeout=timeout)
+
+        api = Flaky([job("j_orphan", claimed_by="r_mine")])
+        runner._reconcile_jobs(api)
+        runner._reconcile_jobs(api)
+        assert api.interrupted == ["j_orphan"]
+
     def test_a_refused_fail_does_not_stop_the_pass(self, monkeypatch):
         runner = _runner(monkeypatch)
 

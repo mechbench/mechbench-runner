@@ -250,13 +250,29 @@ class ApiClient:
         error of its own; the runner went quiet (watchdog death,
         orphaned by a restart). Claim, progress and resultPath survive
         on the server; this machine re-claims and resumes, or
-        completes late from its spool."""
+        completes late from its spool.
+
+        The one job-scoped write the server authorizes by the claim's
+        IDENTITY rather than its token (task 000511): a process that
+        does not hold the token — `mechbench restart --force`, or a
+        reconcile after a crash — may still report that this machine is
+        not executing the job. The server rotates the token when it
+        accepts one of those and hands the new one back here, which is
+        what lets a spooled result be delivered afterwards."""
         kwargs: dict = {"json": {"message": message[:2000]}}
         if timeout is not None:
             kwargs["timeout"] = timeout
         res = self._client.post(f"/jobs/{job_id}/interrupt",
                                 headers=self._job_headers(job_id), **kwargs)
         self._raise_for_status(res)
+        try:
+            tok = res.json().get("claimToken")
+        except ValueError:
+            tok = None
+        if tok:
+            # Overwrite, unlike a spooled token: this one is newer than
+            # anything this process holds, by construction.
+            self.claim_tokens[job_id] = str(tok)
 
     def complete_job_cbor(
         self, job_id: str, cbor_bytes: bytes, content_hash: str

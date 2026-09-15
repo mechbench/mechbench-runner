@@ -104,9 +104,12 @@ def run(config: Config, protocol: str, binds: list[str] | None,
 
 
 def cancel(config: Config, jobs: list[str], reason: str = "") -> int:
-    """Withdraw queued work (task 000463). Takes several ids, because
-    draining a queue is the reason this exists; reports each one and
-    exits non-zero if any could not be cancelled."""
+    """Withdraw work nobody is running (tasks 000463, 000511). Takes
+    several ids, because draining a queue is the reason this exists;
+    reports each one and exits non-zero if any could not be cancelled.
+
+    A job a runner is executing is refused: interrupt it first
+    (`mechbench restart --force` on that machine), then cancel it."""
     _connect(config)
     failed = 0
     for job in jobs:

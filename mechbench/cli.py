@@ -156,7 +156,8 @@ def main(argv: list[str] | None = None) -> int:
 
     cancel_p = sub.add_parser(
         "cancel",
-        help="Withdraw queued jobs before a runner claims them.")
+        help="Withdraw jobs nobody is running: queued, preparing, or "
+             "interrupted.")
     cancel_p.add_argument("jobs", nargs="+", help="Job ids to cancel.")
     cancel_p.add_argument(
         "--reason", default="",
@@ -313,15 +314,24 @@ def main(argv: list[str] | None = None) -> int:
             # SERVER first: an interrupted job keeps its claim, progress
             # and resultPath and is re-claimable (epic 000320), where a
             # job whose runner merely vanished waits on the watchdog.
+            #
+            # This runs in a DIFFERENT process from the one holding the
+            # claim's token, which is why `/interrupt` is authorized by
+            # the claim's identity (task 000511). Before that it could
+            # not land, and the job stayed `running` — uncancellable,
+            # re-adopted on every start.
             print(f"interrupting {busy_job} so it can be resumed…")
             try:
                 from mechbench_runner.api_client import ApiClient
 
                 with ApiClient(config) as api:
                     api.interrupt_job(busy_job, "mechbench restart --force")
+                print(f"  interrupted. `mechbench cancel {busy_job}` ends it "
+                      f"for good; otherwise it resumes when the runner is back.")
             except Exception as exc:  # noqa: BLE001 — advisory, never fatal
-                print(f"  could not interrupt it on the server: {exc}",
-                      file=sys.stderr)
+                print(f"  could not interrupt it on the server: {exc}\n"
+                      f"  the job stays claimed by this machine and will be "
+                      f"resumed on the next start.", file=sys.stderr)
 
         try:
             st = service_mod.restart()

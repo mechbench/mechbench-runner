@@ -21,7 +21,8 @@ import sys
 import time
 import traceback
 from contextlib import suppress
-from datetime import UTC
+from datetime import UTC, datetime
+from pathlib import Path
 from types import FrameType
 from typing import Any
 
@@ -137,6 +138,40 @@ def _clear_spool(job_id: str) -> None:
     shutil.rmtree(spool_dir() / job_id, ignore_errors=True)
 
 
+def _disown_spool(job_id: str, why: str) -> Path | None:
+    """Stop offering a spooled result the server will not take (000511).
+
+    The bytes are kept — a result nobody asked for is still a result
+    somebody computed — but renamed out of the way, so the flush stops
+    retrying a delivery that is refused for a standing reason rather than
+    a transient one. Returns where they are, for the operator."""
+    d = spool_dir() / job_id
+    blob = d / "result.cbor"
+    if not blob.is_file():
+        return None
+    kept = d / "result.cbor.disowned"
+    os.replace(blob, kept)
+    (d / "disowned.txt").write_text(
+        f"{datetime.now(UTC).isoformat()}\n{why}\n"
+        "This result was never accepted by the server. Nothing retries it.\n"
+    )
+    return kept
+
+
+def _standing_refusal(exc: BaseException) -> str | None:
+    """The reason a write will keep being refused, or None if it might
+    yet succeed. A 403 on a claim is a verdict about who this machine is,
+    not a blip: retrying it on a cadence is the five-minute loop of
+    000511. A 409 says the job has moved on — also final."""
+    if not isinstance(exc, ApiError) or exc.status not in (403, 409):
+        return None
+    body = exc.body if isinstance(exc.body, dict) else {}
+    code = str(body.get("code") or "")
+    if code not in ("BAD_CLAIM_TOKEN", "NOT_CLAIMANT", "BAD_STATE"):
+        return None
+    return str(body.get("error") or code)
+
+
 def _spooled_job_ids() -> list[str]:
     root = spool_dir()
     return sorted(
@@ -190,6 +225,11 @@ class JobRunner:
         # once; its resume hooks dispatch to whichever spool is current,
         # so partial work lands on disk as it is made.
         self._spool: JobSpool | None = None
+        # Jobs this process has been told, in so many words, are not its
+        # to repair — a claim another machine holds now, a job whose
+        # owner withdrew it (000511). Recorded so a standing refusal is
+        # heard once instead of retried on every reconcile.
+        self._disowned: set[str] = set()
         self._caffeinate: subprocess.Popen | None = None
         # Transport interrupts issued per job id, bounding the
         # resume loop (000483). In-process only; the server's
@@ -420,8 +460,14 @@ class JobRunner:
         `interrupted` takes a late completion outright. A job the
         server still shows in flight under this machine is interrupted
         first (it is not executing here — the result IS its finish),
-        then completed. A job that ended otherwise (`done`, `failed`)
-        has nothing to gain from an old result; the spool is cleared."""
+        then completed. A job that ended otherwise (`done`, `failed`,
+        `cancelled`) has nothing to gain from an old result; the spool
+        is cleared.
+
+        A delivery refused for a STANDING reason — the claim belongs to
+        another machine now, or the job's owner withdrew it — is not
+        retried on the next pass (000511): the bytes are disowned, said
+        once, and the cadence moves on."""
         try:
             spooled = _spooled_job_ids()
         except OSError:
@@ -444,7 +490,7 @@ class JobRunner:
                 print(f"[runner] spool: could not look up {job_id} ({e})")
                 continue
             status = j.get("status")
-            if status in ("done", "failed", "queued"):
+            if status in ("done", "failed", "queued", "cancelled"):
                 _clear_spool(job_id)
                 continue
             claimed_by = j.get("claimedByRunnerId")
@@ -460,7 +506,16 @@ class JobRunner:
                     )
                 self._upload_result(api, job_id, cbor_bytes, digest)
             except Exception as e:  # noqa: BLE001 — keep the spool, retry later
-                print(f"[runner] spool: {job_id} not accepted yet ({e})")
+                standing = _standing_refusal(e)
+                if standing is None:
+                    print(f"[runner] spool: {job_id} not accepted yet ({e})")
+                    continue
+                kept = _disown_spool(job_id, standing)
+                print(f"[runner] spool: {job_id} will never be accepted — "
+                      f"{standing}. Not retrying"
+                      + (f"; the result is kept at {kept}" if kept else ""))
+                self.state.emit("job.disowned",
+                                {"id": job_id, "reason": standing})
                 continue
             _clear_spool(job_id)
             print(f"[runner] {job_id} delivered from spool "
@@ -476,7 +531,11 @@ class JobRunner:
         watchdog death whose dying breath never landed — and the next
         process (this one) is the party that can notice. Jobs claimed by
         other runners are never touched; attribution is what makes that
-        distinction safe."""
+        distinction safe.
+
+        A repair the server refuses for a standing reason is attempted
+        ONCE (000511): the job is disowned for the life of this process
+        rather than retried every five minutes forever."""
         # Results that exist on this disk but not on the server come
         # first (epic 000320): a finished job is worth more than a
         # tidy board, and delivering it may retire an orphan below
@@ -493,6 +552,8 @@ class JobRunner:
             job_id = j.get("id")
             if not isinstance(job_id, str) or job_id == self._active_job:
                 continue
+            if job_id in self._disowned:
+                continue  # said once already (000511)
             claimed_by = j.get("claimedByRunnerId")
             if claimed_by is not None:
                 if (self.config.runner_id is None
@@ -510,7 +571,7 @@ class JobRunner:
                 try:
                     api.interrupt_job(job_id, reason, timeout=15.0)
                 except Exception as e:  # noqa: BLE001 — the server may disagree
-                    print(f"[runner] could not reconcile {job_id}: {e}")
+                    self._note_unreconciled(job_id, e)
                     continue
                 print(f"[runner] reconciled {job_id}: interrupted ({reason})")
                 self.state.emit("job.reconciled", {"id": job_id, "reason": reason})
@@ -531,10 +592,25 @@ class JobRunner:
             try:
                 api.fail_job(job_id, reason, timeout=15.0)
             except Exception as e:  # noqa: BLE001 — the server may disagree
-                print(f"[runner] could not reconcile {job_id}: {e}")
+                self._note_unreconciled(job_id, e)
                 continue
             print(f"[runner] reconciled {job_id}: failed ({reason})")
             self.state.emit("job.reconciled", {"id": job_id, "reason": reason})
+
+    def _note_unreconciled(self, job_id: str, exc: BaseException) -> None:
+        """A repair the server refused. Transient refusals are retried on
+        the next pass; a standing one is recorded and dropped, because
+        repeating it on a cadence produces a five-minute loop and no
+        progress (000511) — the board's own reaper owns the job from
+        there."""
+        standing = _standing_refusal(exc)
+        if standing is None:
+            print(f"[runner] could not reconcile {job_id}: {exc}")
+            return
+        self._disowned.add(job_id)
+        print(f"[runner] {job_id} is not this process's to repair — "
+              f"{standing}. Leaving it to the server; not asking again.")
+        self.state.emit("job.disowned", {"id": job_id, "reason": standing})
 
     def _sweep_cache(self, job: dict[str, Any] | None) -> None:
         """Record use and enforce the cache budget (000297). A no-op in

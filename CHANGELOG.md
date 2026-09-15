@@ -25,6 +25,36 @@ with both headings.
 
 ## Unreleased
 
+## 0.25.0 — 2026-09-16
+
+### Changes that raise
+
+- _None._
+
+### Changes that alter results without raising
+
+- **A restart interrupts the job it is abandoning, and that now lands**
+  (task 000511). `mechbench restart --force` runs in a different process
+  from the one holding the job's claim token, so its `/interrupt` was
+  refused (`403 missing x-claim-token`) and the job stayed `running` —
+  which meant it could not be cancelled either, and every runner start
+  adopted it again. `/interrupt` is now authorized by the claim's
+  identity (this key, this machine) rather than its token, and hands
+  back a fresh token; the CLI says so, and points at
+  `mechbench cancel <job>` for ending the job rather than resuming it.
+  Needs an API from 2026-09-16 or later; against an older one the
+  restart prints the refusal and the job is resumed on the next start,
+  as before.
+- **A delivery the server will never accept is disowned instead of
+  retried forever.** A spooled result whose claim the server no longer
+  honours, or whose job was cancelled, was re-offered every five minutes
+  for as long as the runner ran. A refusal that is a standing verdict
+  (`NOT_CLAIMANT`, `BAD_CLAIM_TOKEN`, `BAD_STATE`) is now said once: the
+  bytes are kept beside the spool as `result.cbor.disowned` with a note
+  saying why, the reconcile stops offering them, and a `job.disowned`
+  event goes to the live channel. Transient failures are retried exactly
+  as before. A cancelled job's spool is cleared outright.
+
 ## 0.24.0 — 2026-09-16
 
 ### Changes that raise
