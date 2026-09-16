@@ -240,3 +240,19 @@ class TestDeclaringWhatDidNotRun:
         set, the flush would offer it forever."""
         assert "done_with_missing" in jr.TERMINAL_SERVER_STATUS
         assert "done" in jr.TERMINAL_SERVER_STATUS
+
+    def test_a_declaration_is_bounded_so_a_finalize_is_never_refused(self):
+        """The API caps a reason at 2000 and refuses a longer one — and a
+        refused finalize sends the result back to the spool, to be
+        retried forever. The manifest keeps the whole reason; what
+        travels is a summary."""
+        huge = {"n": {"reason": "x" * 9000, "source": ["n"]}}
+        got = jr._missing_of({"payload": {"nodes_missing": huge}})
+        assert got is not None
+        assert len(got["n"]["reason"]) == jr.MAX_MISSING_REASON
+        assert got["n"]["source"] == ["n"]
+
+    def test_a_declaration_carries_at_most_so_many_nodes(self):
+        many = {f"n{i}": {"reason": "died", "source": [f"n{i}"]} for i in range(200)}
+        got = jr._missing_of({"payload": {"nodes_missing": many}})
+        assert got is not None and len(got) == jr.MAX_MISSING_NODES

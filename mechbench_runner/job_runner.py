@@ -123,16 +123,36 @@ def _spool_result(job_id: str, cbor_bytes: bytes, digest: str,
         tok.chmod(0o600)
 
 
+#: What a declared `nodes_missing` is bounded to. The API refuses a
+#: reason past its own cap, and a refused finalize is not a small
+#: problem: the result goes back to the spool and is retried forever.
+#: The manifest keeps the untruncated reason — the row is a summary of
+#: the result, not a second copy of it.
+MAX_MISSING_NODES = 64
+MAX_MISSING_REASON = 2000
+
+
 def _missing_of(payload: Any) -> dict[str, Any] | None:
     """`nodes_missing` off a run/result payload: node id -> {reason,
     source}. Absent on every result where nothing went missing, which is
-    almost all of them."""
+    almost all of them. Bounded, because this one is sent to the API."""
     if not isinstance(payload, Mapping):
         return None
     inner = payload.get("payload")
     obj = inner if isinstance(inner, Mapping) else payload
     missing = obj.get("nodes_missing")
-    return dict(missing) if isinstance(missing, Mapping) and missing else None
+    if not isinstance(missing, Mapping) or not missing:
+        return None
+    out: dict[str, Any] = {}
+    for nid, why in list(missing.items())[:MAX_MISSING_NODES]:
+        entry = why if isinstance(why, Mapping) else {"reason": str(why)}
+        source = entry.get("source")
+        out[str(nid)[:64]] = {
+            "reason": str(entry.get("reason", ""))[:MAX_MISSING_REASON],
+            **({"source": [str(s)[:64] for s in source][:64]}
+               if isinstance(source, (list, tuple)) else {}),
+        }
+    return out
 
 
 def _spooled_missing(job_id: str) -> dict[str, Any] | None:
