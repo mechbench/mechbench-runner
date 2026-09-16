@@ -40,7 +40,8 @@ def main(full: bool = False) -> int:
     print(f"✓ list_jobs returned {len(jobs)} job(s)")
 
     # --- get_result: exercise against the most recent done job, if any.
-    done = [j for j in jobs if j["status"] == "done" and j.get("resultPath")]
+    done = [j for j in jobs
+            if j["status"] in ("done", "done_with_missing") and j.get("resultPath")]
     if done:
         path = done[0]["resultPath"]
         payload = tools["get_result"](path=path)

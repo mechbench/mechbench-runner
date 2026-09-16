@@ -25,6 +25,33 @@ with both headings.
 
 ## Unreleased
 
+## 0.26.0 — 2026-09-17
+
+### Changes that raise
+
+- _None._
+
+### Changes that alter results without raising
+
+- _None._
+
+### Other
+
+- **A run that lost a branch is reported as one** (task 000515). Since
+  compute 0.86.0 an edge may declare `on_missing`, so a failed branch
+  can leave the run standing — and the job still landed as a plain
+  `done`. The runner now reads the manifest's `nodes_missing` once, at
+  the moment the result is produced, spools it beside the result, and
+  declares it when finalizing a presigned upload (the one path where
+  the API never holds the bytes to read it itself). The job lands as
+  `done_with_missing`, carrying what did not run and why.
+- `done_with_missing` joins the terminal statuses everywhere the runner
+  lists them: the spool flush clears a result for such a job rather
+  than offering it forever, `mechbench watch` stops and names each
+  absent node instead of calling the run a failure, and the MCP smoke
+  check will read its result.
+
+
 ## 0.25.0 — 2026-09-16
 
 ### Changes that raise

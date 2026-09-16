@@ -8,6 +8,7 @@ sync `Client` is enough; it reuses a connection pool for free.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -331,12 +332,21 @@ class ApiClient:
                 f"{res.text[:300]}")
 
     def complete_job_uploaded(self, job_id: str, content_hash: str,
-                              kind: str | None = None) -> None:
+                              kind: str | None = None,
+                              missing: Mapping[str, Any] | None = None) -> None:
         """Finalize a presigned upload: `POST /jobs/:id/complete` with
-        `{uploaded: true, contentHash}` and no body."""
+        `{uploaded: true, contentHash}` and no body.
+
+        `missing` is the result manifest's `nodes_missing` (000515). It
+        is declared here because on this path the API never holds the
+        bytes to read it from — the same reason `kind` is declared —
+        and without it a run that finished having lost a branch would
+        land as a plain `done`."""
         body: dict[str, Any] = {"uploaded": True, "contentHash": content_hash}
         if kind:
             body["kind"] = kind
+        if missing:
+            body["missing"] = dict(missing)
         res = self._client.post(f"/jobs/{job_id}/complete", json=body,
                                 headers=self._job_headers(job_id))
         self._raise_for_status(res)

@@ -110,6 +110,7 @@ class RecordingApi:
         self.direct: list[int] = []
         self.finalized: list[str] = []
         self.uploaded: list[int] = []
+        self.declared_missing: list[dict | None] = []
         self.claim_tokens: dict[str, str] = {}
 
     def request_result_upload(self, job_id, content_hash, size_bytes, kind=None):
@@ -119,8 +120,9 @@ class RecordingApi:
     def upload_to_grant(self, grant, cbor_bytes, timeout=600.0):
         self.uploaded.append(len(cbor_bytes))
 
-    def complete_job_uploaded(self, job_id, content_hash, kind=None):
+    def complete_job_uploaded(self, job_id, content_hash, kind=None, missing=None):
         self.finalized.append(content_hash)
+        self.declared_missing.append(missing)
 
     def complete_job_cbor(self, job_id, cbor_bytes, content_hash):
         self.direct.append(len(cbor_bytes))
@@ -183,3 +185,58 @@ class TestDeliverChoosesThePath:
         r._deliver(api, "j_1", b"\xa0" * 200, "00")  # must not raise
         assert api.finalized == []
         assert (jr.spool_dir() / "j_1" / "result.cbor").is_file()
+
+
+class TestDeclaringWhatDidNotRun:
+    """Task 000515. The API reads `nodes_missing` off the result bytes
+    when it has them; on the grant path it never does, so the runner
+    declares it — and a run that finished having lost a branch lands as
+    `done_with_missing` rather than a plain `done`."""
+
+    MISSING = {"sonnet": {"reason": "RuntimeError: that provider said no",
+                          "source": ["sonnet"]}}
+
+    def test_the_grant_path_declares_it(self, monkeypatch):
+        r = _runner(monkeypatch)
+        monkeypatch.setattr(jr, "PRESIGN_THRESHOLD_BYTES", 50)
+        api = RecordingApi(grant=GRANT)
+        r._deliver(api, "j_1", b"\xa0" * 200, "00", self.MISSING)
+        assert api.declared_missing == [self.MISSING]
+
+    def test_the_direct_path_declares_nothing(self, monkeypatch):
+        """The bytes go to the API, which reads the manifest itself. A
+        declaration here would be a second, weaker copy of one fact."""
+        r = _runner(monkeypatch)
+        api = RecordingApi(grant=GRANT)
+        r._deliver(api, "j_1", b"\xa0" * 100, "00", self.MISSING)
+        assert api.direct == [100] and api.declared_missing == []
+
+    def test_a_late_delivery_declares_it_from_the_spool(self, monkeypatch):
+        """The process that produced the result is gone; the spool is
+        what remembers. Decoding a multi-gigabyte CBOR to recover one
+        key is not the alternative."""
+        jr._spool_result("j_2", b"\xa0" * 200, "00", None, self.MISSING)
+        assert jr._spooled_missing("j_2") == self.MISSING
+        assert jr._spooled_missing("j_never") is None
+
+    def test_a_result_that_lost_nothing_spools_no_sidecar(self):
+        jr._spool_result("j_3", b"\xa0" * 10, "00")
+        assert not (jr.spool_dir() / "j_3" / "result.missing.json").exists()
+        assert jr._spooled_missing("j_3") is None
+
+    def test_missing_is_read_off_a_payload_either_way_it_is_wrapped(self):
+        wrapped = {"payload": {"kind": "run/result", "nodes_missing": self.MISSING}}
+        bare = {"kind": "run/result", "nodes_missing": self.MISSING}
+        assert jr._missing_of(wrapped) == self.MISSING
+        assert jr._missing_of(bare) == self.MISSING
+        # The common case: nothing missing, and nothing to say about it.
+        assert jr._missing_of({"payload": {"kind": "run/result"}}) is None
+        assert jr._missing_of({"payload": {"nodes_missing": {}}}) is None
+        assert jr._missing_of(None) is None
+
+    def test_a_finished_job_clears_its_spool_whichever_finish_it_was(self):
+        """A spooled result for a job the server has already finished has
+        nowhere to go. `done_with_missing` is finished — left out of that
+        set, the flush would offer it forever."""
+        assert "done_with_missing" in jr.TERMINAL_SERVER_STATUS
+        assert "done" in jr.TERMINAL_SERVER_STATUS

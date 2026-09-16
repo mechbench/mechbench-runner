@@ -26,7 +26,12 @@ from mechbench_compute import bench
 
 from .config import Config
 
-TERMINAL = ("done", "failed", "cancelled", "interrupted")
+TERMINAL = ("done", "done_with_missing", "failed", "cancelled", "interrupted")
+
+#: The terminal statuses that mean the work landed. `done_with_missing`
+#: (000515) is a result worth reading — part of the graph did not run,
+#: which `watch` says out loud rather than treating as a failure.
+FINISHED = ("done", "done_with_missing")
 
 #: Every run's job id, appended the moment the API answers. A job id
 #: held only in a terminal scrollback is a job id lost — and `run`
@@ -143,7 +148,8 @@ def watch(config: Config, jobs: list[str], interval: float = 4.0) -> int:
     does not bury the interesting moment under identical lines — and
     printing failures loudly: a watcher that reports only success is
     indistinguishable from one that has stopped watching. Non-zero exit if
-    any job did not finish `done`."""
+    any job did not finish — `done_with_missing` counts as finished
+    (000515), and each absent node is named."""
     _connect(config)
     failed: list[str] = []
     for jid, j in bench.watch(jobs, interval=interval):
@@ -152,10 +158,18 @@ def watch(config: Config, jobs: list[str], interval: float = 4.0) -> int:
                   f"(fetch error: {j.get('error')})", flush=True)
             continue
         print(f"{time.strftime('%H:%M:%S')} {jid[:14]} {_line(j)}", flush=True)
-        if j.get("status") in TERMINAL and j.get("status") != "done":
+        status = j.get("status")
+        if status in TERMINAL and status not in FINISHED:
             failed.append(jid)
             err = str(j.get("errorMessage") or j.get("error") or "")[:500]
-            print(f"  !! {jid} {str(j.get('status')).upper()}: {err}", flush=True)
+            print(f"  !! {jid} {str(status).upper()}: {err}", flush=True)
+        elif status == "done_with_missing":
+            # Not a failure, and not silent either: the result is real
+            # and something in it is absent (000515).
+            for node, why in (j.get("missingNodes") or {}).items():
+                reason = str((why or {}).get("reason", ""))[:200] if isinstance(
+                    why, dict) else str(why)[:200]
+                print(f"  ~~ {jid} node {node} did not run: {reason}", flush=True)
     return 1 if failed else 0
 
 

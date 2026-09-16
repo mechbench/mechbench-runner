@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import json
 import os
 import shutil
 import signal
@@ -20,6 +21,7 @@ import subprocess
 import sys
 import time
 import traceback
+from collections.abc import Mapping
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -82,9 +84,18 @@ def _presign_threshold() -> int:
 #: transport interrupt from a crash and apply the bound above (000483).
 TRANSPORT_INTERRUPT_PREFIX = "the API was unreachable while storing a result"
 
+#: The server states a job never leaves. `done_with_missing` (000515) is
+#: one of them: a run that finished having lost a branch is finished. A
+#: spooled result for a job in any of these has nowhere to go and is
+#: cleared — which is exactly why this is a named set and not a literal
+#: repeated at each site, where a new terminal status becomes a spool
+#: that retries a delivery forever.
+TERMINAL_SERVER_STATUS = ("done", "done_with_missing", "failed", "cancelled")
+
 
 def _spool_result(job_id: str, cbor_bytes: bytes, digest: str,
-                  claim_token: str | None = None) -> None:
+                  claim_token: str | None = None,
+                  missing: Mapping[str, Any] | None = None) -> None:
     """Persist a finished result BEFORE the upload is attempted (epic
     000320). Written whole-then-renamed so a crash mid-write leaves no
     half file; the digest rides alongside so reconciliation can
@@ -92,17 +103,47 @@ def _spool_result(job_id: str, cbor_bytes: bytes, digest: str,
 
     The claim token rides alongside too (000491): a late delivery after a
     restart is only accepted if it carries the token of the claim that
-    produced the result, and the process that knew it is gone."""
+    produced the result, and the process that knew it is gone.
+
+    So does the manifest's `nodes_missing` (000515), for the same
+    reason as the digest: a late delivery must be able to declare what
+    did not run without decoding a result it did not produce — which
+    for a multi-gigabyte CBOR is not a thing to do for one key."""
     d = spool_dir() / job_id
     d.mkdir(mode=0o700, parents=True, exist_ok=True)
     tmp = d / "result.cbor.tmp"
     tmp.write_bytes(cbor_bytes)
     os.replace(tmp, d / "result.cbor")
     (d / "result.sha256").write_text(digest)
+    if missing:
+        (d / "result.missing.json").write_text(json.dumps(missing))
     if claim_token:
         tok = d / "claim.token"
         tok.write_text(claim_token)
         tok.chmod(0o600)
+
+
+def _missing_of(payload: Any) -> dict[str, Any] | None:
+    """`nodes_missing` off a run/result payload: node id -> {reason,
+    source}. Absent on every result where nothing went missing, which is
+    almost all of them."""
+    if not isinstance(payload, Mapping):
+        return None
+    inner = payload.get("payload")
+    obj = inner if isinstance(inner, Mapping) else payload
+    missing = obj.get("nodes_missing")
+    return dict(missing) if isinstance(missing, Mapping) and missing else None
+
+
+def _spooled_missing(job_id: str) -> dict[str, Any] | None:
+    f = spool_dir() / job_id / "result.missing.json"
+    if not f.is_file():
+        return None
+    with suppress(Exception):
+        loaded = json.loads(f.read_text())
+        if isinstance(loaded, dict) and loaded:
+            return loaded
+    return None
 
 
 def _spooled_claim_token(job_id: str) -> str | None:
@@ -490,7 +531,7 @@ class JobRunner:
                 print(f"[runner] spool: could not look up {job_id} ({e})")
                 continue
             status = j.get("status")
-            if status in ("done", "failed", "queued", "cancelled"):
+            if status in TERMINAL_SERVER_STATUS or status == "queued":
                 _clear_spool(job_id)
                 continue
             claimed_by = j.get("claimedByRunnerId")
@@ -504,7 +545,8 @@ class JobRunner:
                         "delivered from this machine's spool",
                         timeout=15.0,
                     )
-                self._upload_result(api, job_id, cbor_bytes, digest)
+                self._upload_result(api, job_id, cbor_bytes, digest,
+                                    _spooled_missing(job_id))
             except Exception as e:  # noqa: BLE001 — keep the spool, retry later
                 standing = _standing_refusal(e)
                 if standing is None:
@@ -865,13 +907,16 @@ class JobRunner:
 
             cbor_bytes = dump_canonical(payload)
             digest = hashlib.sha256(cbor_bytes).hexdigest()
+            # What did not run (000515), read once here where the
+            # payload is an object rather than a megabyte of CBOR.
+            missing = _missing_of(payload)
             # Spool first (epic 000320): from here on the result exists
             # on disk, and no server state can make this process discard
             # it. The upload is attempted now and, failing that, by
             # reconciliation until the server takes it.
             _spool_result(job_id, cbor_bytes, digest,
-                          _claim_token_of(api, job_id))
-            self._deliver(api, job_id, cbor_bytes, digest)
+                          _claim_token_of(api, job_id), missing)
+            self._deliver(api, job_id, cbor_bytes, digest, missing)
         finally:
             # The last word on what this job cost, even if it failed:
             # a budget refusal is exactly the case where the number
@@ -950,26 +995,34 @@ class JobRunner:
 
     @staticmethod
     def _upload_result(api: ApiClient, job_id: str,
-                       cbor_bytes: bytes, digest: str) -> None:
+                       cbor_bytes: bytes, digest: str,
+                       missing: Mapping[str, Any] | None = None) -> None:
         """Get the finished result onto the server, by whichever path its
         size wants (000492): above the threshold, a grant, a PUT straight
         to object storage, and a finalize; otherwise, or when this
         deployment's store cannot grant, the direct completion. Both the
         first delivery and a reconcile-time late delivery come through
         here, so a large result is never attempted through the API's
-        body cap by either."""
+        body cap by either.
+
+        `missing` is the manifest's `nodes_missing` (000515), declared
+        only on the grant path: there the API never holds the bytes, so
+        what did not run has to be told rather than read. On the direct
+        path the API reads it from the result itself and a declaration
+        would be a second, weaker copy of the same fact."""
         content_hash = f"sha256:{digest}"
         grant = None
         if len(cbor_bytes) > _presign_threshold():
             grant = api.request_result_upload(job_id, content_hash, len(cbor_bytes))
         if grant is not None:
             api.upload_to_grant(grant, cbor_bytes)
-            api.complete_job_uploaded(job_id, content_hash)
+            api.complete_job_uploaded(job_id, content_hash, missing=missing)
         else:
             api.complete_job_cbor(job_id, cbor_bytes, content_hash)
 
     def _deliver(self, api: ApiClient, job_id: str,
-                 cbor_bytes: bytes, digest: str) -> None:
+                 cbor_bytes: bytes, digest: str,
+                 missing: Mapping[str, Any] | None = None) -> None:
         """Upload a spooled result. Refusal is not failure: the job's
         result exists; the server's state is what has to catch up. A
         409 (reaped meanwhile, or still `preparing` after a re-claim)
@@ -981,7 +1034,7 @@ class JobRunner:
         object storage, finalize. A store that cannot grant says so and
         the direct path is taken instead."""
         try:
-            self._upload_result(api, job_id, cbor_bytes, digest)
+            self._upload_result(api, job_id, cbor_bytes, digest, missing)
         except Exception as e:  # noqa: BLE001 — keep the spool, retry later
             print(f"[runner] {job_id}: result spooled; upload not accepted "
                   f"yet ({e}) — reconciliation retries")
