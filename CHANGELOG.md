@@ -25,6 +25,25 @@ with both headings.
 
 ## Unreleased
 
+## 0.30.0 — 2026-09-18
+
+### Changes that raise
+
+- _None._
+
+### Changes that alter results without raising
+
+- _None._ See mechbench-compute 0.101.0: a node's lineage inputs now
+  name the stored objects it read by reference. No result's bytes change.
+
+### Other
+
+- Needs mechbench-compute 0.101.0 (epic 000553): the executor reads the
+  declared dataflow form (`{"$param"}`, `{"$ref"}`, protocol inputs as
+  edge sources, declared outputs stored by name). It also carries
+  compute 0.100.0's `text/measure` mode `items` and the release gate that
+  no longer loads a model.
+
 ## 0.29.0 — 2026-09-17
 
 ### Changes that raise

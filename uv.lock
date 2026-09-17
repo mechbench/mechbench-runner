@@ -896,7 +896,7 @@ wheels = [
 
 [[package]]
 name = "mechbench"
-version = "0.29.0"
+version = "0.30.0"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
@@ -919,7 +919,7 @@ requires-dist = [
     { name = "certifi", specifier = ">=2024.2" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "mcp", specifier = ">=2,<3" },
-    { name = "mechbench-compute", specifier = ">=0.99.0" },
+    { name = "mechbench-compute", specifier = ">=0.101.0" },
     { name = "mechbench-schema", specifier = ">=0.14" },
     { name = "pydantic", specifier = ">=2.7,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
@@ -930,7 +930,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "mechbench-compute"
-version = "0.99.0"
+version = "0.101.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -946,9 +946,9 @@ dependencies = [
     { name = "transformers" },
     { name = "wasmtime" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d9/e4/b8cebd10047b0f8a72a775269388779863bb4399351d1308e15e9dbc2efe/mechbench_compute-0.99.0.tar.gz", hash = "sha256:80535bcd5a3103955bcc07117df444131e9ffdda87486c9932a5bc7c400cbcbe", size = 619117, upload-time = "2026-09-17T17:04:36.936Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6c/ea/64b0626604da16018bb550eff68ac67f47551fc6e2a6ad9c3e537285b2c2/mechbench_compute-0.101.0.tar.gz", hash = "sha256:b52958763fed4bc102b06fc762df6cad0ad845c0d116efa84a73b43370213b9e", size = 629774, upload-time = "2026-09-17T23:00:43.99Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e3/9a/020aba5f1615d5e8583dd80b6e002f6d5f3ab55b88f720a3382e8a4cfe0e/mechbench_compute-0.99.0-py3-none-any.whl", hash = "sha256:29f633e8e1bab0e4dd3db6865c878a5c9a4549e345b6a3ea498852377d59cdba", size = 500703, upload-time = "2026-09-17T17:04:35.52Z" },
+    { url = "https://files.pythonhosted.org/packages/27/5d/b886fee8f884c6d74503b04099337cb0eff178c315d0338fa5522262793b/mechbench_compute-0.101.0-py3-none-any.whl", hash = "sha256:28c95bb799e54c94093b6c7bcf35d649a3f3a48b1adeabd1994d580cf5b94226", size = 506474, upload-time = "2026-09-17T23:00:42.403Z" },
 ]
 
 [[package]]
