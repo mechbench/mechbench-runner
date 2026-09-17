@@ -25,6 +25,32 @@ with both headings.
 
 ## Unreleased
 
+## 0.27.0 — 2026-09-17
+
+### Changes that raise
+
+- _None._
+
+### Changes that alter results without raising
+
+- _None._
+
+### Other
+
+- **Publishing, copying, deleting and histories from the command line.**
+  - `mechbench protocol publish <prt_…> [--version N]` publishes a
+    version (the head by default) and prints its public page.
+  - `protocol unpublish <prt_…> --version N` withdraws one and names the
+    articles citing it.
+  - `protocol copy <prt_…>@N --into owner/project [--name] [--org]
+    [--dry-run]` copies a version, sub-protocols and all.
+  - `mechbench delete <path | prt_/j_/art_/ds_/proj_ id> [--prefix]`
+    says what the deletion would take, keep, and what refuses it; `--yes`
+    does it, and `--acknowledge-citations` when articles cite it.
+  - `mechbench history <kind> <id>` prints a lifetime's audit log, also
+    after deletion.
+- Needs mechbench-compute 0.97.0, whose `bench` library these wrap.
+
 ## 0.26.0 — 2026-09-17
 
 ### Changes that raise

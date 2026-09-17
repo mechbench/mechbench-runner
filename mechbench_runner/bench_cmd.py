@@ -256,3 +256,155 @@ def result(config: Config, spec: str, fmt: str, out_path: str | None,
         return 1
     print(table if table is not None else json.dumps(payload, indent=1, default=str))
     return 0
+
+
+# --- publishing, copying, deleting, histories (epic 000535, task 000542) ------
+
+
+def protocol_publish(config: Config, protocol: str, version: int | None) -> int:
+    """Publish a version — the head unless one is named — and print where
+    the public reads it. An article embeds exactly this version."""
+    _connect(config)
+    try:
+        n = (version if version is not None
+             else int(bench.get_protocol(protocol)["version"]))
+        out = bench.publish_protocol_version(protocol, n)
+    except bench.BenchError as e:
+        print(f"publish failed: {e}", file=sys.stderr)
+        return 1
+    print(f"{protocol} v{n} published")
+    if out.get("publicPath"):
+        # The site is the API's host without `api.` (mechbench.ai); any
+        # other API (a local one) gets the path alone.
+        site = config.api_base_url.replace("://api.", "://", 1)
+        print(f"  {site if site != config.api_base_url else ''}{out['publicPath']}")
+    for inc in out.get("unpublishedIncludes") or []:
+        print(f"  note: it includes {inc.get('name')}, which is not published — "
+              f"readers see only its name", file=sys.stderr)
+    return 0
+
+
+def protocol_unpublish(config: Config, protocol: str, version: int) -> int:
+    _connect(config)
+    try:
+        out = bench.unpublish_protocol_version(protocol, version)
+    except bench.BenchError as e:
+        print(f"unpublish failed: {e}", file=sys.stderr)
+        return 1
+    print(f"{protocol} v{version} unpublished")
+    _print_citations(out, "now show a placeholder where it was")
+    return 0
+
+
+def protocol_copy(config: Config, source: str, into: str, name: str | None,
+                  org: bool, dry_run: bool) -> int:
+    """`<protocol>@<version> --into owner/project`: a new protocol there,
+    its sub-protocols copied (or reused) with it."""
+    pid, sep, ver = source.partition("@")
+    owner, slash, project = into.partition("/")
+    if not sep or not ver.isdigit() or not slash or not owner or not project:
+        print("copy wants <protocol-id>@<version> --into <owner>/<project>",
+              file=sys.stderr)
+        return 2
+    _connect(config)
+    try:
+        out = bench.copy_protocol_version(
+            pid, int(ver), owner, project, name=name,
+            owner_kind="org" if org else "user", dry_run=dry_run)
+    except bench.BenchError as e:
+        print(f"copy failed: {e}", file=sys.stderr)
+        return 1
+    made = out.get("name") if dry_run else (out.get("protocol") or {}).get("name")
+    pid_new = None if dry_run else (out.get("protocol") or {}).get("id")
+    print(f"{'would create' if dry_run else 'created'} {owner}/{project}/{made}"
+          + (f" ({pid_new})" if pid_new else ""))
+    for step in out.get("copied") or []:
+        print(f"  {'would copy' if dry_run else 'copied'} {step['from']['name']} "
+              f"v{step['from']['version']} as {step['to']['name']}")
+    for step in out.get("reused") or []:
+        print(f"  {'would reuse' if dry_run else 'reused'} {step['to']['name']} "
+              f"(already a copy of {step['from']['name']} v{step['from']['version']})")
+    return 0
+
+
+def _print_citations(out: dict[str, Any], consequence: str) -> None:
+    cited = out.get("citedBy") or []
+    unreadable = int(out.get("unreadable") or 0)
+    if not cited and not unreadable:
+        return
+    print(f"  {len(cited) + unreadable} article(s) cite it and {consequence}:")
+    for a in cited:
+        where = f"{a.get('ownerHandle')}/articles/{a.get('slug')}"
+        print(f"    {a.get('title')} — {where} ({a.get('status')})")
+    if unreadable:
+        print(f"    …and {unreadable} you cannot see")
+
+
+def _counts(counts: dict[str, Any]) -> str:
+    return ", ".join(f"{n} {k}" for k, n in counts.items() if n)
+
+
+def delete(config: Config, target: str, prefix: bool, yes: bool,
+           acknowledge: bool) -> int:
+    """Say what deleting `target` would do; with `--yes`, do it. A path is an
+    object (everything under it with `--prefix`); a `prt_`, `j_`, `art_`,
+    `ds_` or `proj_` id is that thing. Exit 0 when it is (or was) deleted,
+    or could be now; 1 when something refuses it."""
+    _connect(config)
+    try:
+        plan = bench.delete(target, prefix=prefix, dry_run=True)
+    except (bench.BenchError, ValueError) as e:
+        print(f"delete failed: {e}", file=sys.stderr)
+        return 1
+    refusal = plan.get("refusal")
+    if refusal:
+        print(f"refused ({refusal.get('code')}): {refusal.get('error')}")
+        for p in (refusal.get("includedBy") or refusal.get("includes") or []):
+            print(f"  {p.get('ownerHandle')}/{p.get('name')} ({p.get('id')})")
+        for j in refusal.get("jobs") or []:
+            print(f"  {j}")
+        return 1
+    what = _counts(plan.get("deletes") or {}) or "nothing"
+    print(f"{'deleting' if yes else 'would delete'}: {what}")
+    if _counts(plan.get("keeps") or {}):
+        print(f"  keeps: {_counts(plan['keeps'])}")
+    _print_citations(plan, "will show a placeholder where it was")
+    cited = bool(plan.get("citedBy")) or bool(plan.get("unreadable"))
+    if not yes:
+        print("  (nothing deleted — repeat with --yes"
+              + (" --acknowledge-citations" if cited else "") + ")", file=sys.stderr)
+        return 0
+    if cited and not acknowledge:
+        print("  not deleted: articles cite it — repeat with "
+              "--acknowledge-citations", file=sys.stderr)
+        return 1
+    try:
+        bench.delete(target, prefix=prefix, acknowledge_citations=acknowledge)
+    except bench.BenchError as e:
+        print(f"delete failed: {e}", file=sys.stderr)
+        return 1
+    print(f"deleted {target} — its history: mechbench history <kind> <id>")
+    return 0
+
+
+def history(config: Config, kind: str, entity_id: str) -> int:
+    """A lifetime's audit log, readable after the thing is gone."""
+    _connect(config)
+    try:
+        out = bench.history(kind, entity_id)
+    except bench.BenchError as e:
+        print(f"history failed: {e}", file=sys.stderr)
+        return 1
+    life = out.get("lifetime") or {}
+    ended = (f", deleted {life.get('deletedAt')} by @{life.get('deletedBy')}"
+             if life.get("deletedAt") else "")
+    print(f"{life.get('kind')} {life.get('id')} · {life.get('label')}")
+    print(f"  created {life.get('createdAt') or '(before this was recorded)'}{ended}")
+    for e in out.get("events") or []:
+        meta = json.dumps(e.get("meta") or {}, separators=(",", ":"))
+        actor = f"@{e['actorHandle']}" if e.get("actorHandle") else "(deleted user)"
+        print(f"  {e.get('at')}  {actor}  {e.get('action')}  {meta[:160]}")
+    for o in out.get("others") or []:
+        state = "live now" if o.get("live") else f"deleted {o.get('deletedAt')}"
+        print(f"  also at this address: {o.get('id')} ({state})")
+    return 0

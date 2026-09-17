@@ -1,6 +1,6 @@
 """CLI entry.
 
-`mechbench {login,logout,whoami,doctor,models,mcp,run,status,…}`
+`mechbench {login,logout,whoami,doctor,models,mcp,run,protocol,delete,history,status,…}`
 """
 
 from __future__ import annotations
@@ -162,6 +162,48 @@ def main(argv: list[str] | None = None) -> int:
     cancel_p.add_argument(
         "--reason", default="",
         help="Why, recorded on the job and in the audit log.")
+
+    protocol_p = sub.add_parser(
+        "protocol", help="Publish a protocol version, or copy one into a project.")
+    protocol_sub = protocol_p.add_subparsers(
+        dest="protocol_cmd", required=True, metavar="<verb>")
+    publish_p = protocol_sub.add_parser(
+        "publish",
+        help="Make a version readable by anyone — the head unless --version.")
+    publish_p.add_argument("protocol", help="A protocol id (prt_…).")
+    publish_p.add_argument("--version", type=int, help="The version to publish.")
+    unpublish_p = protocol_sub.add_parser(
+        "unpublish", help="Withdraw a published version; names the articles citing it.")
+    unpublish_p.add_argument("protocol", help="A protocol id (prt_…).")
+    unpublish_p.add_argument("--version", type=int, required=True)
+    copy_p = protocol_sub.add_parser(
+        "copy", help="Copy a version into a project, sub-protocols and all.")
+    copy_p.add_argument("source", help="<protocol-id>@<version>")
+    copy_p.add_argument("--into", required=True, metavar="OWNER/PROJECT")
+    copy_p.add_argument("--name", help="The copy's name (default: the source's).")
+    copy_p.add_argument("--org", action="store_true", help="OWNER is an org.")
+    copy_p.add_argument("--dry-run", action="store_true", dest="dry_run",
+                        help="Say what it would create, and create nothing.")
+
+    delete_p = sub.add_parser(
+        "delete",
+        help="Say what deleting an object path, or a protocol, job, article, "
+             "dataset or project id, would do; --yes does it.")
+    delete_p.add_argument(
+        "target", help="An object path, or a prt_/j_/art_/ds_/proj_ id.")
+    delete_p.add_argument("--prefix", action="store_true",
+                          help="An object path: everything under it too.")
+    delete_p.add_argument(
+        "--yes", action="store_true", help="Delete, not just describe.")
+    delete_p.add_argument("--acknowledge-citations", action="store_true",
+                          dest="acknowledge",
+                          help="Delete even though articles cite it.")
+
+    history_p = sub.add_parser(
+        "history", help="A thing's audit log — readable after it is deleted.")
+    history_p.add_argument(
+        "kind", choices=["object", "protocol", "article", "project", "dataset", "job"])
+    history_p.add_argument("id")
 
     result_p = sub.add_parser(
         "result", help="Read one result node: <job>/<node>, or <node> with "
@@ -386,6 +428,27 @@ def main(argv: list[str] | None = None) -> int:
         from mechbench_runner import bench_cmd
 
         return bench_cmd.cancel(config, args.jobs, args.reason)
+
+    if args.cmd == "protocol":
+        from mechbench_runner import bench_cmd
+
+        if args.protocol_cmd == "publish":
+            return bench_cmd.protocol_publish(config, args.protocol, args.version)
+        if args.protocol_cmd == "unpublish":
+            return bench_cmd.protocol_unpublish(config, args.protocol, args.version)
+        return bench_cmd.protocol_copy(config, args.source, args.into, args.name,
+                                       args.org, args.dry_run)
+
+    if args.cmd == "delete":
+        from mechbench_runner import bench_cmd
+
+        return bench_cmd.delete(config, args.target, args.prefix, args.yes,
+                                args.acknowledge)
+
+    if args.cmd == "history":
+        from mechbench_runner import bench_cmd
+
+        return bench_cmd.history(config, args.kind, args.id)
 
     if args.cmd in {"run", "watch", "result"}:
         # `run` overloads: with a PROTOCOL it launches (the researcher's

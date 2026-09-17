@@ -250,3 +250,98 @@ class TestResultByBinding:
             {"jobId": "j", "resultPath": None}])
         assert b.result(CFG, "grade", "auto", None,
                         protocol="p", binds=["corpus=x"]) == 1
+
+
+SITE = type("Cfg", (), {"api_base_url": "https://api.mechbench.ai"})()
+
+
+class TestProtocolPublish:
+    """Task 000542: publish the exact version an article embeds."""
+
+    def test_the_head_by_default_and_the_public_page(self, patched, capsys):
+        seen = {}
+
+        def publish(protocol, version):
+            seen["args"] = (protocol, version)
+            return {"publicPath": "/benji/lab/protocols/prt_1/v/3",
+                    "unpublishedIncludes": [{"name": "leaf"}]}
+        patched(get_protocol=lambda protocol: {"id": protocol, "version": 3},
+                publish_protocol_version=publish)
+        assert b.protocol_publish(SITE, "prt_1", None) == 0
+        assert seen["args"] == ("prt_1", 3)
+        cap = capsys.readouterr()
+        assert "prt_1 v3 published" in cap.out
+        assert "https://mechbench.ai/benji/lab/protocols/prt_1/v/3" in cap.out
+        assert "leaf, which is not published" in cap.err
+
+    def test_unpublish_names_the_citing_articles(self, patched, capsys):
+        patched(unpublish_protocol_version=lambda protocol, version: {
+            "citedBy": [{"title": "Lighthouse", "ownerHandle": "benji", "slug": "lh",
+                         "status": "published"}], "unreadable": 1})
+        assert b.protocol_unpublish(SITE, "prt_1", 3) == 0
+        out = capsys.readouterr().out
+        assert "2 article(s) cite it" in out and "Lighthouse — benji/articles/lh" in out
+
+
+class TestProtocolCopy:
+    def test_it_parses_the_source_and_destination_and_reports_each_step(
+            self, patched, capsys):
+        seen = {}
+
+        def copy(pid, version, owner, project, name=None, owner_kind="user",
+                 dry_run=False):
+            seen["args"] = (pid, version, owner, project, name, owner_kind, dry_run)
+            return {"name": "top-2", "reused": [],
+                    "copied": [{"from": {"name": "leaf", "version": 1},
+                                "to": {"name": "leaf"}}]}
+        patched(copy_protocol_version=copy)
+        assert b.protocol_copy(SITE, "prt_1@4", "lab/bench", None, True, True) == 0
+        assert seen["args"] == ("prt_1", 4, "lab", "bench", None, "org", True)
+        out = capsys.readouterr().out
+        assert "would create lab/bench/top-2" in out
+        assert "would copy leaf v1 as leaf" in out
+
+    def test_a_malformed_source_is_a_usage_error(self, patched):
+        assert b.protocol_copy(SITE, "prt_1", "lab/bench", None, False, False) == 2
+        assert b.protocol_copy(SITE, "prt_1@4", "lab", None, False, False) == 2
+
+
+class TestDelete:
+    """Task 000545: describe first; `--yes` deletes; citations need saying."""
+
+    def test_without_yes_it_only_describes(self, patched, capsys):
+        calls = []
+
+        def delete(target, prefix=False, dry_run=False, acknowledge_citations=False):
+            calls.append((target, prefix, dry_run, acknowledge_citations))
+            return {"deletes": {"objects": 2}, "keeps": {}, "refusal": None,
+                    "citedBy": [], "unreadable": 0}
+        patched(delete=delete)
+        assert b.delete(SITE, "benji/lab/notes", True, False, False) == 0
+        assert calls == [("benji/lab/notes", True, True, False)]
+        assert "would delete: 2 objects" in capsys.readouterr().out
+
+    def test_a_refusal_names_what_is_in_the_way(self, patched, capsys):
+        refusal = {"code": "INCLUDED", "error": "other protocols include it",
+                   "includedBy": [{"ownerHandle": "benji", "name": "outer",
+                                   "id": "prt_2"}]}
+        patched(delete=lambda target, prefix=False, dry_run=False,
+                acknowledge_citations=False: {"refusal": refusal})
+        assert b.delete(SITE, "prt_1", False, True, False) == 1
+        out = capsys.readouterr().out
+        assert "refused (INCLUDED)" in out and "benji/outer (prt_2)" in out
+
+    def test_citations_stop_a_yes_until_acknowledged(self, patched, capsys):
+        calls = []
+
+        def delete(target, prefix=False, dry_run=False, acknowledge_citations=False):
+            calls.append((dry_run, acknowledge_citations))
+            return {"deletes": {"protocols": 1}, "keeps": {}, "refusal": None,
+                    "citedBy": [{"title": "t", "ownerHandle": "o", "slug": "s",
+                                 "status": "draft"}],
+                    "unreadable": 0}
+        patched(delete=delete)
+        assert b.delete(SITE, "prt_1", False, True, False) == 1
+        assert calls == [(True, False)]
+        assert b.delete(SITE, "prt_1", False, True, True) == 0
+        assert calls[-1] == (False, True)
