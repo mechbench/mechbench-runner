@@ -896,7 +896,7 @@ wheels = [
 
 [[package]]
 name = "mechbench"
-version = "0.25.0"
+version = "0.27.0"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
@@ -919,7 +919,7 @@ requires-dist = [
     { name = "certifi", specifier = ">=2024.2" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "mcp", specifier = ">=2,<3" },
-    { name = "mechbench-compute", specifier = ">=0.71.0" },
+    { name = "mechbench-compute", specifier = ">=0.97.0" },
     { name = "mechbench-schema", specifier = ">=0.14" },
     { name = "pydantic", specifier = ">=2.7,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
@@ -930,7 +930,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "mechbench-compute"
-version = "0.88.0"
+version = "0.97.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -946,9 +946,9 @@ dependencies = [
     { name = "transformers" },
     { name = "wasmtime" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/79/36/0b84fa8cd9fc47518a814e5c2802308c072385c6df5325a6426d4e6b51ee/mechbench_compute-0.88.0.tar.gz", hash = "sha256:4d232c7ba1ddaac7ab6c5becfbffddbc62bf262a47f5ef70626a812c29e82e42", size = 581075, upload-time = "2026-09-16T02:25:53.638Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/c7/7e3648c478e0d04de386b1ab687cb2e8aeeadd70f37e45790231be8882d9/mechbench_compute-0.97.0.tar.gz", hash = "sha256:4a4c436431905cc2a1322b016456e6cd47b2601e8cd012a03b48cec905c69195", size = 603138, upload-time = "2026-09-17T05:30:16.174Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/32/35/d7f2a2246f7b13e7e61bec89b1df598a6c45649993c1a4149427522f2f83/mechbench_compute-0.88.0-py3-none-any.whl", hash = "sha256:117725b7db35fcfcfd24d8e23ffad7a5a9a32bc6ea4c619445a27dc4e72ac4a0", size = 478195, upload-time = "2026-09-16T02:25:52.173Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/56/610755b2f2936221072138f8f4c3fb1f0b75501c2a12e10d79827aef57ca/mechbench_compute-0.97.0-py3-none-any.whl", hash = "sha256:211a701ed27c5b57fe1407e7cc546d2086e37faa7508567568ba9a7531ab92b4", size = 490845, upload-time = "2026-09-17T05:30:14.883Z" },
 ]
 
 [[package]]
