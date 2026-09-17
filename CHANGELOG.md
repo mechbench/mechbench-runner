@@ -25,6 +25,27 @@ with both headings.
 
 ## Unreleased
 
+## 0.28.0 — 2026-09-17
+
+### Changes that raise
+
+- _None_ here. mechbench-compute 0.98.0, which this version requires,
+  refuses an `adapter/train` `batch` kind the target's shape does not
+  build, which it used to skip. See its notes.
+
+### Changes that alter results without raising
+
+- _None._
+
+### Other
+
+- Needs mechbench-compute 0.98.0 (task 000548). Everything new is in
+  compute: outcomes of many tokens trained whole (`batch.path`), item
+  slots drawn without replacement (`target.unit`, `target.replace`),
+  exact complete-outcome reads (`logits/read` `complete`), `eval/expect`
+  `absent`, and `text/measure` `list`. A runner below this version runs
+  an older compute that refuses those params by name.
+
 ## 0.27.0 — 2026-09-17
 
 ### Changes that raise
