@@ -25,6 +25,22 @@ with both headings.
 
 ## Unreleased
 
+## 0.29.0 — 2026-09-17
+
+### Changes that raise
+
+- _None._
+
+### Changes that alter results without raising
+
+- _None._
+
+### Other
+
+- Needs mechbench-compute 0.99.0 (task 000549): `text/generate`
+  `continue_prefill` and `stop`, and `metadata.sampling.ended` on every
+  generated item.
+
 ## 0.28.0 — 2026-09-17
 
 ### Changes that raise
