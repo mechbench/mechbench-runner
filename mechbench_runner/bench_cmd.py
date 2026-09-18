@@ -78,14 +78,50 @@ def _remember(entry: dict[str, Any]) -> None:
         pass  # a logging failure must never lose the run — the id still prints
 
 
+def _params(pairs: list[str] | None) -> dict[str, Any]:
+    """`--param n=12`: a value that parses as JSON is that value, any
+    other is text — so `n=12` is a number and `label=draws` a string."""
+    out: dict[str, Any] = {}
+    for p in pairs or []:
+        name, _, value = p.partition("=")
+        if not name:
+            raise SystemExit(f"--param wants name=value, got {p!r}")
+        try:
+            out[name] = json.loads(value)
+        except json.JSONDecodeError:
+            out[name] = value
+    return out
+
+
+def _inputs(pairs: list[str] | None) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for p in pairs or []:
+        name, _, value = p.partition("=")
+        if not name or not value:
+            raise SystemExit(f"--input wants name=path, got {p!r}")
+        out[name] = value
+    return out
+
+
 def run(config: Config, protocol: str, binds: list[str] | None,
-        budget: float | None, wait: bool) -> int:
+        budget: float | None, wait: bool, *,
+        params: list[str] | None = None, inputs: list[str] | None = None,
+        keep: str | None = None) -> int:
     """Bind a protocol, queue its job, print the job id, record it. With
-    `--wait`, then watch to a terminal state and exit on the result."""
+    `--wait`, then watch to a terminal state and exit on the result.
+
+    `--param` and `--input` bind by the names the protocol declares
+    (epic 000553); `--bind` is the legacy spelling the server still
+    reads as one or the other."""
     _connect(config)
     bindings = _binds(binds)
+    declared_params = _params(params)
+    declared_inputs = _inputs(inputs)
     try:
-        out = bench.launch(protocol, bindings, budget=budget)
+        out = bench.launch(
+            protocol, bindings or None, budget=budget,
+            params=declared_params or None, inputs=declared_inputs or None,
+            keep=keep)
     except bench.BenchError as e:
         print(f"run failed: {e}", file=sys.stderr)
         return 1
@@ -96,7 +132,9 @@ def run(config: Config, protocol: str, binds: list[str] | None,
         print(f"no job id in response: {json.dumps(out)[:300]}", file=sys.stderr)
         return 1
     _remember({"at": time.strftime("%Y-%m-%dT%H:%M:%SZ"), "protocol": protocol,
-               "bindings": bindings, "budget_usd": budget,
+               "bindings": bindings, "params": declared_params,
+               "inputs": declared_inputs, "budget_usd": budget,
+               **({"keep": keep} if keep else {}),
                "run": run_id, "job": job})
     print(job, flush=True)  # first line is the job id, for JOB=$(mechbench run …)
     detail = f"  run {run_id} · {protocol}"

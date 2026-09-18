@@ -25,6 +25,26 @@ with both headings.
 
 ## Unreleased
 
+## 0.32.0 — 2026-09-18
+
+### Changes that raise
+
+- _None._
+
+### Changes that alter results without raising
+
+- _None._
+
+### Other
+
+- `mechbench run <protocol> --param n=12 --input prompts=<path> --keep
+  outputs` (epic 000553, task 000563): a run binds the protocol's
+  declared params and inputs by name; `--param` reads a value that
+  parses as JSON as that value and any other as text. `--bind` stays as
+  the legacy spelling. The run's record in `~/.mechbench/runs.jsonl`
+  carries `params`, `inputs` and `keep`.
+- Needs mechbench-compute 0.103.0.
+
 ## 0.31.0 — 2026-09-18
 
 ### Changes that raise

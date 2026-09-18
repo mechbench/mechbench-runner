@@ -83,8 +83,9 @@ class TestRun:
     def test_it_records_the_job_id_before_returning(self, patched, capsys):
         seen = {}
 
-        def launch(protocol, bindings, budget=None):
+        def launch(protocol, bindings, budget=None, **declared):
             seen["args"] = (protocol, bindings, budget)
+            seen["declared"] = declared
             return {"id": "r1", "jobId": "j_abc"}
         patched(launch=launch)
         rc = b.run(CFG, "owner/p/proto", ["model=gemma"], 1.0, wait=False)
@@ -97,13 +98,35 @@ class TestRun:
         assert rec["bindings"] == {"model": "gemma"} and rec["budget_usd"] == 1.0
         assert seen["args"] == ("owner/p/proto", {"model": "gemma"}, 1.0)
 
+    def test_params_and_inputs_bind_by_name_and_keep_is_passed(self, patched):
+        # The declared form's flags (epic 000553): `--param n=12` is a
+        # number, `--param label=x` a string, `--input` a stored object.
+        seen = {}
+
+        def launch(protocol, bindings, budget=None, **declared):
+            seen["bindings"] = bindings
+            seen["declared"] = declared
+            return {"id": "r2", "jobId": "j_def"}
+        patched(launch=launch)
+        rc = b.run(CFG, "p", None, None, wait=False,
+                   params=["n=12", "label=draws", "flag=true"],
+                   inputs=["prompts=lab/p/prompts"], keep="outputs")
+        assert rc == 0
+        assert seen["bindings"] is None
+        assert seen["declared"] == {"params": {"n": 12, "label": "draws", "flag": True},
+                                    "inputs": {"prompts": "lab/p/prompts"},
+                                    "keep": "outputs"}
+        rec = json.loads(b.HISTORY.read_text().strip().splitlines()[-1])
+        assert rec["params"] == {"n": 12, "label": "draws", "flag": True}
+        assert rec["inputs"] == {"prompts": "lab/p/prompts"} and rec["keep"] == "outputs"
+
     def test_no_job_id_is_a_clean_failure(self, patched, capsys):
-        patched(launch=lambda protocol, bindings, budget=None: {"id": "r1"})
+        patched(launch=lambda protocol, bindings, budget=None, **_d: {"id": "r1"})
         assert b.run(CFG, "p", None, None, wait=False) == 1
         assert "no job id" in capsys.readouterr().err
 
     def test_a_launch_error_is_a_clean_failure(self, patched, capsys):
-        def boom(protocol, bindings, budget=None):
+        def boom(protocol, bindings, budget=None, **_d):
             raise BenchError("POST /protocols/p/runs -> 404: nope")
         patched(launch=boom)
         assert b.run(CFG, "p", None, None, wait=False) == 1

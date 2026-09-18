@@ -133,11 +133,32 @@ def main(argv: list[str] | None = None) -> int:
              "loop (what the supervisor invokes).",
     )
     run_p.add_argument(
+        "--param",
+        action="append",
+        metavar="NAME=VALUE",
+        help="Bind one of the protocol's params: the model, an n. A VALUE "
+             "that parses as JSON is that value (12, true, {…}); any "
+             "other is text.",
+    )
+    run_p.add_argument(
+        "--input",
+        action="append",
+        metavar="NAME=PATH",
+        help="Bind one of the protocol's inputs to a stored object, by "
+             "its path.",
+    )
+    run_p.add_argument(
+        "--keep",
+        choices=("all", "outputs"),
+        help="What the run stores: everything (default), or its declared "
+             "outputs alone, intermediates held on the runner.",
+    )
+    run_p.add_argument(
         "--bind",
         action="append",
         metavar="NAME=VALUE",
-        help="Bind a protocol hole. A VALUE starting with { or [ is JSON "
-             "(a model-ref binding is an object).",
+        help="The legacy binding, read as a param or an input by name; "
+             "use --param / --input.",
     )
     run_p.add_argument("--budget", type=float, metavar="USD",
                        help="Spend cap for the run; required for endpoint models.")
@@ -459,16 +480,19 @@ def main(argv: list[str] | None = None) -> int:
         # the daemon in the foreground: `mechbench run --wait` used to do
         # exactly that, silently dropping the flag. Refuse it.
         if args.cmd == "run" and args.protocol is None and (
-                args.bind or args.budget is not None or args.wait):
-            print("run: --bind/--budget/--wait need a PROTOCOL to launch; "
-                  "a bare `run` is the runner loop.", file=sys.stderr)
+                args.bind or args.param or args.input or args.keep
+                or args.budget is not None or args.wait):
+            print("run: --param/--input/--keep/--budget/--wait need a PROTOCOL "
+                  "to launch; a bare `run` is the runner loop.", file=sys.stderr)
             return 2
         if args.cmd != "run" or args.protocol is not None:
             from mechbench_runner import bench_cmd
 
             if args.cmd == "run":
                 return bench_cmd.run(config, args.protocol, args.bind,
-                                     args.budget, args.wait)
+                                     args.budget, args.wait,
+                                     params=args.param, inputs=args.input,
+                                     keep=args.keep)
             if args.cmd == "watch":
                 return bench_cmd.watch(config, args.jobs)
             return bench_cmd.result(config, args.spec, args.fmt, args.out,
