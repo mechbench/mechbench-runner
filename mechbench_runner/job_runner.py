@@ -302,21 +302,25 @@ class JobRunner:
         # restart; the ledger is per job.
         self._limiter = SharedLimiter(limits_path())
         self._spend: SpendLedger | None = None
+        hooks = dict(
+            on_download=self._announce_download,
+            on_download_bytes=self._announce_download_bytes,
+            on_node_start=self._spool_node_start,
+            on_spool_item=self._spool_item,
+            on_checkpoint=self._spool_checkpoint,
+            on_node_done=self._spool_node_done,
+            limiter=self._limiter,
+        )
         try:
-            self._executor = ProtocolExecutor(
-                on_download=self._announce_download,
-                on_download_bytes=self._announce_download_bytes,
-                on_node_start=self._spool_node_start,
-                on_spool_item=self._spool_item,
-                on_checkpoint=self._spool_checkpoint,
-                on_node_done=self._spool_node_done,
-                limiter=self._limiter,
-            )
-        except TypeError:  # an older compute without resume hooks
-            self._executor = ProtocolExecutor(
-                on_download=self._announce_download,
-                on_download_bytes=self._announce_download_bytes,
-            )
+            self._executor = ProtocolExecutor(on_node_kept=self._spool_node_kept, **hooks)
+        except TypeError:  # a compute before held results (000561)
+            try:
+                self._executor = ProtocolExecutor(**hooks)
+            except TypeError:  # an older compute without resume hooks
+                self._executor = ProtocolExecutor(
+                    on_download=self._announce_download,
+                    on_download_bytes=self._announce_download_bytes,
+                )
         try:
             from . import __version__ as runner_version
         except ImportError:  # version is optional metadata, not a dependency
@@ -991,6 +995,17 @@ class JobRunner:
         if self._spool is not None:
             with suppress(Exception):
                 self._spool.node_done(nid, path, fingerprint)
+
+    def _spool_node_kept(self, nid: str, fingerprint: str, result) -> None:
+        # A held result that cannot be spooled costs only a resume: the
+        # run continues from memory. Said once, since a resume that then
+        # recomputes the node would otherwise look like a lost spool.
+        if self._spool is None:
+            return
+        try:
+            self._spool.node_kept(nid, fingerprint, result)
+        except Exception as exc:  # noqa: BLE001 — logged, the run continues
+            print(f"[runner] could not hold {nid}'s result in the spool: {exc}")
 
     def _hold_awake(self) -> None:
         """Keep the machine from idle-sleeping while a job is in

@@ -70,6 +70,20 @@ class TestJobSpool:
                                            "done": "u/p/results/j_d/gen"}}
         assert sp.summary()["reused"] == 1
 
+    def test_a_held_result_resumes_under_its_fingerprint_and_not_another(self):
+        # keep: outputs (000561): a node's result held here instead of
+        # emitted is offered to a resume as `held`, counts as a done
+        # node, and goes with a changed fingerprint like any partial.
+        sp = JobSpool("j_h")
+        sp.node_start("grid", "fp")
+        sp.item("grid", "k", {"v": 1})
+        sp.node_kept("grid", "fp", {"kind": "collection", "items": [{"id": "1"}]})
+        assert sp.resume_map() == {"grid": {"fingerprint": "fp",
+                                            "held": {"kind": "collection", "items": [{"id": "1"}]}}}
+        assert sp.summary() == {"node": "grid", "reused": 1}
+        sp.node_start("grid", "fp2")
+        assert sp.resume_map() == {}
+
     def test_a_torn_item_is_not_an_item(self):
         sp = JobSpool("j_e")
         sp.node_start("gen", "fp")

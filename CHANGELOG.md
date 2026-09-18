@@ -25,6 +25,27 @@ with both headings.
 
 ## Unreleased
 
+## 0.31.0 — 2026-09-18
+
+### Changes that raise
+
+- _None._
+
+### Changes that alter results without raising
+
+- _None._ See mechbench-compute 0.102.0: every run manifest gains
+  `node_hashes` and `node_inputs`. No result's bytes change.
+
+### Other
+
+- Needs mechbench-compute 0.102.0 (epic 000553, task 000561): a run with
+  `keep: "outputs"` holds its intermediates on this machine instead of
+  emitting them. The spool keeps each held result under
+  `<job>/<node>/held.cbor` beside the node's fingerprint, offers it to a
+  resume as `held`, and drops it with the node's partials when the
+  fingerprint changes. A held result that cannot be written is said in
+  the log; the run continues from memory.
+
 ## 0.30.0 — 2026-09-18
 
 ### Changes that raise

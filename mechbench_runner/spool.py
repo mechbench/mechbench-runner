@@ -10,6 +10,9 @@ Under ``~/.mechbench/spool/<job>/``:
     <node>/checkpoint/weights.safetensors, opt.safetensors, state.cbor
                                     a training checkpoint
     <node>/done                     {"path", "fingerprint"} of an emitted node
+    <node>/held.cbor                {"fingerprint", "result"} of a node whose
+                                    result was HELD here rather than emitted
+                                    (a run with keep: outputs, 000561)
 
 Every write is whole-file-then-rename, so a crash leaves no half
 item. A node whose fingerprint CHANGES between attempts has its
@@ -62,6 +65,7 @@ class JobSpool:
             for sub in ("items", "checkpoint"):
                 shutil.rmtree(d / sub, ignore_errors=True)
             (d / "done").unlink(missing_ok=True)
+            (d / "held.cbor").unlink(missing_ok=True)
         _write_atomic(fp, fingerprint.encode())
 
     def item(self, nid: str, key: str, item: Any) -> None:
@@ -108,6 +112,16 @@ class JobSpool:
         _write_atomic(self.root / nid / "done",
                       dump_canonical({"path": path, "fingerprint": fingerprint}))
 
+    def node_kept(self, nid: str, fingerprint: str, result: Any) -> None:
+        """A finished node's result, held on this device instead of
+        emitted (keep: outputs): what a resume here picks up, and what
+        the bench never receives. Cleared with the rest of the spool
+        once the job's result is delivered."""
+        from mechbench_schema import dump_canonical
+
+        _write_atomic(self.root / nid / "held.cbor",
+                      dump_canonical({"fingerprint": fingerprint, "result": result}))
+
     # --- reading back ---------------------------------------------------------
 
     def resume_map(self) -> dict[str, dict[str, Any]]:
@@ -129,6 +143,17 @@ class JobSpool:
                 rec = load_raw(done.read_bytes())
                 if isinstance(rec, dict) and rec.get("path"):
                     entry["done"] = rec["path"]
+                    out[d.name] = entry
+                    continue
+            kept = d / "held.cbor"
+            if kept.is_file():
+                try:
+                    rec = load_raw(kept.read_bytes())
+                except Exception:  # noqa: BLE001 — a torn frame is not a result
+                    rec = None
+                if (isinstance(rec, dict) and "result" in rec
+                        and rec.get("fingerprint") == entry["fingerprint"]):
+                    entry["held"] = rec["result"]
                     out[d.name] = entry
                     continue
             items_dir = d / "items"
@@ -168,10 +193,10 @@ class JobSpool:
         up and how much it reuses."""
         m = self.resume_map()
         reused_items = sum(len(e.get("items", {})) for e in m.values())
-        done_nodes = [n for n, e in m.items() if "done" in e]
+        done_nodes = [n for n, e in m.items() if "done" in e or "held" in e]
         step = max((e["checkpoint"]["step"] for e in m.values()
                     if "checkpoint" in e), default=0)
-        first_partial = next((n for n, e in m.items() if "done" not in e), None)
+        first_partial = next((n for n, e in m.items() if "done" not in e and "held" not in e), None)
         return {
             "node": first_partial or (done_nodes[-1] if done_nodes else ""),
             "reused": reused_items + len(done_nodes),
