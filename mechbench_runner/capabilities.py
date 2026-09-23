@@ -77,9 +77,8 @@ API_ONLY: dict[str, str] = {
         "the composer's publish review; `protocol versions` and `protocol history` "
         "are the agent's record"
     ),
-    "article versions, restore, delta, media, comments": (
-        "the collaborative editor's; markdown writes and article versions for "
-        "agents are epic 000525"
+    "article delta, media, comments": (
+        "the collaborative editor's; markdown writes for agents are epic 000525"
     ),
     "dataset upload (`POST /datasets`, multipart)": (
         "`object write` then `dataset create` names the stored object as one"

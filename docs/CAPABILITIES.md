@@ -113,6 +113,7 @@ per-tool overhead at the cost of a single description too long to scan.
 | protocol | **update**(id, name?, description?, visibility?, project?) | `PATCH /protocols/:id` | `protocol(verb="update")` | `mechbench protocol update` |
 | protocol | **publish**(id, version?) | `POST /protocols/:id/versions/:n/publish` | `protocol(verb="publish")` | `mechbench protocol publish` |
 | protocol | **unpublish**(id, version) | `POST /protocols/:id/versions/:n/unpublish` | `protocol(verb="unpublish")` | `mechbench protocol unpublish` |
+| protocol | **restore**(id, version) | `POST /protocols/:id/versions/:n/restore` | `protocol(verb="restore")` | `mechbench protocol restore` |
 | protocol | **copy**(id, version?, into, name?, org?, dry_run?) | `POST /protocols/:id/versions/:n/copy` | `protocol(verb="copy")` | `mechbench protocol copy` |
 | protocol | **delete**(id, yes?, acknowledge_citations?) | `DELETE /protocols/:id` | `protocol(verb="delete")` | `mechbench protocol delete` |
 | protocol | **history**(id) | `GET /history/:kind/:id` | `protocol(verb="history")` | `mechbench protocol history` |
@@ -132,6 +133,8 @@ per-tool overhead at the cost of a single description too long to scan.
 | article | **read**(id, full?) | `GET /articles/:id` | `article(verb="read")` | `mechbench article read` |
 | article | **create**(slug, title, owner?, org?, subtitle?, body_file?, visibility?, tags?) | `POST /articles` | `article(verb="create")` | `mechbench article create` |
 | article | **update**(id, title?, subtitle?, slug?, status?, visibility?, tags?, body_file?, base_version?) | `PATCH /articles/:id` | `article(verb="update")` | `mechbench article update` |
+| article | **versions**(id) | `GET /articles/:id/versions` | `article(verb="versions")` | `mechbench article versions` |
+| article | **restore**(id, version) | `POST /articles/:id/versions/:n/restore` | `article(verb="restore")` | `mechbench article restore` |
 | article | **delete**(id, yes?) | `DELETE /articles/:id` | `article(verb="delete")` | `mechbench article delete` |
 | article | **history**(id) | `GET /history/:kind/:id` | `article(verb="history")` | `mechbench article history` |
 | dataset | **list**(owner?, search?, limit?, offset?, full?) | `GET /datasets` | `dataset(verb="list")` | `mechbench dataset list` |
@@ -173,7 +176,7 @@ per-tool overhead at the cost of a single description too long to scan.
 - object lineage and inventory (`~lineage`, `~inventory`): read through `bench.lineage` and the UI; `object list` and `object read` are the agent's discovery.
 - checkpoint files (`PUT /objects/:path` bytes): written and read by the runner's own jobs.
 - a protocol's changelog, dependencies and citations: the composer's publish review; `protocol versions` and `protocol history` are the agent's record.
-- article versions, restore, delta, media, comments: the collaborative editor's; markdown writes and article versions for agents are epic 000525.
+- article delta, media, comments: the collaborative editor's; markdown writes for agents are epic 000525.
 - dataset upload (`POST /datasets`, multipart): `object write` then `dataset create` names the stored object as one.
 - project transfer, members and audit: an owner's administration, in the UI.
 - runners (`GET /runners`, `PATCH`, `DELETE`, commands): the machines page; this machine's own are its command-line-only commands.

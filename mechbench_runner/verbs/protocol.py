@@ -102,7 +102,14 @@ def protocol_copy(ctx: Ctx, a: dict) -> Any:
     )
 
 
+def protocol_restore(ctx: Ctx, a: dict) -> Any:
+    route = f"/protocols/{a['id']}/versions/{int(a['version'])}/restore"
+    return unwrap(ctx.api("POST", route)[0], "protocol")
+
+
 VERSION = Arg("version", "A sealed version (default: the head).", type="int")
+#: The version a restore makes the head again.
+RESTORED = Arg("version", "The version to restore.", type="int", required=True)
 INTO = Arg("into", "owner/project.", required=True)
 
 PROTOCOL = Noun(
@@ -205,6 +212,14 @@ PROTOCOL = Noun(
             lambda ctx, a: ctx.bench().unpublish_protocol_version(
                 a["id"], int(a["version"])
             ),
+        ),
+        Verb(
+            "protocol",
+            "restore",
+            "Make an earlier version the head again, as the next version.",
+            "POST /protocols/:id/versions/:n/restore",
+            (ID, RESTORED),
+            protocol_restore,
         ),
         Verb(
             "protocol",

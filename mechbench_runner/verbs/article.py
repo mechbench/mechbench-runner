@@ -75,6 +75,11 @@ def article_update(ctx: Ctx, a: dict) -> Any:
     return unwrap(ctx.api("PATCH", f"/articles/{a['id']}", body=body)[0], "article")
 
 
+def article_restore(ctx: Ctx, a: dict) -> Any:
+    route = f"/articles/{a['id']}/versions/{int(a['version'])}/restore"
+    return unwrap(ctx.api("POST", route)[0], "article")
+
+
 BODY = Arg("body_file", "A file of its body, as rich text JSON.")
 TAGS = Arg("tags", "A tag.", type="strs", flag="--tag")
 
@@ -163,6 +168,23 @@ ARTICLE = Noun(
                 ),
             ),
             article_update,
+        ),
+        Verb(
+            "article",
+            "versions",
+            "Its sealed versions, newest first.",
+            "GET /articles/:id/versions",
+            (ID,),
+            lambda ctx, a: ctx.get(f"/articles/{a['id']}/versions"),
+            "read",
+        ),
+        Verb(
+            "article",
+            "restore",
+            "Make an earlier version its content again, as the next version.",
+            "POST /articles/:id/versions/:n/restore",
+            (ID, Arg("version", "The version to restore.", type="int", required=True)),
+            article_restore,
         ),
         Verb(
             "article",
