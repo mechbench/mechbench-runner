@@ -1,7 +1,9 @@
 """CLI entry.
 
-`mechbench {login,logout,whoami,doctor,models,mcp,run,runs,label,protocol,
-             delete,history,status,…}`
+`mechbench {login,logout,whoami,doctor,models,mcp,run,runs,label,delete,
+             history,status,…}`, and the nouns with their verbs:
+`mechbench {object,protocol,run,article,dataset,project} <verb>`
+(mechbench_runner/verbs/).
 """
 
 from __future__ import annotations
@@ -21,7 +23,9 @@ SERVICE_COMMANDS = {
 }
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """Every command, for `main` and for the parity check
+    (tests/test_parity.py), which reads the commands from here."""
     parser = argparse.ArgumentParser(prog="mechbench")
     # metavar, or argparse prints every subcommand name in the usage
     # line's {...} blob — including the ones whose help is SUPPRESSed,
@@ -125,7 +129,9 @@ def main(argv: list[str] | None = None) -> int:
     run_p = sub.add_parser(
         "run",
         help="Run a protocol (with a PROTOCOL arg), or the job-runner "
-             "polling loop (with none).",
+             "polling loop (with none). `mechbench run <verb>` is the run "
+             "noun: list, read, update, watch, result, cancel, rerun, "
+             "delete, history.",
     )
     run_p.add_argument(
         "protocol",
@@ -190,45 +196,13 @@ def main(argv: list[str] | None = None) -> int:
         "--reason", default="",
         help="Why, recorded on the job and in the audit log.")
 
-    protocol_p = sub.add_parser(
-        "protocol",
-        help="Push a protocol file, export one, publish a version, or copy "
-             "one into a project.")
-    protocol_sub = protocol_p.add_subparsers(
-        dest="protocol_cmd", required=True, metavar="<verb>")
-    publish_p = protocol_sub.add_parser(
-        "publish",
-        help="Make a version readable by anyone — the head unless --version.")
-    publish_p.add_argument("protocol", help="A protocol id (prt_…).")
-    publish_p.add_argument("--version", type=int, help="The version to publish.")
-    unpublish_p = protocol_sub.add_parser(
-        "unpublish", help="Withdraw a published version; names the articles citing it.")
-    unpublish_p.add_argument("protocol", help="A protocol id (prt_…).")
-    unpublish_p.add_argument("--version", type=int, required=True)
-    push_p = protocol_sub.add_parser(
-        "push",
-        help="Push a protocol file into a project: created, versioned, "
-             "described, or unchanged when it matches the head.")
-    push_p.add_argument("file", help="A protocol file (JSON), as `export` writes it.")
-    push_p.add_argument("--into", required=True, metavar="OWNER/PROJECT")
-    push_p.add_argument("--org", action="store_true", help="OWNER is an org.")
-    export_p = protocol_sub.add_parser(
-        "export",
-        help="Write a protocol version as its canonical file; a push of it "
-             "changes nothing.")
-    export_p.add_argument("protocol", help="A protocol id (prt_…).")
-    export_p.add_argument("--version", type=int,
-                          help="The version (default: the head).")
-    export_p.add_argument("-o", dest="out", metavar="FILE",
-                          help="Write to FILE instead of stdout.")
-    copy_p = protocol_sub.add_parser(
-        "copy", help="Copy a version into a project, sub-protocols and all.")
-    copy_p.add_argument("source", help="<protocol-id>@<version>")
-    copy_p.add_argument("--into", required=True, metavar="OWNER/PROJECT")
-    copy_p.add_argument("--name", help="The copy's name (default: the source's).")
-    copy_p.add_argument("--org", action="store_true", help="OWNER is an org.")
-    copy_p.add_argument("--dry-run", action="store_true", dest="dry_run",
-                        help="Say what it would create, and create nothing.")
+    # The nouns and their verbs (`mechbench protocol list`, `mechbench
+    # article read …`), from the registry in mechbench_runner/verbs/
+    # (task 000661). `protocol push/export/publish/unpublish/copy` are
+    # among them now, with the arguments they had.
+    from mechbench_runner import verbs_cli
+
+    verbs_cli.add_nouns(sub)
 
     runs_p = sub.add_parser(
         "runs",
@@ -329,7 +303,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Include the 42-forward-pass layer-ablation run (~1-2 min).",
     )
 
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    from mechbench_runner import verbs_cli
+
+    parser = build_parser()
+    args = parser.parse_args(verbs_cli.rewrite_run(
+        list(sys.argv[1:] if argv is None else argv)))
     config = Config.from_env()
 
     if args.cmd == "supervise":
@@ -498,20 +480,10 @@ def main(argv: list[str] | None = None) -> int:
 
         return bench_cmd.cancel(config, args.jobs, args.reason)
 
-    if args.cmd == "protocol":
-        from mechbench_runner import bench_cmd
+    if getattr(args, "noun", None):
+        from mechbench_runner import verbs_cli
 
-        if args.protocol_cmd == "publish":
-            return bench_cmd.protocol_publish(config, args.protocol, args.version)
-        if args.protocol_cmd == "unpublish":
-            return bench_cmd.protocol_unpublish(config, args.protocol, args.version)
-        if args.protocol_cmd == "push":
-            return bench_cmd.protocol_push(config, args.file, args.into, args.org)
-        if args.protocol_cmd == "export":
-            return bench_cmd.protocol_export(config, args.protocol, args.version,
-                                             args.out)
-        return bench_cmd.protocol_copy(config, args.source, args.into, args.name,
-                                       args.org, args.dry_run)
+        return verbs_cli.main(config, args)
 
     if args.cmd == "runs":
         from mechbench_runner import bench_cmd

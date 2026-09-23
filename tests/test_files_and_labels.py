@@ -145,7 +145,8 @@ class TestPush:
     def test_mcp_pushes_the_same_way_and_answers_a_refusal_as_data(self, fake):
         tools = build_tools(CFG, executor=object())
         fake(push_protocol=lambda file, into, **k: PUSHED)
-        assert tools["protocol_push"]("x.json", "benji/lab")["action"] == "versioned"
+        push = {"file": "x.json", "into": "benji/lab"}
+        assert tools["protocol"]("push", push)["action"] == "versioned"
         assert fake.calls[-1] == (
             "push_protocol",
             ("x.json", "benji/lab"),
@@ -160,7 +161,7 @@ class TestPush:
             )
 
         fake(push_protocol=refuse)
-        out = tools["protocol_push"]("x.json", "benji/lab")
+        out = tools["protocol"]("push", push)
         assert out["action"] == "refused" and out["code"] == "WIRING"
 
 
@@ -199,7 +200,7 @@ class TestExport:
     def test_mcp_exports_with_the_same_arguments(self, fake):
         tools = build_tools(CFG, executor=object())
         fake(export_protocol=lambda protocol, **k: {"text": self.TEXT})
-        assert tools["protocol_export"]("prt_1", version=2)["text"] == self.TEXT
+        assert tools["protocol"]("export", {"id": "prt_1", "version": 2})["text"] == self.TEXT
         assert fake.calls[-1] == (
             "export_protocol",
             ("prt_1",),
@@ -292,14 +293,13 @@ class TestLabels:
         assert fake.calls[-1][1] == ("j_1", None)
         assert "unlabelled" in capsys.readouterr().out
 
-    def test_mcp_has_the_same_three_verbs(self, fake):
+    def test_mcp_has_the_same_three_verbs(self, fake, monkeypatch):
         tools = build_tools(CFG, executor=object())
         fake(
             launch=lambda protocol, **k: {"id": "run_9", "jobId": "j_9"},
-            runs=lambda **k: ROWS,
             label_run=lambda run, label, **k: {"changed": False},
         )
-        tools["run"]("prt_1", params={"n": 3}, label="P0")
+        tools["run"]("launch", {"protocol": "prt_1", "params": {"n": 3}, "label": "P0"})
         assert fake.calls[-1] == (
             "launch",
             ("prt_1",),
@@ -311,30 +311,5 @@ class TestLabels:
                 "label": "P0",
             },
         )
-        assert tools["runs"](label="P0 reasoning on") == ROWS
-        tools["label"]("j_1", None)
+        tools["run"]("update", {"id": "j_1", "clear": True})
         assert fake.calls[-1][1] == ("j_1", None)
-
-
-class TestOneVerbOnEachSurface:
-    """The MCP tool and the bench verb take the same arguments by the same
-    names (docs/CAPABILITIES.md), so an agent that knows one knows both."""
-
-    PAIRS = [
-        ("run", "launch", {}),
-        ("runs", "runs", {}),
-        ("label", "label_run", {}),
-        ("protocol_push", "push_protocol", {"org": "owner_kind"}),
-        ("protocol_export", "export_protocol", {}),
-    ]
-
-    @pytest.mark.parametrize("tool,verb,renamed", PAIRS)
-    def test_the_names_match(self, tool, verb, renamed):
-        tools = build_tools(CFG, executor=object())
-        mcp = [renamed.get(p, p) for p in inspect.signature(tools[tool]).parameters]
-        lib = [
-            p
-            for p in inspect.signature(getattr(bench, verb)).parameters
-            if p not in ("api_url", "api_key")
-        ]
-        assert sorted(mcp) == sorted(lib)

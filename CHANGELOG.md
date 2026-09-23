@@ -27,10 +27,19 @@ with both headings.
 
 Needs mechbench-compute with `bench.push_protocol`, `export_protocol`,
 `runs` and `label_run` (branch `plumbing-files-labels`), and
-mechbench-api with `POST /protocols/push` and `/runs`.
+mechbench-api with `POST /protocols/push`, `/runs`, and the discovery
+routes of 3e9c360 (`view=summary`, `search`, paging, reads by id,
+`/protocols/:id/versions`, `/objects/~meta`).
 
 ### Changes that raise
 
+- The MCP tools `get_result` and `list_jobs` are gone, and the tools
+  are one per noun: `object`, `protocol`, `run`, `article`, `dataset`,
+  `project`, each `(verb, args)`. `get_result(path)` is
+  `object(verb="read", args={"path": …, "full": true})`; `list_jobs()` is
+  `run(verb="list")`. `run_protocol` is unchanged. An agent config that
+  names the old tools gets "unknown tool".
+- `mechbench protocol copy` also takes `ID --version N`; `ID@N` still works.
 - `mechbench run --bind` is refused, naming `--param` and `--input`. It
   passed the legacy binding to `bench.launch`, which has not taken one
   since compute 650a68f, so every `mechbench run <protocol>` raised
@@ -50,11 +59,24 @@ mechbench-api with `POST /protocols/push` and `/runs`.
   --label-contains TEXT] [--protocol ID] [--project OWNER/PROJECT]
   [--owner HANDLE] [--limit N] [--json]`, and `mechbench label RUN TEXT |
   --clear` (task 000656).
-- MCP tools `run`, `runs`, `label`, `protocol_push`, `protocol_export`,
-  with the command line's arguments.
+- Every noun's verbs on the command line and over MCP (task 000661),
+  from one registry (`mechbench_runner/verbs/`): `mechbench <noun> <verb>`
+  and `<noun>(verb, args)` for object (list, read, items, write, update,
+  delete, history), protocol (list, read, versions, push, export, update,
+  publish, unpublish, copy, delete, history), run (list, read, launch,
+  update, watch, result, cancel, rerun, delete, history), and article,
+  dataset and project (list, read, create, update, delete, history).
+  Reads are summaries unless `--full`; listings take `--search`,
+  `--limit`, `--offset` and answer `{items, next}`; `delete` is a dry run
+  unless `--yes`. `mechbench run <verb>` is the run noun, and `mechbench
+  run PROTOCOL` still launches.
+- `tests/test_parity.py`: fails when a command or MCP tool is on one
+  surface without a recorded reason, a noun lacks a lifecycle verb
+  without one, a verb's API route is not in mechbench-api, or
+  docs/CAPABILITIES.md is stale (`scripts/capabilities.py` writes it).
 - A claim sends `X-Compute-Version`, so a runs listing says which compute
   version ran each job.
-- docs/CAPABILITIES.md: the capability matrix (task 000661).
+- docs/CAPABILITIES.md: the capability matrix, generated (task 000661).
 
 ## 0.32.0 — 2026-09-18
 

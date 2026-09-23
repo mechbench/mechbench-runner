@@ -399,6 +399,22 @@ class ApiClient:
         self._raise_for_status(res)
         return res.content
 
+    def call(self, method: str, route: str, *,
+             query: Mapping[str, Any] | None = None,
+             body: Any = None) -> tuple[Any, Mapping[str, str]]:
+        """Any route, for the noun verbs (`mechbench_runner/verbs/`):
+        the decoded answer (JSON, or the bytes) and its headers, which
+        carry a listing's `X-Next-Offset`. A value of None in `query` is
+        left out, so a verb passes its arguments through unfiltered."""
+        params = {k: ("1" if v is True else str(v)) for k, v in (query or {}).items()
+                  if v is not None and v is not False}
+        res = self._client.request(method, route, params=params,
+                                   json=body if body is not None else None)
+        self._raise_for_status(res)
+        if res.headers.get("content-type", "").startswith("application/json"):
+            return res.json(), res.headers
+        return res.content, res.headers
+
     # --- plumbing ----------------------------------------------------------
 
     @staticmethod

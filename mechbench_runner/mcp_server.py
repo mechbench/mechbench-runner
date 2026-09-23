@@ -1,11 +1,25 @@
 """MCP server exposing mechbench tools over stdio.
 
-Each tool is a verb the command line has too, with the same arguments
-(docs/CAPABILITIES.md): `run`, `runs`, `label`, `protocol_push` and
-`protocol_export` are `mechbench run`, `runs`, `label`, `protocol push`
-and `protocol export`, over the same `mechbench_compute.bench` calls.
+One tool per noun (task 000661): `object`, `protocol`, `run`, `article`,
+`dataset`, `project`, each taking a `verb` and that verb's `args` by
+name, from the registry in `verbs/` that also builds the command line
+(`mechbench <noun> <verb>`). `protocol(verb="push", args={"file": …,
+"into": …})` is `mechbench protocol push FILE --into …`.
 
-The older three:
+Why a tool per noun and not per verb: every tool's schema sits in an
+agent's context on every turn. Fifty-odd verbs as fifty-odd tools, each
+with its typed parameters, would cost that context for good; six tools
+whose descriptions list their verbs in one line each cost a fraction of
+it, and an argument the verb does not take is refused with the verb's
+own list, so the shape is learned from the answer. The numbers are in
+docs/CAPABILITIES.md.
+
+Reads answer summaries unless `full`; listings answer `{items, next}`.
+A refusal from the API (a deletion something depends on, a name taken,
+a missing thing) comes back as data, `{"error": {status, code, …}}`, so
+the caller can read its code and what stands in the way.
+
+And the older in-process one:
 
   run_protocol(prompt, protocol_kind?, model_id?)
       Runs the protocol *in-process* via mechbench-compute and returns
@@ -14,52 +28,19 @@ The older three:
       we are the compute target. (The job-runner subcommand is the
       queued path for UI-triggered jobs.)
 
-  get_result(path)
-      Fetches /objects/<path> from mechbench-api. Returns the parsed
-      JSON payload.
-
-  list_jobs()
-      Lists the caller's jobs via GET /jobs.
-
 Stdio transport only for v0. SSE / HTTP transports when remote
 deploy earns its seat (deferred explicitly in task 000185).
 """
 
 from __future__ import annotations
 
-import json
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server import MCPServer
 from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 
-from .api_client import ApiClient
 from .config import Config
-
-
-def _decode_object(raw: bytes) -> dict[str, Any]:
-    """Decode a stored object, whichever way it was written.
-
-    Results are canonical CBOR (task 000186), and this used to call
-    `json.loads` — which had gone unnoticed because nothing exercised it
-    against a store that had CBOR in it. The legacy JSON completion path
-    is still inside its deprecation window (000181), so both shapes have
-    to be read rather than one assumed.
-
-    Sniffed rather than inferred from the path: the encoding is a
-    property of the bytes, and a path says nothing about when they were
-    written.
-    """
-    from mechbench_schema import load_raw
-
-    if raw[:1] in (b"{", b"["):
-        return json.loads(raw)  # type: ignore[no-any-return]
-    decoded = load_raw(raw)
-    if not isinstance(decoded, dict):
-        raise ValueError(
-            f"expected an object at the top level, got {type(decoded).__name__}"
-        )
-    return decoded
+from .verbs import NOUNS, Ctx, Noun, VerbError, invoke, refusal
 
 
 def build_tools(
@@ -94,94 +75,46 @@ def build_tools(
         payload = _executor.run(spec)
         return payload.model_dump(mode="json")
 
-    def get_result(path: str) -> dict[str, Any]:
-        """Fetch a cached result from mechbench-api by its
-        MechbenchPath, decoded to a plain structure."""
-        with ApiClient(cfg) as api:
-            raw = api.fetch_object(path)
-        return _decode_object(raw)
+    ctx = Ctx(cfg)
+    tools: dict[str, Any] = {"run_protocol": run_protocol}
+    for noun in NOUNS:
+        tools[noun.name] = noun_tool(ctx, noun)
+    return tools
 
-    def list_jobs() -> list[dict[str, Any]]:
-        """List the caller's queued / running / completed jobs."""
-        with ApiClient(cfg) as api:
-            return api.list_jobs()
 
-    def _bench():
-        from mechbench_compute import bench
+def describe(noun: Noun) -> str:
+    """A noun tool's description: what it is, then one line per verb,
+    `verb(arg, arg?)`, `?` marking the optional ones."""
+    lines = [noun.help, "verb and its args:"]
+    for v in noun.verbs:
+        sig = ", ".join(a.name + ("" if a.required else "?") for a in v.args)
+        lines.append(f"{v.name}({sig}): {v.help}")
+    lines.append("Reads are summaries unless full; lists answer {items, next}; "
+                 "delete is a dry run unless yes.")
+    return "\n".join(lines)
 
-        bench.configure(api_url=cfg.api_base_url, api_key=cfg.require_api_key())
-        return bench
 
-    def run(
-        protocol: str,
-        params: dict[str, Any] | None = None,
-        inputs: dict[str, str] | None = None,
-        keep: str | None = None,
-        budget: float | None = None,
-        label: str | None = None,
-    ) -> dict[str, Any]:
-        """Launch a protocol (its id) on the queue: `params` and `inputs`
-        (stored objects, by path) bind by the names the protocol declares;
-        `keep="outputs"` holds intermediates on the runner; `budget` caps
-        the run in USD; `label`, one line, says what the run is for and
-        finds it again with `runs`. Returns the run, with its `jobId`."""
-        return _bench().launch(protocol, params=params, inputs=inputs,
-                               keep=keep, budget=budget, label=label)
+def noun_tool(ctx: Ctx, noun: Noun) -> Any:
+    """The tool for one noun: `verb`, one of its verbs, and `args`."""
 
-    def runs(
-        label: str | None = None,
-        label_contains: str | None = None,
-        protocol: str | None = None,
-        project: str | None = None,
-        owner: str | None = None,
-        limit: int | None = None,
-    ) -> list[dict[str, Any]]:
-        """Runs newest first, by exact `label` or `label_contains`, a
-        `protocol` id, a `project` (`owner/project`), or an `owner`'s
-        (your own by default). Each row carries its job id and status,
-        result path, protocol and compute versions, spend and label."""
-        return _bench().runs(label=label, label_contains=label_contains,
-                             protocol=protocol, project=project, owner=owner,
-                             limit=limit)
-
-    def label(run: str, label: str | None) -> dict[str, Any]:
-        """Relabel a run (its id or its job's id), or clear it with null.
-        The change is kept in the job's history."""
-        return _bench().label_run(run, label)
-
-    def protocol_push(file: str, into: str, org: bool = False) -> dict[str, Any]:
-        """Push a protocol file (a path to its JSON) into `into`,
-        `owner/project` (`org` when the owner is an org). The action is
-        `created`, `versioned`, `described` or `unchanged`; a file in the
-        legacy form or failing the wiring checks is `refused`, with its
-        code and findings, and nothing is stored."""
-        bench = _bench()
+    def tool(verb: str, args: dict[str, Any] | None = None) -> Any:
         try:
-            return bench.push_protocol(file, into, owner_kind="org" if org else "user")
-        except bench.BenchError as e:
-            if e.status is None or not isinstance(e.body, dict):
+            return invoke(ctx, noun.name, verb, args)
+        except VerbError as e:
+            raise ValueError(str(e)) from None
+        except Exception as e:
+            body = refusal(e)
+            if body is None:
                 raise
-            return {"action": "refused", **e.body}
+            return {"error": body}
 
-    def protocol_export(
-        protocol: str, version: int | None = None, path: str | None = None
-    ) -> dict[str, Any]:
-        """A protocol version (the head by default) as its canonical file
-        text, which a push reads back as unchanged; written to `path`
-        exactly when one is given. Returns `{protocolId, name, version,
-        text}`."""
-        return _bench().export_protocol(protocol, version=version, path=path)
-
-    return {
-        "run_protocol": run_protocol,
-        "get_result": get_result,
-        "list_jobs": list_jobs,
-        "run": run,
-        "runs": runs,
-        "label": label,
-        "protocol_push": protocol_push,
-        "protocol_export": protocol_export,
-    }
+    tool.__name__ = noun.name
+    tool.__qualname__ = noun.name
+    tool.__doc__ = describe(noun)
+    verbs = tuple(v.name for v in noun.verbs)
+    tool.__annotations__ = {"verb": Literal[verbs], "args": dict[str, Any] | None,
+                            "return": Any}
+    return tool
 
 
 def build_server(
@@ -189,9 +122,7 @@ def build_server(
     executor: ProtocolExecutor | None = None,
 ) -> MCPServer:
     """Construct the MCP server (mcp 2.x, task 000298). The tool
-    names, signatures and docstrings are the contract an agent sees —
-    identical to the 1.x surface, because the library changing is not
-    a reason the contract should."""
+    names, signatures and docstrings are the contract an agent sees."""
     server = MCPServer("mechbench")
     for fn in build_tools(config, executor).values():
         server.tool()(fn)

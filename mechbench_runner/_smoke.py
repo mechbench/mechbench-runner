@@ -1,4 +1,4 @@
-"""In-process smoke test for the three MCP tools (task 000185 acceptance).
+"""In-process smoke test for the MCP tools (task 000185 acceptance).
 
 Exercises the server's tool functions directly — no stdio
 subprocess, no MCP client — so CI / local dev can verify the
@@ -8,8 +8,8 @@ API key must be available via MECHBENCH_API_KEY.
 
 The layer-ablation run is gated behind --full because loading Gemma
 4 and running 42 forward passes takes 1-2 minutes; the default run
-asserts only the get_result / list_jobs tools, which are
-fast and enough to verify the wiring.
+asserts only `run list` and `run result` (the noun tools, task
+000661), which are fast and enough to verify the wiring.
 """
 
 from __future__ import annotations
@@ -35,23 +35,20 @@ def main(full: bool = False) -> int:
     # registers.
     tools = build_tools(config)
 
-    # --- list_jobs: sanity check that the runner can reach the API.
-    jobs = tools["list_jobs"]()
-    print(f"✓ list_jobs returned {len(jobs)} job(s)")
+    # --- run list: sanity check that the runner can reach the API.
+    runs = tools["run"]("list", {"limit": 20})["items"]
+    print(f"✓ run list returned {len(runs)} run(s)")
 
-    # --- get_result: exercise against the most recent done job, if any.
-    done = [j for j in jobs
-            if j["status"] in ("done", "done_with_missing") and j.get("resultPath")]
+    # --- run read: the newest finished run's summary, if there is one.
+    done = [r for r in runs if r.get("jobStatus") in ("done", "done_with_missing")]
     if done:
-        path = done[0]["resultPath"]
-        payload = tools["get_result"](path=path)
-        print(f"✓ get_result({path}) → kind/protocol={payload.get('protocol')}")
+        row = tools["run"]("read", {"id": done[0]["jobId"]})
+        print(f"✓ run read {done[0]['jobId']} → {row.get('jobStatus')} "
+              f"{row.get('resultPath')}")
     else:
-        # Queue one via the API so get_result has something to target.
         with ApiClient(config) as api:
-            res = api._client.get("/auth/me")  # noqa: SLF001 — direct probe
-            res.raise_for_status()
-        print("✓ get_result skipped (no completed jobs); api /auth/me reachable")
+            api.call("GET", "/auth/me")
+        print("✓ run read skipped (no finished runs); api /auth/me reachable")
 
     if full:
         payload = tools["run_protocol"](

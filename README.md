@@ -8,7 +8,7 @@ and `mechbench_runner`, the engine it dispatches into.
 
 The machine-side process of the [mechbench](https://mechbench.ai) family: it claims queued jobs from `mechbench-api`, executes them against `mechbench-compute`, and posts results back. It also exposes those same primitives as [Model Context Protocol](https://modelcontextprotocol.io) tools, so an LLM agent can call them directly.
 
-**Status:** in use. `login` pairs a machine with an account; the runner then claims and executes jobs, reports progress and preparing steps, holds a live WSS channel for control and telemetry, and installs as a launchd or systemd service so it survives reboots. `doctor` tells you whether a machine will work before it tries. Three MCP tools (`run_protocol`, `get_result`, `list_jobs`) expose the same primitives to an agent.
+**Status:** in use. `login` pairs a machine with an account; the runner then claims and executes jobs, reports progress and preparing steps, holds a live WSS channel for control and telemetry, and installs as a launchd or systemd service so it survives reboots. `doctor` tells you whether a machine will work before it tries. Six MCP tools, one per noun (`object`, `protocol`, `run`, `article`, `dataset`, `project`, each taking a verb and its args), plus the in-process `run_protocol`, expose the same verbs as `mechbench <noun> <verb>`; see docs/CAPABILITIES.md.
 
 ## What this repo is for
 
@@ -125,20 +125,21 @@ Launch as a stdio MCP server — connect from Claude Desktop via `claude_desktop
 }
 ```
 
-These tools appear in Claude. Each of the first five is a `mechbench`
-command with the same arguments; [docs/CAPABILITIES.md](docs/CAPABILITIES.md)
-maps every verb across the API, MCP, the command line and `bench`.
+These tools appear in Claude: one per noun, each taking a `verb` and
+that verb's `args` by name, so `protocol(verb="push", args={"file": "draws.json",
+"into": "benji/lab"})` is `mechbench protocol push draws.json --into benji/lab`.
+[docs/CAPABILITIES.md](docs/CAPABILITIES.md) lists every verb on the API,
+MCP and the command line, and why a tool per noun rather than per verb.
 
-| tool | command | description |
+| tool | command | verbs |
 |---|---|---|
-| `run` | `mechbench run` | Launch a protocol with its params, inputs, budget and a label. |
-| `runs` | `mechbench runs` | List runs by label, protocol, project or owner, with job, status, versions and spend. |
-| `label` | `mechbench label` | Relabel a run, or clear it; the change is kept in its history. |
-| `protocol_push` | `mechbench protocol push` | Push a protocol file: created, versioned, described, unchanged, or refused with findings. |
-| `protocol_export` | `mechbench protocol export` | A protocol version as its canonical file. |
+| `object` | `mechbench object` | list, read, items, write, update, delete, history |
+| `protocol` | `mechbench protocol` | list, read, versions, push, export, update, publish, unpublish, copy, delete, history |
+| `run` | `mechbench run` | list, read, launch, update, watch, result, cancel, rerun, delete, history |
+| `article` | `mechbench article` | list, read, create, update, delete, history |
+| `dataset` | `mechbench dataset` | list, read, create, update, delete, history |
+| `project` | `mechbench project` | list, read, create, update, delete, history |
 | `run_protocol` | | Run a layer-ablation protocol in-process on a prompt; return per-layer damage. |
-| `get_result` | | Fetch a cached payload from `mechbench-api` by MechbenchPath. |
-| `list_jobs` | | List the caller's queued / running / completed jobs. |
 
 ### Job-runner
 
