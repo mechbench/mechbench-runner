@@ -105,3 +105,11 @@ class TestTheMcpTool:
         payload = {"outputs": {"gen": {"ended": {**ZERO, "end": 2}}}}
         tools = self.tools(monkeypatch, payload)
         assert tools["get_result"]("u/p/results/x") == payload
+
+
+def test_a_job_results_manifest_names_intermediate_nodes_once():
+    summaries = {"gen": {"kind": "text/document", "collection": True, "items": 100,
+                         "ended": CUT["ended"]},
+                 "grade": {"kind": "eval/verdict", "collection": True, "items": 100}}
+    notes = ended_notes({"node_summaries": summaries, "outputs": {"gen": CUT}})
+    assert notes == ["gen: of 100 items, 79 cut off at max_tokens"]

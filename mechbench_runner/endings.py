@@ -36,10 +36,23 @@ def _one(label: str | None, payload: Any) -> str | None:
 
 
 def ended_notes(payload: Any, node: str | None = None) -> list[str]:
-    """One line per collection in `payload` (a node's output, or a job
-    result's `outputs`) whose items did not all end naturally."""
+    """One line per generation node in `payload` whose items did not all
+    end naturally: a node's own output, or a job result, read from its
+    manifest's `node_summaries` (every executed node) and then its
+    `outputs` for any node the summaries do not name."""
     notes = [n for n in [_one(node, payload)] if n]
-    outputs = payload.get("outputs") if isinstance(payload, dict) else None
-    if isinstance(outputs, dict):
-        notes += [n for n in (_one(k, v) for k, v in outputs.items()) if n]
+    if not isinstance(payload, dict):
+        return notes
+    seen: set[str] = set()
+    for field in ("node_summaries", "outputs"):
+        nodes = payload.get(field)
+        if not isinstance(nodes, dict):
+            continue
+        for name, value in nodes.items():
+            if name in seen:
+                continue
+            seen.add(name)
+            note = _one(name, value)
+            if note:
+                notes.append(note)
     return notes
