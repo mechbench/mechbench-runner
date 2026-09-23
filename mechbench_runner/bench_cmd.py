@@ -106,22 +106,27 @@ def _inputs(pairs: list[str] | None) -> dict[str, Any]:
 def run(config: Config, protocol: str, binds: list[str] | None,
         budget: float | None, wait: bool, *,
         params: list[str] | None = None, inputs: list[str] | None = None,
-        keep: str | None = None) -> int:
+        keep: str | None = None, label: str | None = None) -> int:
     """Bind a protocol, queue its job, print the job id, record it. With
     `--wait`, then watch to a terminal state and exit on the result.
 
-    `--param` and `--input` bind by the names the protocol declares
-    (epic 000553); `--bind` is the legacy spelling the server still
-    reads as one or the other."""
+    `--param` and `--input` bind by the names the protocol declares, and
+    `--label` says what the run is for, so `mechbench runs --label` finds
+    it again. `--bind`, the legacy binding, is refused: the server no
+    longer reads it."""
+    if binds:
+        print("run: --bind is the legacy binding, which is no longer read; "
+              "bind a param with --param NAME=VALUE and an input with "
+              "--input NAME=PATH", file=sys.stderr)
+        return 2
     _connect(config)
-    bindings = _binds(binds)
     declared_params = _params(params)
     declared_inputs = _inputs(inputs)
     try:
         out = bench.launch(
-            protocol, bindings or None, budget=budget,
+            protocol, budget=budget,
             params=declared_params or None, inputs=declared_inputs or None,
-            keep=keep)
+            keep=keep, label=label)
     except bench.BenchError as e:
         print(f"run failed: {e}", file=sys.stderr)
         return 1
@@ -132,12 +137,13 @@ def run(config: Config, protocol: str, binds: list[str] | None,
         print(f"no job id in response: {json.dumps(out)[:300]}", file=sys.stderr)
         return 1
     _remember({"at": time.strftime("%Y-%m-%dT%H:%M:%SZ"), "protocol": protocol,
-               "bindings": bindings, "params": declared_params,
+               "params": declared_params,
                "inputs": declared_inputs, "budget_usd": budget,
                **({"keep": keep} if keep else {}),
+               **({"label": label} if label else {}),
                "run": run_id, "job": job})
     print(job, flush=True)  # first line is the job id, for JOB=$(mechbench run …)
-    detail = f"  run {run_id} · {protocol}"
+    detail = f"  run {run_id} · {protocol}" + (f" · {label}" if label else "")
     if budget is not None:
         detail += f" · cap ${budget}"
     print(detail, file=sys.stderr, flush=True)
@@ -445,4 +451,111 @@ def history(config: Config, kind: str, entity_id: str) -> int:
     for o in out.get("others") or []:
         state = "live now" if o.get("live") else f"deleted {o.get('deletedAt')}"
         print(f"  also at this address: {o.get('id')} ({state})")
+    return 0
+
+
+# --- protocols as files, runs by label (epic 000654) -------------------------
+
+
+def _findings(body: Any) -> None:
+    found = body.get("findings") if isinstance(body, dict) else None
+    for f in found or []:
+        where = f" [{f['node']}]" if f.get("node") else ""
+        print(f"  {f.get('severity', '')} {f.get('code', '')}{where}: "
+              f"{f.get('message', '')}", file=sys.stderr)
+
+
+def protocol_push(config: Config, file: str, into: str, org: bool) -> int:
+    """Push a protocol file into `owner/project`: created, a new version,
+    a new description, or unchanged, as the server finds it by name. A
+    legacy-form or miswired file is refused with its findings, and exits
+    1 with nothing stored."""
+    _connect(config)
+    try:
+        out = bench.push_protocol(file, into, owner_kind="org" if org else "user")
+    except ValueError as e:
+        print(f"push failed: {e}", file=sys.stderr)
+        return 2
+    except bench.BenchError as e:
+        body = e.body if isinstance(e.body, dict) else {}
+        print(f"push refused ({body.get('code') or e.status}): "
+              f"{body.get('error') or e}", file=sys.stderr)
+        _findings(body)
+        return 1
+    p = out.get("protocol") or {}
+    print(f"{out.get('action')} {into}/{p.get('name')} {p.get('id')} "
+          f"v{p.get('version')}")
+    _findings(out)
+    return 0
+
+
+def protocol_export(config: Config, protocol: str, version: int | None,
+                    out_path: str | None) -> int:
+    """Write a protocol version (the head by default) as its canonical
+    file: to `-o FILE`, or to stdout."""
+    _connect(config)
+    try:
+        out = bench.export_protocol(protocol, version=version, path=out_path)
+    except bench.BenchError as e:
+        print(f"export failed: {e}", file=sys.stderr)
+        return 1
+    if out_path:
+        print(f"wrote {out_path} ({out.get('name')} v{out.get('version')})",
+              file=sys.stderr)
+    else:
+        sys.stdout.write(out["text"])
+    return 0
+
+
+def _money(v: Any) -> str:
+    return "" if v is None else f"${v:.4g}"
+
+
+def runs(config: Config, *, label: str | None, label_contains: str | None,
+         protocol: str | None, project: str | None, owner: str | None,
+         limit: int | None, as_json: bool) -> int:
+    """Runs newest first, one line each: job, status, protocol and
+    version, compute version, spend, label. `--json` prints the rows."""
+    _connect(config)
+    try:
+        rows = bench.runs(label=label, label_contains=label_contains,
+                          protocol=protocol, project=project, owner=owner,
+                          limit=limit)
+    except bench.BenchError as e:
+        print(f"runs failed: {e}", file=sys.stderr)
+        return 1
+    if as_json:
+        print(json.dumps(rows, indent=1))
+        return 0
+    if not rows:
+        print("(no runs)", file=sys.stderr)
+        return 0
+    table = [
+        (r.get("jobId") or r.get("id") or "",
+         r.get("jobStatus") or r.get("status") or "",
+         f"{r.get('protocolName') or r.get('protocolId')} v{r.get('protocolVersion')}",
+         r.get("computeVersion") or "", _money(r.get("spentUsd")),
+         (r.get("createdAt") or "")[:16], r.get("label") or "")
+        for r in rows]
+    widths = [max(len(str(row[i])) for row in table) for i in range(6)]
+    for row in table:
+        print("  ".join(str(c).ljust(widths[i]) for i, c in enumerate(row[:6]))
+              + "  " + row[6])
+    return 0
+
+
+def label_run(config: Config, run: str, text: str | None) -> int:
+    """Relabel a run (its id or its job's), or clear it: the change is
+    kept in the job's history."""
+    _connect(config)
+    try:
+        out = bench.label_run(run, text)
+    except bench.BenchError as e:
+        print(f"label failed: {e}", file=sys.stderr)
+        return 1
+    now = out.get("label")
+    if not out.get("changed"):
+        print(f"{run} already {'labelled ' + repr(now) if now else 'unlabelled'}")
+    else:
+        print(f"{run} {'labelled ' + repr(now) if now else 'unlabelled'}")
     return 0

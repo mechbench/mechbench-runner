@@ -1,6 +1,11 @@
-"""MCP server exposing three mechbench tools over stdio.
+"""MCP server exposing mechbench tools over stdio.
 
-Tools:
+Each tool is a verb the command line has too, with the same arguments
+(docs/CAPABILITIES.md): `run`, `runs`, `label`, `protocol_push` and
+`protocol_export` are `mechbench run`, `runs`, `label`, `protocol push`
+and `protocol export`, over the same `mechbench_compute.bench` calls.
+
+The older three:
 
   run_protocol(prompt, protocol_kind?, model_id?)
       Runs the protocol *in-process* via mechbench-compute and returns
@@ -61,7 +66,7 @@ def build_tools(
     config: Config | None = None,
     executor: ProtocolExecutor | None = None,
 ) -> dict[str, Any]:
-    """The three tools as PLAIN functions, keyed by their wire names.
+    """The tools as PLAIN functions, keyed by their wire names.
 
     The server registers these; the smoke test calls them directly.
     Under mcp 1.x the smoke reached into `server._tool_manager` for the
@@ -101,10 +106,81 @@ def build_tools(
         with ApiClient(cfg) as api:
             return api.list_jobs()
 
+    def _bench():
+        from mechbench_compute import bench
+
+        bench.configure(api_url=cfg.api_base_url, api_key=cfg.require_api_key())
+        return bench
+
+    def run(
+        protocol: str,
+        params: dict[str, Any] | None = None,
+        inputs: dict[str, str] | None = None,
+        keep: str | None = None,
+        budget: float | None = None,
+        label: str | None = None,
+    ) -> dict[str, Any]:
+        """Launch a protocol (its id) on the queue: `params` and `inputs`
+        (stored objects, by path) bind by the names the protocol declares;
+        `keep="outputs"` holds intermediates on the runner; `budget` caps
+        the run in USD; `label`, one line, says what the run is for and
+        finds it again with `runs`. Returns the run, with its `jobId`."""
+        return _bench().launch(protocol, params=params, inputs=inputs,
+                               keep=keep, budget=budget, label=label)
+
+    def runs(
+        label: str | None = None,
+        label_contains: str | None = None,
+        protocol: str | None = None,
+        project: str | None = None,
+        owner: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Runs newest first, by exact `label` or `label_contains`, a
+        `protocol` id, a `project` (`owner/project`), or an `owner`'s
+        (your own by default). Each row carries its job id and status,
+        result path, protocol and compute versions, spend and label."""
+        return _bench().runs(label=label, label_contains=label_contains,
+                             protocol=protocol, project=project, owner=owner,
+                             limit=limit)
+
+    def label(run: str, label: str | None) -> dict[str, Any]:
+        """Relabel a run (its id or its job's id), or clear it with null.
+        The change is kept in the job's history."""
+        return _bench().label_run(run, label)
+
+    def protocol_push(file: str, into: str, org: bool = False) -> dict[str, Any]:
+        """Push a protocol file (a path to its JSON) into `into`,
+        `owner/project` (`org` when the owner is an org). The action is
+        `created`, `versioned`, `described` or `unchanged`; a file in the
+        legacy form or failing the wiring checks is `refused`, with its
+        code and findings, and nothing is stored."""
+        bench = _bench()
+        try:
+            return bench.push_protocol(file, into, owner_kind="org" if org else "user")
+        except bench.BenchError as e:
+            if e.status is None or not isinstance(e.body, dict):
+                raise
+            return {"action": "refused", **e.body}
+
+    def protocol_export(
+        protocol: str, version: int | None = None, path: str | None = None
+    ) -> dict[str, Any]:
+        """A protocol version (the head by default) as its canonical file
+        text, which a push reads back as unchanged; written to `path`
+        exactly when one is given. Returns `{protocolId, name, version,
+        text}`."""
+        return _bench().export_protocol(protocol, version=version, path=path)
+
     return {
         "run_protocol": run_protocol,
         "get_result": get_result,
         "list_jobs": list_jobs,
+        "run": run,
+        "runs": runs,
+        "label": label,
+        "protocol_push": protocol_push,
+        "protocol_export": protocol_export,
     }
 
 

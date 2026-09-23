@@ -11,11 +11,12 @@ library's already-unwrapped payload.
 
 from __future__ import annotations
 
+import inspect
 import json
 
 import pytest
-
 from mechbench_compute.bench import BenchError
+
 from mechbench_runner import bench_cmd as b
 
 
@@ -74,8 +75,17 @@ def patched(monkeypatch, tmp_path):
     monkeypatch.setattr(b, "_connect", lambda config: None)
 
     def install(**fns):
+        # Each fake is held to the real verb's signature: a call the
+        # library would refuse fails here too. A fake with a looser
+        # signature once hid a `run` that raised TypeError on every
+        # launch.
         for name, fn in fns.items():
-            monkeypatch.setattr(b.bench, name, fn)
+            sig = inspect.signature(getattr(b.bench, name))
+
+            def checked(*args, _fn=fn, _sig=sig, **kwargs):
+                _sig.bind(*args, **kwargs)
+                return _fn(*args, **kwargs)
+            monkeypatch.setattr(b.bench, name, checked)
     return install
 
 
@@ -83,28 +93,37 @@ class TestRun:
     def test_it_records_the_job_id_before_returning(self, patched, capsys):
         seen = {}
 
-        def launch(protocol, bindings, budget=None, **declared):
-            seen["args"] = (protocol, bindings, budget)
+        def launch(protocol, **declared):
+            seen["protocol"] = protocol
             seen["declared"] = declared
             return {"id": "r1", "jobId": "j_abc"}
         patched(launch=launch)
-        rc = b.run(CFG, "owner/p/proto", ["model=gemma"], 1.0, wait=False)
+        rc = b.run(CFG, "owner/p/proto", None, 1.0, wait=False,
+                   params=["model=gemma"], label="P0, reasoning on")
         assert rc == 0
         # the job id is the first line of stdout, for JOB=$(mechbench run …)
         assert capsys.readouterr().out.splitlines()[0] == "j_abc"
-        # …and it is on disk, with the run id, the binding and the cap
+        # …and it is on disk, with the run id, the params, the cap, the label
         rec = json.loads(b.HISTORY.read_text().strip())
         assert rec["job"] == "j_abc" and rec["run"] == "r1"
-        assert rec["bindings"] == {"model": "gemma"} and rec["budget_usd"] == 1.0
-        assert seen["args"] == ("owner/p/proto", {"model": "gemma"}, 1.0)
+        assert rec["params"] == {"model": "gemma"} and rec["budget_usd"] == 1.0
+        assert rec["label"] == "P0, reasoning on"
+        assert seen["protocol"] == "owner/p/proto"
+        assert seen["declared"]["budget"] == 1.0
+        assert seen["declared"]["label"] == "P0, reasoning on"
+
+    def test_the_legacy_binding_is_refused_before_anything_is_sent(
+            self, patched, capsys):
+        patched(launch=lambda protocol, **_d: pytest.fail("launched"))
+        assert b.run(CFG, "p", ["model=gemma"], None, wait=False) == 2
+        assert "--param" in capsys.readouterr().err
 
     def test_params_and_inputs_bind_by_name_and_keep_is_passed(self, patched):
         # The declared form's flags (epic 000553): `--param n=12` is a
         # number, `--param label=x` a string, `--input` a stored object.
         seen = {}
 
-        def launch(protocol, bindings, budget=None, **declared):
-            seen["bindings"] = bindings
+        def launch(protocol, **declared):
             seen["declared"] = declared
             return {"id": "r2", "jobId": "j_def"}
         patched(launch=launch)
@@ -112,21 +131,21 @@ class TestRun:
                    params=["n=12", "label=draws", "flag=true"],
                    inputs=["prompts=lab/p/prompts"], keep="outputs")
         assert rc == 0
-        assert seen["bindings"] is None
         assert seen["declared"] == {"params": {"n": 12, "label": "draws", "flag": True},
                                     "inputs": {"prompts": "lab/p/prompts"},
-                                    "keep": "outputs"}
+                                    "keep": "outputs", "budget": None, "label": None}
         rec = json.loads(b.HISTORY.read_text().strip().splitlines()[-1])
         assert rec["params"] == {"n": 12, "label": "draws", "flag": True}
-        assert rec["inputs"] == {"prompts": "lab/p/prompts"} and rec["keep"] == "outputs"
+        assert rec["inputs"] == {"prompts": "lab/p/prompts"}
+        assert rec["keep"] == "outputs"
 
     def test_no_job_id_is_a_clean_failure(self, patched, capsys):
-        patched(launch=lambda protocol, bindings, budget=None, **_d: {"id": "r1"})
+        patched(launch=lambda protocol, **_d: {"id": "r1"})
         assert b.run(CFG, "p", None, None, wait=False) == 1
         assert "no job id" in capsys.readouterr().err
 
     def test_a_launch_error_is_a_clean_failure(self, patched, capsys):
-        def boom(protocol, bindings, budget=None, **_d):
+        def boom(protocol, **_d):
             raise BenchError("POST /protocols/p/runs -> 404: nope")
         patched(launch=boom)
         assert b.run(CFG, "p", None, None, wait=False) == 1

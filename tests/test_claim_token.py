@@ -8,8 +8,6 @@ the claim that produced it.
 
 from __future__ import annotations
 
-import json
-
 import httpx
 import pytest
 
@@ -60,6 +58,17 @@ class TestTheClientCarriesTheToken:
             return httpx.Response(204)
         _client(handler).claim_next_job()
         assert seen["supported"] == "1"
+
+    def test_the_claim_says_which_compute_will_run_it(self):
+        """The runs listing's compute version comes from here."""
+        from mechbench_compute import __version__
+        seen: dict[str, str | None] = {}
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            seen["version"] = req.headers.get("x-compute-version")
+            return httpx.Response(204)
+        _client(handler).claim_next_job()
+        assert seen["version"] == __version__
 
     def test_every_job_scoped_write_sends_it(self):
         rec = Recorder()

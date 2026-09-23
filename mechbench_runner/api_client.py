@@ -105,6 +105,15 @@ def poll_device_auth(
     return res.json()
 
 
+def _compute_version() -> str:
+    """The loaded mechbench-compute's version, or "" when it is absent."""
+    try:
+        from mechbench_compute import __version__
+    except ImportError:
+        return ""
+    return str(__version__)
+
+
 def _body_of(res: httpx.Response) -> Any:
     try:
         return res.json()
@@ -167,9 +176,16 @@ class ApiClient:
         # Ask for a per-claim token (000491). An API from before this
         # ignores the header and returns none; an API with it issues one
         # only to runners that ask, so neither side breaks the other.
+        # The compute version this process will run the job with, so a
+        # runs listing can say which version produced a result: the one
+        # loaded here, not whatever is installed on disk by now.
+        headers = {"x-claim-token-supported": "1"}
+        version = _compute_version()
+        if version:
+            headers["x-compute-version"] = version
         res = self._client.get(
             "/jobs/next", params={"capabilities": self.CAPABILITIES},
-            headers={"x-claim-token-supported": "1"})
+            headers=headers)
         if res.status_code == 204:
             return None
         self._raise_for_status(res)

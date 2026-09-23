@@ -125,13 +125,20 @@ Launch as a stdio MCP server — connect from Claude Desktop via `claude_desktop
 }
 ```
 
-Three tools appear in Claude:
+These tools appear in Claude. Each of the first five is a `mechbench`
+command with the same arguments; [docs/CAPABILITIES.md](docs/CAPABILITIES.md)
+maps every verb across the API, MCP, the command line and `bench`.
 
-| tool | description |
-|---|---|
-| `run_protocol` | Run a layer-ablation protocol in-process on a prompt; return per-layer damage. |
-| `get_result` | Fetch a cached payload from `mechbench-api` by MechbenchPath. |
-| `list_jobs` | List the caller's queued / running / completed jobs. |
+| tool | command | description |
+|---|---|---|
+| `run` | `mechbench run` | Launch a protocol with its params, inputs, budget and a label. |
+| `runs` | `mechbench runs` | List runs by label, protocol, project or owner, with job, status, versions and spend. |
+| `label` | `mechbench label` | Relabel a run, or clear it; the change is kept in its history. |
+| `protocol_push` | `mechbench protocol push` | Push a protocol file: created, versioned, described, unchanged, or refused with findings. |
+| `protocol_export` | `mechbench protocol export` | A protocol version as its canonical file. |
+| `run_protocol` | | Run a layer-ablation protocol in-process on a prompt; return per-layer damage. |
+| `get_result` | | Fetch a cached payload from `mechbench-api` by MechbenchPath. |
+| `list_jobs` | | List the caller's queued / running / completed jobs. |
 
 ### Job-runner
 

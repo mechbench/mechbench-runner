@@ -1,6 +1,7 @@
 """CLI entry.
 
-`mechbench {login,logout,whoami,doctor,models,mcp,run,protocol,delete,history,status,…}`
+`mechbench {login,logout,whoami,doctor,models,mcp,run,runs,label,protocol,
+             delete,history,status,…}`
 """
 
 from __future__ import annotations
@@ -154,11 +155,16 @@ def main(argv: list[str] | None = None) -> int:
              "outputs alone, intermediates held on the runner.",
     )
     run_p.add_argument(
+        "--label",
+        metavar="TEXT",
+        help="What the run is for, one line: 'P0, reasoning on'. Found "
+             "again with `mechbench runs --label`.",
+    )
+    run_p.add_argument(
         "--bind",
         action="append",
         metavar="NAME=VALUE",
-        help="The legacy binding, read as a param or an input by name; "
-             "use --param / --input.",
+        help=argparse.SUPPRESS,
     )
     run_p.add_argument("--budget", type=float, metavar="USD",
                        help="Spend cap for the run; required for endpoint models.")
@@ -185,7 +191,9 @@ def main(argv: list[str] | None = None) -> int:
         help="Why, recorded on the job and in the audit log.")
 
     protocol_p = sub.add_parser(
-        "protocol", help="Publish a protocol version, or copy one into a project.")
+        "protocol",
+        help="Push a protocol file, export one, publish a version, or copy "
+             "one into a project.")
     protocol_sub = protocol_p.add_subparsers(
         dest="protocol_cmd", required=True, metavar="<verb>")
     publish_p = protocol_sub.add_parser(
@@ -197,6 +205,22 @@ def main(argv: list[str] | None = None) -> int:
         "unpublish", help="Withdraw a published version; names the articles citing it.")
     unpublish_p.add_argument("protocol", help="A protocol id (prt_…).")
     unpublish_p.add_argument("--version", type=int, required=True)
+    push_p = protocol_sub.add_parser(
+        "push",
+        help="Push a protocol file into a project: created, versioned, "
+             "described, or unchanged when it matches the head.")
+    push_p.add_argument("file", help="A protocol file (JSON), as `export` writes it.")
+    push_p.add_argument("--into", required=True, metavar="OWNER/PROJECT")
+    push_p.add_argument("--org", action="store_true", help="OWNER is an org.")
+    export_p = protocol_sub.add_parser(
+        "export",
+        help="Write a protocol version as its canonical file; a push of it "
+             "changes nothing.")
+    export_p.add_argument("protocol", help="A protocol id (prt_…).")
+    export_p.add_argument("--version", type=int,
+                          help="The version (default: the head).")
+    export_p.add_argument("-o", dest="out", metavar="FILE",
+                          help="Write to FILE instead of stdout.")
     copy_p = protocol_sub.add_parser(
         "copy", help="Copy a version into a project, sub-protocols and all.")
     copy_p.add_argument("source", help="<protocol-id>@<version>")
@@ -205,6 +229,30 @@ def main(argv: list[str] | None = None) -> int:
     copy_p.add_argument("--org", action="store_true", help="OWNER is an org.")
     copy_p.add_argument("--dry-run", action="store_true", dest="dry_run",
                         help="Say what it would create, and create nothing.")
+
+    runs_p = sub.add_parser(
+        "runs",
+        help="List runs newest first, by label, protocol or project: job, "
+             "status, versions, spend, label.")
+    runs_p.add_argument("--label", metavar="TEXT", help="Exactly this label.")
+    runs_p.add_argument("--label-contains", metavar="TEXT", dest="label_contains",
+                        help="A label containing TEXT.")
+    runs_p.add_argument("--protocol", metavar="ID", help="One protocol's runs (prt_…).")
+    runs_p.add_argument("--project", metavar="OWNER/PROJECT",
+                        help="The runs of a project's protocols.")
+    runs_p.add_argument("--owner", metavar="HANDLE",
+                        help="An org's runs (default: your own).")
+    runs_p.add_argument("--limit", type=int, help="At most this many (default 100).")
+    runs_p.add_argument("--json", action="store_true", dest="as_json",
+                        help="Print the rows as JSON.")
+
+    label_p = sub.add_parser(
+        "label", help="Relabel a run, or clear its label; the change is kept "
+                      "in its history.")
+    label_p.add_argument("run", help="A run id, or its job's id (j_…).")
+    label_g = label_p.add_mutually_exclusive_group(required=True)
+    label_g.add_argument("text", nargs="?", help="The new label.")
+    label_g.add_argument("--clear", action="store_true", help="Remove the label.")
 
     delete_p = sub.add_parser(
         "delete",
@@ -457,8 +505,26 @@ def main(argv: list[str] | None = None) -> int:
             return bench_cmd.protocol_publish(config, args.protocol, args.version)
         if args.protocol_cmd == "unpublish":
             return bench_cmd.protocol_unpublish(config, args.protocol, args.version)
+        if args.protocol_cmd == "push":
+            return bench_cmd.protocol_push(config, args.file, args.into, args.org)
+        if args.protocol_cmd == "export":
+            return bench_cmd.protocol_export(config, args.protocol, args.version,
+                                             args.out)
         return bench_cmd.protocol_copy(config, args.source, args.into, args.name,
                                        args.org, args.dry_run)
+
+    if args.cmd == "runs":
+        from mechbench_runner import bench_cmd
+
+        return bench_cmd.runs(config, label=args.label,
+                              label_contains=args.label_contains,
+                              protocol=args.protocol, project=args.project,
+                              owner=args.owner, limit=args.limit, as_json=args.as_json)
+
+    if args.cmd == "label":
+        from mechbench_runner import bench_cmd
+
+        return bench_cmd.label_run(config, args.run, None if args.clear else args.text)
 
     if args.cmd == "delete":
         from mechbench_runner import bench_cmd
@@ -481,8 +547,8 @@ def main(argv: list[str] | None = None) -> int:
         # exactly that, silently dropping the flag. Refuse it.
         if args.cmd == "run" and args.protocol is None and (
                 args.bind or args.param or args.input or args.keep
-                or args.budget is not None or args.wait):
-            print("run: --param/--input/--keep/--budget/--wait need a PROTOCOL "
+                or args.budget is not None or args.wait or args.label):
+            print("run: --param/--input/--keep/--budget/--label/--wait need a PROTOCOL "
                   "to launch; a bare `run` is the runner loop.", file=sys.stderr)
             return 2
         if args.cmd != "run" or args.protocol is not None:
@@ -492,7 +558,7 @@ def main(argv: list[str] | None = None) -> int:
                 return bench_cmd.run(config, args.protocol, args.bind,
                                      args.budget, args.wait,
                                      params=args.param, inputs=args.input,
-                                     keep=args.keep)
+                                     keep=args.keep, label=args.label)
             if args.cmd == "watch":
                 return bench_cmd.watch(config, args.jobs)
             return bench_cmd.result(config, args.spec, args.fmt, args.out,

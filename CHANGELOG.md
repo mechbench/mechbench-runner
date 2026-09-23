@@ -25,6 +25,37 @@ with both headings.
 
 ## Unreleased
 
+Needs mechbench-compute with `bench.push_protocol`, `export_protocol`,
+`runs` and `label_run` (branch `plumbing-files-labels`), and
+mechbench-api with `POST /protocols/push` and `/runs`.
+
+### Changes that raise
+
+- `mechbench run --bind` is refused, naming `--param` and `--input`. It
+  passed the legacy binding to `bench.launch`, which has not taken one
+  since compute 650a68f, so every `mechbench run <protocol>` raised
+  `TypeError`; the refusal says why instead.
+
+### Changes that alter results without raising
+
+- _None._
+
+### Other
+
+- `mechbench protocol push FILE --into OWNER/PROJECT [--org]` and
+  `mechbench protocol export PROTOCOL [--version N] [-o FILE]`: protocols
+  as files, created by name, versioned on change, unchanged when the
+  file is the head (epic 000654, task 000655).
+- `mechbench run PROTOCOL --label TEXT`, `mechbench runs [--label TEXT |
+  --label-contains TEXT] [--protocol ID] [--project OWNER/PROJECT]
+  [--owner HANDLE] [--limit N] [--json]`, and `mechbench label RUN TEXT |
+  --clear` (task 000656).
+- MCP tools `run`, `runs`, `label`, `protocol_push`, `protocol_export`,
+  with the command line's arguments.
+- A claim sends `X-Compute-Version`, so a runs listing says which compute
+  version ran each job.
+- docs/CAPABILITIES.md: the capability matrix (task 000661).
+
 ## 0.32.0 — 2026-09-18
 
 ### Changes that raise
