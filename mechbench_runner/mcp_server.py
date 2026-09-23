@@ -30,6 +30,7 @@ from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 
 from .api_client import ApiClient
 from .config import Config
+from .endings import ended_notes
 
 
 def _decode_object(raw: bytes) -> dict[str, Any]:
@@ -91,10 +92,18 @@ def build_tools(
 
     def get_result(path: str) -> dict[str, Any]:
         """Fetch a cached result from mechbench-api by its
-        MechbenchPath, decoded to a plain structure."""
+        MechbenchPath, decoded to a plain structure. When a generation
+        node's items did not all end naturally (its header's `ended`
+        counts any cut off at max_tokens, empty, filtered…), an
+        `ended_notice` list comes first, one line per node."""
         with ApiClient(cfg) as api:
             raw = api.fetch_object(path)
-        return _decode_object(raw)
+        payload = _decode_object(raw)
+        # First, so a caller reading the top of a long result sees it.
+        notes = ended_notes(payload)
+        if notes and isinstance(payload, dict):
+            payload = {"ended_notice": notes, **payload}
+        return payload
 
     def list_jobs() -> list[dict[str, Any]]:
         """List the caller's queued / running / completed jobs."""
