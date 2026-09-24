@@ -114,6 +114,7 @@ class Supervisor:
             self._reap_orphans()
 
     def _reap_orphans(self) -> None:
+        # external: a container with no init — as PID 1 only we reap orphans
         try:
             while True:
                 pid, _ = os.waitpid(-1, os.WNOHANG)

@@ -125,3 +125,30 @@ class TestTheSpoolPersistsIt:
         jr._spool_result("j_3", b"\xa0", "00", "tok")
         jr._clear_spool("j_3")
         assert jr._spooled_claim_token("j_3") is None
+
+
+class TestAReclaimDeliversUnderTheFreshToken:
+    def test_a_spooled_result_goes_up_with_the_new_claims_token(self, monkeypatch):
+        calls: list[tuple[str, str | None]] = []
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            calls.append((req.url.path, req.headers.get("x-claim-token")))
+            if req.url.path == "/jobs/next":
+                return httpx.Response(200, json={
+                    "id": "j_r", "protocolKind": "layer_ablation", "resume": True,
+                    "spec": {"prompt": "hi", "modelId": "m@r"},
+                    "claimToken": "tok-fresh"})
+            return httpx.Response(200, json={"ok": True})
+
+        class StubControl:
+            def __init__(self, _state, path=None):
+                self.path = path or "/tmp/stub.sock"
+
+        monkeypatch.setattr(jr, "ControlServer", StubControl)
+        jr._spool_result("j_r", b"\xa0", "00", "tok-stale")
+        api = _client(handler)
+        job = api.claim_next_job()
+        runner = jr.JobRunner(api.config)
+        runner._handle(api, job)
+        assert ("/jobs/j_r/complete", "tok-fresh") in calls
+        assert all(t != "tok-stale" for _, t in calls)
