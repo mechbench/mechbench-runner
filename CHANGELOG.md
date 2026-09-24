@@ -23,6 +23,30 @@ with both headings.
 
 ---
 
+## 0.35.0 — 2026-09-24
+
+Needs mechbench-compute 0.135.0 and mechbench-schema 0.17.0.
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None_ in the runner itself. Compute 0.135.0, which this release requires,
+changes Gemma 4 direct logit attribution with `apply_ln` and every probe of
+attention internals on Gemma 3, Qwen2 and Llama (see its changelog).
+
+### Other
+
+- **Comments and docstrings erased.** Only directives remain, plus one
+  MCP tool description the server reads. A gate in the suite keeps it so,
+  and tests now hold the outside facts the comments carried: TLS roots,
+  websocket keepalive, launchd and systemd behaviour, the claim token after
+  an interrupt or a re-claim, upload limits, file permissions, exit codes.
+  `docs/CAPABILITIES.md` and the README no longer name internal tasks; the
+  README states the exit-code contract.
+
 ## 0.34.0 — 2026-09-23
 
 Needs mechbench-compute 0.133.0 and the mechbench-api deployed with it.

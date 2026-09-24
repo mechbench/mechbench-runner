@@ -896,7 +896,7 @@ wheels = [
 
 [[package]]
 name = "mechbench"
-version = "0.32.0"
+version = "0.35.0"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
@@ -919,8 +919,8 @@ requires-dist = [
     { name = "certifi", specifier = ">=2024.2" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "mcp", specifier = ">=2,<3" },
-    { name = "mechbench-compute", specifier = ">=0.103.0" },
-    { name = "mechbench-schema", specifier = ">=0.14" },
+    { name = "mechbench-compute", specifier = ">=0.135.0" },
+    { name = "mechbench-schema", specifier = ">=0.17.0" },
     { name = "pydantic", specifier = ">=2.7,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
@@ -930,7 +930,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "mechbench-compute"
-version = "0.103.0"
+version = "0.135.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -946,22 +946,22 @@ dependencies = [
     { name = "transformers" },
     { name = "wasmtime" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0e/2b/70e9050c0b484b3a89c0a3b53accf377b92517e86128fb1a368621ee3c8e/mechbench_compute-0.103.0.tar.gz", hash = "sha256:7c2022a06501db2fe2724fd8fabea85b651198c07b7e8ab720265b05451d7387", size = 633681, upload-time = "2026-09-18T01:14:20.572Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ca/87/99a014e2fdabb93d2d9deccfab11853c1fecea0692cf34a46f944bc12814/mechbench_compute-0.135.0.tar.gz", hash = "sha256:0b74e89b38690871722d3c39503bb7d8e74b404af22427520678519e57b6df35", size = 599726, upload-time = "2026-09-24T19:30:11.174Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/43/66/739673f83b0ffc7dd0e0cc711e9b2193abc3f74bfd8554e279be12b09327/mechbench_compute-0.103.0-py3-none-any.whl", hash = "sha256:125bf85c6b9b3f9685bb1fa88bd9e9da43bd5bc77221c26910e0eafd75e941b8", size = 508855, upload-time = "2026-09-18T01:14:19.109Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/04/39c3df04dbbb781276b145929d0dd216f2e75516c9aba92649f67edefae8/mechbench_compute-0.135.0-py3-none-any.whl", hash = "sha256:47b61836f183916b021f922a26752e2404b585e26663644c75094cb3f9a39a01", size = 533686, upload-time = "2026-09-24T19:30:09.678Z" },
 ]
 
 [[package]]
 name = "mechbench-schema"
-version = "0.16.0"
+version = "0.17.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cbor2" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b9/b5/1fce13acf1ac3c3e9350cdf7a87aeb0a9a98ab1f3fc16f30d60e9d8792b1/mechbench_schema-0.16.0.tar.gz", hash = "sha256:7e94f00e9e7aec4317429a526525ec38aae06c28b5366d11c1fefdc667a86157", size = 35706, upload-time = "2026-09-14T22:52:36.209Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b7/4d/f737ccf887f12e807e8480fb01de52b4e1577ee04087a39fd901ebc7c8cc/mechbench_schema-0.17.0.tar.gz", hash = "sha256:6afa940b2ce0b5a12b95f0e9c99b27d5377c337c770532895ea67854846aad49", size = 25208, upload-time = "2026-09-24T19:25:50.199Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/79/57/6b3ef1a789107587d4331bf68d1de2e46bfe2a9ebcf11ae8221c368915d1/mechbench_schema-0.16.0-py3-none-any.whl", hash = "sha256:53ccffbf46867585ce4a3199a45b7c6ed9e0982d3bde1676ae1e99252fd97f71", size = 39082, upload-time = "2026-09-14T22:52:35.219Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/22/ca06c41662373d74140f8674bf9e1a92e344e907948427b9c27b6b09c52e/mechbench_schema-0.17.0-py3-none-any.whl", hash = "sha256:57cabd9e194a3f6aeabe236fcd30cc8f6a27f21a09c940c795aff1ec068f2f5c", size = 24484, upload-time = "2026-09-24T19:25:48.828Z" },
 ]
 
 [[package]]
