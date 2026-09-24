@@ -1,14 +1,3 @@
-"""The three bench verbs — run / watch / result (task 000448), now thin
-wrappers over `mechbench_compute.bench` (task 000450).
-
-The pure rendering logic (bind parsing, the metric table, the change-only
-progress line) runs directly. The verbs run against a faked bench library
-— nothing touches the network or credentials — so what is tested here is
-exactly the wrapper's job: the ordering (record the job id first), the
-loud failure, the usage exits, and that the presentation is applied to the
-library's already-unwrapped payload.
-"""
-
 from __future__ import annotations
 
 import inspect
@@ -64,21 +53,15 @@ class TestProgressLine:
         assert b._line({"status": "queued"}) == "queued"
 
 
-CFG = object()  # never reached: _connect is stubbed out in `patched`
+CFG = object()
 
 
 @pytest.fixture
 def patched(monkeypatch, tmp_path):
-    """Stub the bench library and the credential wiring, and isolate the
-    history file. `install(name=fn, ...)` swaps in fake library verbs."""
     monkeypatch.setattr(b, "HISTORY", tmp_path / "runs.jsonl")
     monkeypatch.setattr(b, "_connect", lambda config: None)
 
     def install(**fns):
-        # Each fake is held to the real verb's signature: a call the
-        # library would refuse fails here too. A fake with a looser
-        # signature once hid a `run` that raised TypeError on every
-        # launch.
         for name, fn in fns.items():
             sig = inspect.signature(getattr(b.bench, name))
 
@@ -101,9 +84,7 @@ class TestRun:
         rc = b.run(CFG, "owner/p/proto", None, 1.0, wait=False,
                    params=["model=gemma"], label="P0, reasoning on")
         assert rc == 0
-        # the job id is the first line of stdout, for JOB=$(mechbench run …)
         assert capsys.readouterr().out.splitlines()[0] == "j_abc"
-        # …and it is on disk, with the run id, the params, the cap, the label
         rec = json.loads(b.HISTORY.read_text().strip())
         assert rec["job"] == "j_abc" and rec["run"] == "r1"
         assert rec["params"] == {"model": "gemma"} and rec["budget_usd"] == 1.0
@@ -119,8 +100,6 @@ class TestRun:
         assert "--param" in capsys.readouterr().err
 
     def test_params_and_inputs_bind_by_name_and_keep_is_passed(self, patched):
-        # The declared form's flags (epic 000553): `--param n=12` is a
-        # number, `--param label=x` a string, `--input` a stored object.
         seen = {}
 
         def launch(protocol, **declared):
@@ -160,7 +139,6 @@ class TestWatch:
         patched(watch=watch)
         rc = b.watch(CFG, ["j"], interval=0)
         lines = [ln for ln in capsys.readouterr().out.splitlines() if "j" in ln]
-        # the library yields only on change; the wrapper prints each yield
         assert len(lines) == 2
         assert rc == 0
 
@@ -185,9 +163,6 @@ class TestWatch:
 
 
 class TestCancel:
-    """Draining a queue is the reason this verb exists, so it takes
-    several ids and reports each one (task 000463)."""
-
     def test_it_cancels_each_id_and_says_what_each_was(self, patched, capsys):
         seen = []
 
@@ -215,7 +190,7 @@ class TestCancel:
         assert b.cancel(CFG, ["j_running", "j_queued"], "") == 1
         cap = capsys.readouterr()
         assert "running job cannot be cancelled" in cap.err
-        assert "j_queued cancelled" in cap.out  # the rest were still done
+        assert "j_queued cancelled" in cap.out
 
 
 class TestResult:
@@ -229,7 +204,7 @@ class TestResult:
         assert b.result(CFG, "j/ask", "auto", None) == 0
         out = json.loads(capsys.readouterr().out)
         assert out == {"kind": "document_collection", "items": [1]}
-        assert seen["args"] == ("j", "ask")  # <job>/<node> split by the wrapper
+        assert seen["args"] == ("j", "ask")
 
     def test_a_metric_table_prints_a_table(self, patched, capsys):
         patched(result=lambda source, node: {"kind": "metric_table",
@@ -256,9 +231,6 @@ class TestResult:
 
 
 class TestResultByBinding:
-    """`result <node> --protocol X --bind corpus=Y` — find the run by what
-    it ran, the end of the job-id sidecars (task 000449)."""
-
     def test_it_finds_the_run_by_binding_and_reads_the_node(self, patched, capsys):
         seen = {}
 
@@ -273,9 +245,7 @@ class TestResultByBinding:
         rc = b.result(CFG, "grade", "auto", None,
                       protocol="024-variety", binds=["corpus=benji/c/animals"])
         assert rc == 0
-        # the binding filter went to the library as keywords
         assert seen["find"] == ("024-variety", {"corpus": "benji/c/animals"})
-        # the newest matching run (with a result) is the one read
         assert seen["read"][0]["jobId"] == "j_new" and seen["read"][1] == "grade"
         assert json.loads(capsys.readouterr().out) == {"kind": "document_collection",
                                                        "items": [1]}
@@ -287,7 +257,6 @@ class TestResultByBinding:
         assert rc == 1 and "no run of 024-variety" in capsys.readouterr().err
 
     def test_a_run_without_a_result_yet_is_skipped(self, patched, capsys):
-        # a matching run exists but its job has not produced a result
         patched(results_for=lambda protocol, **binds: [
             {"jobId": "j", "resultPath": None}])
         assert b.result(CFG, "grade", "auto", None,
@@ -298,8 +267,6 @@ SITE = type("Cfg", (), {"api_base_url": "https://api.mechbench.ai"})()
 
 
 class TestProtocolPublish:
-    """Task 000542: publish the exact version an article embeds."""
-
     def test_the_head_by_default_and_the_public_page(self, patched, capsys):
         seen = {}
 
@@ -349,8 +316,6 @@ class TestProtocolCopy:
 
 
 class TestDelete:
-    """Task 000545: describe first; `--yes` deletes; citations need saying."""
-
     def test_without_yes_it_only_describes(self, patched, capsys):
         calls = []
 

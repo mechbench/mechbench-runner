@@ -1,14 +1,3 @@
-"""The watchdog's dying breath, and mid-run download visibility.
-
-On 2026-08-25 a healthy 10 GB checkpoint download was killed as a wedge
-(it reported nothing) and the job it belonged to read "running" on the
-board for an hour after its runner died. Three behaviors keep that from
-recurring: progress ticks stamp the watchdog, mid-run download bytes
-ride the node view's detail onto the board, and a stall INTERRUPTS the
-active job before the process dies (epic 000320: the process stalled,
-the job had no error — the next process resumes it).
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -70,7 +59,7 @@ class TestStallInterruptsTheJob:
         f = api.interrupted[0]
         assert f["job"] == "j_1"
         assert "908s" in f["message"] and "watchdog" in f["message"]
-        assert f["timeout"] is not None  # the dying breath must be bounded
+        assert f["timeout"] is not None
 
     def test_no_active_job_means_nothing_to_interrupt(self, monkeypatch):
         runner = _runner(monkeypatch)
@@ -88,7 +77,7 @@ class TestStallInterruptsTheJob:
 
         runner._active_job = "j_1"
         runner._active_api = Grumpy()
-        runner._announce_stall(908.0)  # must not raise
+        runner._announce_stall(908.0)
 
 
 class TestMidRunDownloadBytes:
@@ -104,7 +93,6 @@ class TestMidRunDownloadBytes:
         node = api.progress[0]["node"]
         assert node["index"] == 1 and node["count"] == 2
         assert "3.2" in node["detail"] and "10.3" in node["detail"]
-        # the scalar stays the node scalar, not the byte count
         assert api.progress[0]["num"] == 0 and api.progress[0]["den"] == 2
 
     def test_before_any_node_the_preparing_checklist_owns_the_bytes(
@@ -118,7 +106,7 @@ class TestMidRunDownloadBytes:
         steps = []
         monkeypatch.setattr(runner, "_report_step", steps.append)
         runner._announce_download_bytes(1, 100)
-        assert api.progress == []  # no node detail PATCH
+        assert api.progress == []
         assert steps and steps[0]["unit"] == "bytes"
 
 

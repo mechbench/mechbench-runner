@@ -1,12 +1,3 @@
-"""The model-cache budget (task 000297).
-
-What matters: the deficit math is honest, LRU means least-recently-USED,
-the recency floor beats the budget, protected names never go, and every
-eviction is announced. Everything runs against temp dirs and fake
-inventories — the conftest fence guarantees none of it can see the real
-cache, and these tests never try.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -20,12 +11,7 @@ DAY = 86400.0
 NOW = 1_800_000_000.0
 
 
-# -- fixtures: a fake hub inventory and a real (temp) checkpoint cache
-
-
 class FakeInventory:
-    """Quacks like mechbench_compute.inventory: scan() + delete_revisions()."""
-
     def __init__(self, repos):
         self._repos = repos
         self.deleted: list[list[str]] = []
@@ -58,10 +44,6 @@ def make_checkpoint(root, key, *, gb, used_days_ago, label=None):
     d = root / key
     d.mkdir(parents=True)
     (d / "w.safetensors").write_bytes(b"x" * 1024)
-    # the declared size is faked through a sparse-ish trick: tests care
-    # about ordering and totals, not real gigabytes on a CI disk — so we
-    # keep files tiny and lie only in the fake *hub* sizes. Checkpoint
-    # sizes here are their true (small) byte counts.
     mark = d / ".complete"
     mark.touch()
     then = NOW - used_days_ago * DAY
@@ -71,9 +53,6 @@ def make_checkpoint(root, key, *, gb, used_days_ago, label=None):
     if label:
         (d / ".label").write_text(label)
     return d
-
-
-# -- the policy file
 
 
 class TestBudgetFile:
@@ -110,9 +89,6 @@ class TestUsageJournal:
         assert journal == {"org/model": NOW}
 
 
-# -- planning
-
-
 class TestPlan:
     def test_no_budget_plans_nothing(self, tmp_path):
         p = budget.plan(
@@ -142,11 +118,9 @@ class TestPlan:
             disk_usage=free_disk(500), now=NOW,
         )
         assert p.deficit_bytes == pytest.approx(20e9)
-        # oldest first, and one 30 GB eviction already covers 20 GB
         assert [c.name for c in p.evictions] == ["org/a"]
 
-    def test_lru_prefers_the_journal_over_last_modified(self, tmp_path):
-        # b was DOWNLOADED long ago but USED yesterday; a is the reverse.
+    def test_hub_last_modified_moves_on_download_so_the_journal_wins(self, tmp_path):
         inv = FakeInventory([
             repo("org/a", 30, modified_days_ago=5),
             repo("org/b", 30, modified_days_ago=60),
@@ -158,8 +132,6 @@ class TestPlan:
             checkpoints_root=tmp_path / "ck", inventory=inv,
             disk_usage=free_disk(90), now=NOW,
         )
-        # a's journal entry is OLDER than its download stamp; the max of
-        # the two stamps still makes a (5 days) older than b (1 day).
         assert [c.name for c in p.evictions] == ["org/a"]
 
     def test_recent_floor_beats_the_budget(self, tmp_path):
@@ -195,9 +167,6 @@ class TestPlan:
         )
         assert [c.name for c in p.evictions] == ["me/proj/checkpoints/v1"]
         assert p.evictions[0].kind == "checkpoint"
-
-
-# -- sweeping
 
 
 class TestSweep:
@@ -259,7 +228,6 @@ class TestSweep:
         assert any("org/bad" in m for m in said)
 
     def test_no_budget_is_a_fast_no_op(self, tmp_path):
-        # No inventory scan, no disk probe — this runs on every claim.
         def explode(_path):
             raise AssertionError("disk_usage consulted with no budget set")
 
@@ -302,8 +270,6 @@ class TestDoctorCheck:
 
 class TestRunnerIntegration:
     def test_sweep_cache_records_use_and_protects_the_job(self, monkeypatch, tmp_path):
-        """The runner's claim-time hook: the claimed model lands in the
-        journal and in the protect set; the warm model is protected too."""
         from mechbench_runner import job_runner
         from mechbench_runner.config import Config
 

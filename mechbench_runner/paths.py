@@ -1,12 +1,3 @@
-"""Where the runner keeps things on disk.
-
-One directory, `~/.mechbench`, 0700. It holds the control socket (whose
-permissions are its authentication) and the credentials file (which
-holds a durable API key). Both reasons point at the same mode, so the
-directory is created once, here, rather than by whoever gets there
-first.
-"""
-
 from __future__ import annotations
 
 from contextlib import suppress
@@ -16,10 +7,9 @@ CONFIG_NAME = "config.toml"
 
 
 def mechbench_dir() -> Path:
-    """`~/.mechbench`, created 0700."""
     d = Path.home() / ".mechbench"
     d.mkdir(mode=0o700, parents=True, exist_ok=True)
-    with suppress(OSError):  # pre-existing directories keep their mode
+    with suppress(OSError):
         d.chmod(0o700)
     return d
 
@@ -29,27 +19,14 @@ def config_path() -> Path:
 
 
 def spool_dir() -> Path:
-    """Where a job's work-in-progress survives the process (epic
-    000320): `~/.mechbench/spool/<job>/`. A finished result is written
-    here BEFORE the upload is attempted, so a server that has stopped
-    listening cannot make the runner discard an hour of compute; items
-    and training checkpoints follow (000323, second half). Created on
-    demand under the 0700 directory."""
     d = mechbench_dir() / "spool"
     d.mkdir(mode=0o700, exist_ok=True)
     return d
 
 
 def limits_path() -> Path:
-    """Where the shared rate limiter keeps its buckets between restarts
-    (task 000338): `~/.mechbench/limits.json`. It holds counts and
-    deadlines only — the key SCOPE is a hash, never a credential."""
     return mechbench_dir() / "limits.json"
 
 
 def checkpoints_dir() -> Path:
-    """Where materialized bench checkpoints live. Not created here —
-    only the materializer makes it, and an absent directory is simply
-    an empty cache. Derived through `mechbench_dir` so the test fence
-    over that one name covers this cache too."""
     return mechbench_dir() / "checkpoints"

@@ -1,5 +1,3 @@
-"""Stored credentials and the login flow (task 000284)."""
-
 from __future__ import annotations
 
 import os
@@ -51,12 +49,11 @@ def test_garbage_reads_as_signed_out_not_a_traceback(store):
 
 
 def test_incomplete_table_reads_as_signed_out(store):
-    store.write_text('[runner]\napi_url = "http://x"\n')  # no key
+    store.write_text('[runner]\napi_url = "http://x"\n')
     assert credentials.load(store) is None
 
 
 def test_awkward_values_survive_the_hand_rolled_writer(store):
-    # The writer is ours, so the escaping is ours to get wrong.
     awkward = 'benji\'s "box" \\ back\\slash'
     credentials.save(
         StoredCredentials(api_url="http://x", api_key="mbk_k", name=awkward), store
@@ -72,8 +69,6 @@ def test_clear(store):
 
 
 class TestConfigPrecedence:
-    """The environment owns the credential entirely when it supplies one."""
-
     def test_env_key_wins_and_ignores_the_stored_pair(self, store, monkeypatch):
         credentials.save(
             StoredCredentials(api_url="https://api.mechbench.ai", api_key="mbk_stored"),
@@ -84,8 +79,6 @@ class TestConfigPrecedence:
         monkeypatch.setenv("MECHBENCH_API_URL", "http://localhost:3000")
         config = Config.from_env()
         assert config.api_key == "mbk_from_env"
-        # Crucially NOT the stored URL: a production key must not be
-        # posted to localhost because only one half was overridden.
         assert config.api_base_url == "http://localhost:3000"
         assert config.from_stored_credentials is False
 
@@ -127,8 +120,6 @@ class TestMachine:
         assert len(machine.default_name()) <= 80
 
     def test_platform_is_answerable_without_a_compute_backend(self):
-        # The point of machine.py: this must work on the machine that
-        # cannot import mechbench_compute at all.
         assert "python" in machine.describe_platform()
 
 
@@ -144,15 +135,6 @@ class TestWebUrl:
 
 
 class TestDefaultApiUrl:
-    """The default has to serve the common case (task 000287 follow-up).
-
-    It pointed at localhost until 2026-08-23, so the first real install
-    registered against whatever happened to be on port 3000 and got a
-    404. Almost everyone installing this is connecting a machine to
-    mechbench.ai; developing against a local API is the rarer case, and
-    the one whose owner can be expected to set an env var.
-    """
-
     def test_it_is_production(self, store, monkeypatch):
         monkeypatch.setattr(credentials, "config_path", lambda: store)
         monkeypatch.delenv("MECHBENCH_API_KEY", raising=False)
@@ -169,5 +151,4 @@ class TestDefaultApiUrl:
         from mechbench_runner.config import DEFAULT_API_URL
         from mechbench_runner.login import web_url
 
-        # Not a guess from dropping the `api.` label — an explicit mapping.
         assert web_url(DEFAULT_API_URL) == "https://mechbench.ai/settings/runners"

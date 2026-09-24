@@ -1,10 +1,3 @@
-"""`mechbench models` — what is cached, and what pruning buys.
-
-Thin on purpose: the inventory lives in `mechbench_compute.inventory`
-because the web UI wants the same answer, and neither side should be
-reading the HuggingFace cache layout itself.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -56,9 +49,6 @@ def run(*, prune: bool = False, delete: list[str] | None = None) -> int:
         print("Nothing is superseded.")
         return 0
 
-    # The two numbers that matter, and the reason they differ. Revisions
-    # of one repository share their blobs, so the apparent size of a
-    # superseded revision is mostly weights its siblings also use.
     apparent = sum(rev.size_bytes for _, rev in superseded)
     print(
         f"{len(superseded)} revisions are not pointed at by any ref. They look "
@@ -89,13 +79,11 @@ def _delete(inventory, commits: list[str]) -> int:
 
 
 def _checkpoints(inventory):
-    """Materialized bench checkpoints (000297): they weigh what models
-    weigh, so they show up wherever models are counted."""
     try:
         from . import budget
 
         return budget.checkpoint_candidates()
-    except Exception:  # noqa: BLE001 — an unreadable cache is an empty one
+    except Exception:  # noqa: BLE001
         return []
 
 

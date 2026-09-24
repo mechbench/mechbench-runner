@@ -1,26 +1,3 @@
-"""The live channel: one outbound WSS connection to the API (task 000289).
-
-The machine dials out. Nothing dials in — no inbound port, no NAT
-traversal, no firewall prompt, and the credential is the one `login`
-already stored. It also means the browser watching this machine does not
-have to *be* this machine, which is the entire reason the channel exists:
-checking the desktop at the office from a laptop somewhere else.
-
-Three rails, and only two of them are here:
-
-* **Job dispatch is not.** Claim and complete stay on HTTP, where they
-  are durable and retryable. A queued job has to survive a disconnected
-  runner, a crash and a restart, and correctness must not depend on a
-  socket being up.
-* **Control** arrives here: pause, resume, status.
-* **Telemetry** leaves here: the events `RunnerState` already emits,
-  forwarded rather than reinvented.
-
-The channel is never on the critical path. It runs in its own daemon
-thread, reconnects with backoff, and a runner with no channel at all
-keeps claiming and finishing jobs exactly as before.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -40,24 +17,15 @@ from .exits import EXIT_RESTART
 
 PROTOCOL_VERSION = 1
 
-#: Backoff bounds for reconnection. The ceiling is low on purpose: this
-#: is a control channel, and a machine that is quietly unreachable for
-#: half an hour is the failure this is meant to make visible.
 BACKOFF_MIN_SECONDS = 1.0
 BACKOFF_MAX_SECONDS = 30.0
 
-#: If the API has said nothing for this long, assume the socket is a
-#: corpse and redial. Generous relative to the server's 25s ping so a
-#: slow network is not mistaken for a dead one.
 SILENCE_TIMEOUT_SECONDS = 90.0
 
-#: How many command ids to remember for de-duplication. Commands are
-#: rare and human-initiated; this is several minutes of history.
 COMMAND_MEMORY = 64
 
 
 def channel_url(api_base_url: str) -> str:
-    """`https://api.…` → `wss://api.…/runners/channel`."""
     base = api_base_url.rstrip("/")
     if base.startswith("https://"):
         base = "wss://" + base[len("https://") :]
@@ -67,18 +35,6 @@ def channel_url(api_base_url: str) -> str:
 
 
 def _ssl_context(url: str) -> ssl.SSLContext | None:
-    """A TLS context with CA roots that actually exist.
-
-    `websockets` uses `ssl.create_default_context()`, which trusts
-    whatever the interpreter's OpenSSL was pointed at — and a Python
-    installed by uv or from python.org on macOS is pointed at nothing:
-    the default store holds *zero* certificates. Every `wss://` connect
-    then fails with CERTIFICATE_VERIFY_FAILED while HTTPS keeps working,
-    because httpx bundles certifi and the standard library does not.
-
-    That asymmetry is what made this hard to see: `login` succeeds over
-    HTTPS and the channel silently never connects.
-    """
     if not url.startswith("wss://"):
         return None
     import ssl
@@ -89,8 +45,6 @@ def _ssl_context(url: str) -> ssl.SSLContext | None:
 
 
 class LiveChannel:
-    """Holds the connection, from its own thread, for as long as it can."""
-
     def __init__(self, config: Config, state: RunnerState) -> None:
         self.config = config
         self.state = state
@@ -100,21 +54,12 @@ class LiveChannel:
         self._outbox: asyncio.Queue[dict[str, Any]] | None = None
         self._stop = threading.Event()
         self._connected = threading.Event()
-        #: Command ids already applied, so a retried delivery is not a
-        #: second application. `pause` twice is a pause either way, but
-        #: that is a property of today's commands, not of the channel.
         self._applied: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._listener_registered = False
         self._stopped = False
-        #: The live connection, so `stop()` can close it rather than
-        #: abandon it.
         self._ws: Any = None
 
-    # -- lifecycle
-
     def start(self) -> None:
-        """Begin connecting. Never raises: a channel that cannot come up
-        must not stop a runner from working."""
         if not self.config.api_key:
             return
         self.state.add_listener(self._on_event)
@@ -125,13 +70,6 @@ class LiveChannel:
         self._thread.start()
 
     def stop(self) -> None:
-        """Close the socket and let the thread wind down. Idempotent.
-
-        Closing the connection rather than stopping the loop out from
-        under it matters: an abandoned socket leaves the server waiting
-        on a peer that will never speak again, which turns a clean
-        shutdown into a timeout.
-        """
         if self._stopped:
             return
         self._stopped = True
@@ -148,8 +86,6 @@ class LiveChannel:
                 )
         if self._thread is not None:
             self._thread.join(timeout=3)
-            # Only if it would not go quietly: the receive loop should
-            # already have unwound on the closed socket.
             if self._thread.is_alive() and loop is not None and not loop.is_closed():
                 with suppress(RuntimeError):
                     loop.call_soon_threadsafe(loop.stop)
@@ -166,15 +102,7 @@ class LiveChannel:
     def connected(self) -> bool:
         return self._connected.is_set()
 
-    # -- the job thread's entry point
-
     def _on_event(self, message: dict[str, Any]) -> None:
-        """Called from the job thread for every RunnerState event.
-
-        Hops to the channel's loop and returns immediately. Dropping the
-        event when the queue is full is deliberate: telemetry must never
-        apply backpressure to the work it is describing.
-        """
         loop, outbox = self._loop, self._outbox
         if loop is None or outbox is None or not self._connected.is_set():
             return
@@ -184,11 +112,8 @@ class LiveChannel:
             "event": message.get("event"),
             "data": message.get("data") or {},
         }
-        # RuntimeError here means the loop is shutting down.
         with suppress(RuntimeError):
             loop.call_soon_threadsafe(_offer, outbox, frame)
-
-    # -- the channel thread
 
     def _run(self) -> None:
         loop = asyncio.new_event_loop()
@@ -196,7 +121,7 @@ class LiveChannel:
         asyncio.set_event_loop(loop)
         try:
             loop.run_until_complete(self._reconnect_forever())
-        except Exception:  # noqa: BLE001 — a dead channel is not a dead runner
+        except Exception:  # noqa: BLE001
             pass
         finally:
             with suppress(Exception):
@@ -209,7 +134,7 @@ class LiveChannel:
             try:
                 await self._session()
                 backoff = BACKOFF_MIN_SECONDS
-            except Exception as exc:  # noqa: BLE001 — every failure retries
+            except Exception as exc:  # noqa: BLE001
                 if self._stop.is_set():
                     return
                 print(f"[channel] {self.url} unavailable ({exc}); "
@@ -218,8 +143,6 @@ class LiveChannel:
                 self._connected.clear()
             if self._stop.is_set():
                 return
-            # Jitter, so a fleet that lost the API does not resynchronize
-            # into a thundering herd against it as it comes back.
             await asyncio.sleep(backoff * (0.5 + random.random()))  # noqa: S311
             backoff = min(backoff * 2, BACKOFF_MAX_SECONDS)
 
@@ -233,10 +156,6 @@ class LiveChannel:
             ssl=_ssl_context(self.url),
             open_timeout=15,
             close_timeout=5,
-            # The library's own keepalive is off: the server pings on a
-            # cadence chosen for the load balancer, and two independent
-            # keepalives disagreeing about what "dead" means is a bug
-            # generator.
             ping_interval=None,
         ) as ws:
             self._ws = ws
@@ -266,9 +185,6 @@ class LiveChannel:
             "runnerVersion": runner_version,
             "platform": machine.describe_platform(),
             "hostname": machine.hostname(),
-            # What the whole stack is on, and whether this machine can
-            # update itself — the API needs both to decide whether to
-            # offer an update, and the UI to say why it cannot.
             "packages": install_mod.installed_versions(),
             "installMethod": install_mod.detect().method,
             "selfUpdatable": install_mod.detect().upgradable,
@@ -322,7 +238,6 @@ class LiveChannel:
 
         remembered = self._applied.get(cmd_id)
         if remembered is not None:
-            # A redelivery after a timeout, not a second instruction.
             await ws.send(json.dumps({**remembered, "id": cmd_id}))
             return
 
@@ -349,12 +264,6 @@ class LiveChannel:
         await ws.send(json.dumps({**ack, "id": cmd_id}))
 
     def _accept_update(self, frame: dict[str, Any]) -> dict[str, Any]:
-        """Record an approved update; the restart performs it.
-
-        Refused while a job is in flight: an update mid-run throws away
-        minutes of model load and forward passes, and the job would have
-        to be re-queued. The API can simply ask again when it goes idle.
-        """
         target = (frame.get("args") or {}).get("version")
         if not isinstance(target, str) or not target:
             return {"v": PROTOCOL_VERSION, "type": "ack", "ok": False,
@@ -379,8 +288,6 @@ class LiveChannel:
             current = ""
         updater.request(target, current)
         self.state.set_phase("updating")
-        # Exiting is the mechanism: the supervisor restarts us, and the
-        # new process performs the upgrade before loading old code.
         self.state.request_exit(EXIT_RESTART, f"update to {target}")
         return {"v": PROTOCOL_VERSION, "type": "ack", "ok": True,
                 "state": {"updating_to": target, "from": current}}
@@ -392,7 +299,6 @@ class LiveChannel:
 
 
 def _offer(queue: asyncio.Queue[dict[str, Any]], frame: dict[str, Any]) -> None:
-    """Keep the newest event, drop the oldest — never block the caller."""
     if queue.full():
         with suppress(asyncio.QueueEmpty):
             queue.get_nowait()
@@ -401,5 +307,4 @@ def _offer(queue: asyncio.Queue[dict[str, Any]], frame: dict[str, Any]) -> None:
 
 
 def with_suppressed(task: asyncio.Task[Any]) -> None:
-    """Swallow a cancelled task's result without awaiting it."""
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)

@@ -1,11 +1,3 @@
-"""preparing -> running promotion (tasks 000252, 000284 follow-up).
-
-A claim leaves a job in "preparing". The only thing that ever takes it
-out is the first progress report, so if that report omits the status the
-job displays as "preparing" for its entire run and then jumps to done.
-It did exactly that until this was fixed.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -53,7 +45,6 @@ class StubControl:
 
 
 def build(monkeypatch, api, ticks):
-    """A runner whose executor just emits the progress ticks we name."""
     monkeypatch.setattr(jr, "ControlServer", StubControl)
     config = Config(
         api_base_url="http://localhost:3000",
@@ -88,8 +79,6 @@ def test_first_report_promotes_to_running(monkeypatch):
 
 
 def test_promotion_is_not_throttled_away(monkeypatch):
-    # done=1 is not a multiple of 5 and is not the final tick, so the
-    # throttle would drop it — and with it the only promotion.
     api = RecordingApi()
     build(monkeypatch, api, ticks=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
     assert api.progress[0]["num"] == 1
@@ -106,8 +95,6 @@ def test_status_is_sent_once_not_on_every_tick(monkeypatch):
 def test_a_failed_first_report_leaves_the_promotion_owed(monkeypatch):
     api = RecordingApi(fail_first=True)
     build(monkeypatch, api, ticks=[1, 2, 3, 4, 5])
-    # The first attempt carried the status and failed; the next attempt
-    # must carry it again rather than assume it landed.
     assert api.progress[0]["status"] == "running"
     assert api.progress[1]["status"] == "running"
 
@@ -119,8 +106,6 @@ def test_the_job_still_completes(monkeypatch):
 
 
 def test_a_node_boundary_defeats_the_throttle(monkeypatch):
-    """000316: "node 3/5" flipping to 4/5 is what a watcher watches
-    for; it must not wait out the every-5th-unit modulo."""
     api = RecordingApi()
     monkeypatch.setattr(jr, "ControlServer", StubControl)
     config = Config(
@@ -130,8 +115,6 @@ def test_a_node_boundary_defeats_the_throttle(monkeypatch):
     runner = jr.JobRunner(config)
 
     def fake_run(_spec, *, on_progress=None, secrets=None):
-        # ticks 6 and 7 are neither multiples of 5 nor final — but 7
-        # crosses into node 2, so it must be reported anyway.
         on_progress(5, 8, {"index": 1, "count": 2, "id": "a", "done": 5, "total": 5})
         on_progress(6, 8, {"index": 1, "count": 2, "id": "a", "done": 6, "total": 6})
         on_progress(7, 8, {"index": 2, "count": 2, "id": "b", "done": 1, "total": 2})
@@ -146,6 +129,6 @@ def test_a_node_boundary_defeats_the_throttle(monkeypatch):
         "spec": {"prompt": "", "modelId": "google/gemma-4@abc"},
     })
     nums = [p["num"] for p in api.progress]
-    assert 7 in nums  # the boundary crossing went through
-    assert 6 not in nums  # ordinary mid-node ticks still throttle
+    assert 7 in nums
+    assert 6 not in nums
     assert api.progress[-1]["node"]["index"] == 2

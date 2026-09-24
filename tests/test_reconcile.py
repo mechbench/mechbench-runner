@@ -1,13 +1,3 @@
-"""Reconciliation: the runner repairs the server's idea of its work.
-
-A job read "running" on the board for an hour after its runner died
-(2026-08-25). The dying-breath fail covers watchdog deaths; this covers
-everything else — kill -9, power loss, a fail report that never landed
-— because the NEXT process compares the server's claims against local
-truth. The invariant that makes it safe: only jobs THIS machine claims
-are ever touched.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -35,11 +25,11 @@ class RecordingApi:
         return self.jobs
 
     def fail_job(self, job_id, message, timeout=None):
-        assert timeout is not None  # reconciliation must be bounded
+        assert timeout is not None
         self.failed.append(job_id)
 
     def interrupt_job(self, job_id, message, timeout=None):
-        assert timeout is not None  # reconciliation must be bounded
+        assert timeout is not None
         self.interrupted.append(job_id)
 
     def get_job(self, job_id):
@@ -78,8 +68,6 @@ class TestOwnClaims:
     def test_an_orphan_this_machine_claims_is_interrupted_not_failed(
         self, monkeypatch
     ):
-        # Epic 000320: our orphan had no error of its own. Interrupted
-        # keeps the claim so THIS process re-claims and resumes it.
         runner = _runner(monkeypatch)
         api = RecordingApi([job("j_orphan", claimed_by="r_mine")])
         runner._reconcile_jobs(api)
@@ -114,8 +102,6 @@ class TestOwnClaims:
     def test_without_a_runner_identity_attributed_jobs_are_left_alone(
         self, monkeypatch
     ):
-        # A hand-pasted env key has no runner record; it cannot prove an
-        # attributed claim is its own.
         runner = _runner(monkeypatch, runner_id=None)
         api = RecordingApi([job("j_x", claimed_by="r_somebody")])
         runner._reconcile_jobs(api)
@@ -123,9 +109,6 @@ class TestOwnClaims:
 
 
 class TestLegacyClaims:
-    """Pre-attribution jobs (API < 0048) name no runner: reconciled only
-    from an idle runner, only after a long silence."""
-
     def test_stale_and_idle_reconciles(self, monkeypatch):
         runner = _runner(monkeypatch)
         api = RecordingApi([job("j_zombie", claimed_by=None,
@@ -164,14 +147,11 @@ class TestResilience:
             def list_jobs(self):
                 raise ConnectionError("api unreachable")
 
-        runner._reconcile_jobs(Down())  # must not raise
+        runner._reconcile_jobs(Down())
 
     def test_a_standing_refusal_is_heard_once_not_every_five_minutes(
         self, monkeypatch
     ):
-        # Task 000511: a claim the server will not honour was re-reported
-        # on every pass, which is a loop, not a repair. The job is left to
-        # the server's own reaper and this process stops asking.
         runner = _runner(monkeypatch)
 
         class Refusing(RecordingApi):

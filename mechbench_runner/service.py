@@ -1,28 +1,3 @@
-"""Installing the runner as a service the operating system supervises.
-
-This writes a launchd agent on macOS or a systemd **user** unit on
-Linux, and then gets out of the way. It deliberately does not supervise
-anything itself: both platforms already do that, and a second supervisor
-underneath the first gives two processes with different ideas about what
-"dead" means (task 000293).
-
-What we are responsible for is telling the platform the right policy,
-and the whole policy is the exit-code contract in `exits.py`:
-
-* `KeepAlive{SuccessfulExit: false}` / `Restart=on-failure` — come back
-  from a crash, stay stopped after a deliberate exit.
-* `ThrottleInterval` / `RestartSec` — do not spin.
-
-The command is `sys.executable -m mechbench.cli run` rather than
-whatever `mechbench` resolves to on `PATH`. A service has no
-shell profile, so `PATH` is not ours to rely on — and pinning the
-interpreter pins the environment the runner was installed into, which
-is the one holding its dependencies.
-
-No credential is written into the unit. It comes from
-`~/.mechbench/config.toml`, and a key in a plist is a key in a backup.
-"""
-
 from __future__ import annotations
 
 import os
@@ -37,11 +12,8 @@ from .paths import mechbench_dir
 LABEL = "ai.mechbench.runner"
 UNIT_NAME = "mechbench.service"
 
-#: Seconds launchd waits between restarts, and systemd's RestartSec.
 THROTTLE_SECONDS = 10
 
-#: Long enough for a job in flight to finish on SIGTERM before the
-#: supervisor escalates. A layer-ablation sweep is a couple of minutes.
 STOP_TIMEOUT_SECONDS = 300
 
 
@@ -79,31 +51,13 @@ def unit_path() -> Path:
 
 
 def program_arguments() -> list[str]:
-    """What the OS supervisor starts.
-
-    `supervise`, not `run`: the supervisor owns one child and can
-    upgrade it while it is not running, which is what lets self-update
-    stop being a process replacing its own code. launchd still owns
-    *this* process — one supervisor above another is the arrangement
-    this design exists to avoid, and the exit-code contract is the same
-    at both levels so they cannot disagree.
-    """
     return [sys.executable, "-m", "mechbench.cli", "supervise"]
 
 
 def boot_log() -> Path:
-    """Where the platform's own stdout goes.
-
-    Small by construction: the runner replaces stdout with its rotating
-    log as soon as it starts, so only failures *before* that reach here —
-    which is exactly what you want to read when it will not start.
-    """
     d = mechbench_dir() / "logs"
     d.mkdir(mode=0o700, parents=True, exist_ok=True)
     return d / "agent-boot.log"
-
-
-# --- writing the unit --------------------------------------------------------
 
 
 def launchd_plist() -> dict[str, object]:
@@ -111,22 +65,9 @@ def launchd_plist() -> dict[str, object]:
         "Label": LABEL,
         "ProgramArguments": program_arguments(),
         "RunAtLoad": True,
-        # The exit contract, expressed the only way launchd understands:
-        # restart unless the process said it meant to stop.
         "KeepAlive": {"SuccessfulExit": False},
         "ThrottleInterval": THROTTLE_SECONDS,
         "ExitTimeOut": STOP_TIMEOUT_SECONDS,
-        # Standard, not Background. The runner's whole job is heavy
-        # compute, and launchd's Background class is for housekeeping:
-        # on Apple Silicon it steers the process to the efficiency cores
-        # at low priority (scheduling priority 4 where a terminal's
-        # process gets 31), which made every model forward — a
-        # Python-bound graph build per call — about 1.8× slower than
-        # the same code run from a shell. A 312-condition decision
-        # read took 7.2 minutes as a service and 3.9 in-process on the
-        # same idle machine; August's runs, launched from a terminal
-        # before this became a service, took 4. Standard is the default
-        # class: no priority over the user's own work, no penalty either.
         "ProcessType": "Standard",
         "StandardOutPath": str(boot_log()),
         "StandardErrorPath": str(boot_log()),
@@ -158,21 +99,15 @@ WantedBy=default.target
 """
 
 
-# --- operations --------------------------------------------------------------
-
-
 def install() -> ServiceStatus:
     path = unit_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
     if is_macos():
         path.write_bytes(plistlib.dumps(launchd_plist()))
-        # bootout first so install is idempotent: reinstalling over a
-        # loaded agent otherwise keeps the old command running.
         _run(["launchctl", "bootout", _domain(), str(path)], check=False)
         result = _run(["launchctl", "bootstrap", _domain(), str(path)], check=False)
         if result.returncode != 0:
-            # Older macOS, or a domain that refuses bootstrap.
             result = _run(["launchctl", "load", "-w", str(path)], check=False)
         if result.returncode != 0:
             return ServiceStatus(True, False, False, path,
@@ -190,13 +125,6 @@ def install() -> ServiceStatus:
 
 
 def _settled_status(attempts: int = 10, pause: float = 0.3) -> ServiceStatus:
-    """Status once the service has had a moment to actually start.
-
-    `bootstrap` and `enable --now` return before the process is up, so
-    reading status immediately reports "loaded, not currently running" —
-    which, printed the instant someone answers "yes, start it
-    automatically", reads as a failure rather than as a race.
-    """
     import time
 
     st = status()
@@ -256,12 +184,6 @@ def status() -> ServiceStatus:
 
 
 def kickstart() -> bool:
-    """Start it now, or restart it if it is already up.
-
-    Needed after `login`: a runner that exited because it was signed out
-    exited *deliberately*, so the supervisor is correctly leaving it
-    alone and nothing else will bring it back.
-    """
     if not unit_path().exists():
         return False
     if is_macos():
@@ -272,9 +194,6 @@ def kickstart() -> bool:
 
 
 def linger_hint() -> str | None:
-    """On Linux a user service stops at logout unless lingering is on —
-    which is the difference between a headless box that works and one
-    that works until you close the SSH session."""
     if not is_linux():
         return None
     user = os.environ.get("USER") or os.environ.get("LOGNAME") or ""
@@ -287,15 +206,7 @@ def linger_hint() -> str | None:
     )
 
 
-# --- plumbing ----------------------------------------------------------------
-
-
 def serving_pid() -> int | None:
-    """The pid of whatever answers the control socket, or None.
-
-    The identity a restart has to change. Liveness is not enough: an
-    orphan answers too (task 000462).
-    """
     from .control import ControlError, request
 
     try:
@@ -306,21 +217,6 @@ def serving_pid() -> int | None:
 
 
 def restart(*, settle: float = 60.0) -> ServiceStatus:
-    """Restart the service through the service manager, and return only
-    once a DIFFERENT process is serving (tasks 000452, 000462).
-
-    On macOS the working incantation is `launchctl kickstart -k`: it
-    kills the running instance and relaunches under the SAME supervisor
-    — `kill <run-child-pid>` looks right but takes the supervisor with
-    it, leaving no runner and a stale socket. On Linux it is
-    `systemctl --user restart`.
-
-    The first version of this asked the service manager whether something
-    was running and reported success when it said yes. Something always
-    was: the process we had just asked to leave. A restart's claim is
-    about IDENTITY, so the pid serving the control socket before has to
-    differ from the pid serving it after, and `detail` says so.
-    """
     import time
 
     path = unit_path()
@@ -328,10 +224,6 @@ def restart(*, settle: float = 60.0) -> ServiceStatus:
         return ServiceStatus(False, False, False, path,
                              "not installed — `mechbench install-service` first")
     before = serving_pid()
-    # `kickstart -k` blocks until the relaunch completes, which can take
-    # longer than the default timeout (module imports, channel connect);
-    # give it room, and let the poll below — not the command's exit — be
-    # the source of truth.
     if is_macos():
         result = _run(["launchctl", "kickstart", "-k", f"{_domain()}/{LABEL}"],
                       check=False, timeout=90)

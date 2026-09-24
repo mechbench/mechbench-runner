@@ -1,11 +1,3 @@
-"""`mechbench budget` — show, set, or enforce the model-cache budget.
-
-The policy machinery lives in budget.py (the runner's sweep uses the
-same code); this is only its face. Showing the budget always shows the
-consequence too: what a sweep would evict right now, so setting a
-number is never a leap of faith.
-"""
-
 from __future__ import annotations
 
 import time

@@ -1,30 +1,3 @@
-"""The job spool: work-in-progress that survives the process (epic
-000320, task 000323 second half).
-
-Under ``~/.mechbench/spool/<job>/``:
-
-    result.cbor, result.sha256      the finished result (first half)
-    <node>/fingerprint              the process identity the node ran under
-    <node>/items/<hash>.cbor        one completed item of an item-resumable
-                                    block: {"key", "item"}
-    <node>/checkpoint/weights.safetensors, opt.safetensors, state.cbor
-                                    a training checkpoint
-    <node>/done                     {"path", "fingerprint"} of an emitted node
-    <node>/held.cbor                {"fingerprint", "result"} of a node whose
-                                    result was HELD here rather than emitted
-                                    (a run with keep: outputs, 000561)
-
-Every write is whole-file-then-rename, so a crash leaves no half
-item. A node whose fingerprint CHANGES between attempts has its
-partials discarded here as well as ignored by the executor — belt and
-braces, because a stale partial is worse than none.
-
-The resume map the executor takes is rebuilt from this directory on
-re-claim; the executor re-derives every fingerprint and honours an
-entry only under equality, so this module never has to be right about
-process identity on its own.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -45,20 +18,12 @@ def _write_atomic(path: Path, data: bytes) -> None:
 
 
 class JobSpool:
-    """One job's spool. Methods mirror the executor's hooks."""
-
     def __init__(self, job_id: str) -> None:
         self.job_id = job_id
         self.root = spool_dir() / job_id
-        #: Items that could not be written, per node — kept so a resume
-        #: that recovers less than it should can say why (000485).
         self.dropped: dict[str, int] = {}
 
-    # --- hooks --------------------------------------------------------------
-
     def node_start(self, nid: str, fingerprint: str) -> None:
-        """Record the identity the node runs under. A different
-        fingerprint from last time invalidates that node's partials."""
         d = self.root / nid
         fp = d / "fingerprint"
         if fp.is_file() and fp.read_text().strip() != fingerprint:
@@ -76,9 +41,6 @@ class JobSpool:
                       dump_canonical({"key": key, "item": item}))
 
     def checkpoint(self, nid: str, state: dict[str, Any]) -> None:
-        """Weights and optimizer arrays as safetensors; the rest as
-        CBOR. The numpy generator state holds 128-bit integers, which
-        CBOR cannot carry natively, so it travels as a JSON string."""
         import mlx.core as mx
         from mechbench_schema import dump_canonical
 
@@ -102,7 +64,6 @@ class JobSpool:
                        else [int(x) for x in state["mx_key"]]),
         }
         (tmp / "state.cbor").write_bytes(dump_canonical(meta))
-        # Swap the finished checkpoint in whole: never a torn one.
         shutil.rmtree(d, ignore_errors=True)
         os.replace(tmp, d)
 
@@ -113,19 +74,12 @@ class JobSpool:
                       dump_canonical({"path": path, "fingerprint": fingerprint}))
 
     def node_kept(self, nid: str, fingerprint: str, result: Any) -> None:
-        """A finished node's result, held on this device instead of
-        emitted (keep: outputs): what a resume here picks up, and what
-        the bench never receives. Cleared with the rest of the spool
-        once the job's result is delivered."""
         from mechbench_schema import dump_canonical
 
         _write_atomic(self.root / nid / "held.cbor",
                       dump_canonical({"fingerprint": fingerprint, "result": result}))
 
-    # --- reading back ---------------------------------------------------------
-
     def resume_map(self) -> dict[str, dict[str, Any]]:
-        """What the executor's `resume=` takes, rebuilt from disk."""
         import mlx.core as mx
         import numpy as np
         from mechbench_schema import load_raw
@@ -149,7 +103,7 @@ class JobSpool:
             if kept.is_file():
                 try:
                     rec = load_raw(kept.read_bytes())
-                except Exception:  # noqa: BLE001 — a torn frame is not a result
+                except Exception:  # noqa: BLE001
                     rec = None
                 if (isinstance(rec, dict) and "result" in rec
                         and rec.get("fingerprint") == entry["fingerprint"]):
@@ -162,7 +116,7 @@ class JobSpool:
                 for f in sorted(items_dir.glob("*.cbor")):
                     try:
                         rec = load_raw(f.read_bytes())
-                    except Exception:  # noqa: BLE001 — a torn frame is not an item
+                    except Exception:  # noqa: BLE001
                         continue
                     if isinstance(rec, dict) and "key" in rec:
                         items[str(rec["key"])] = rec["item"]
@@ -189,8 +143,6 @@ class JobSpool:
         return out
 
     def summary(self) -> dict[str, Any]:
-        """For the first progress report after a resume: where it picks
-        up and how much it reuses."""
         m = self.resume_map()
         reused_items = sum(len(e.get("items", {})) for e in m.values())
         done_nodes = [n for n, e in m.items() if "done" in e or "held" in e]
@@ -201,8 +153,6 @@ class JobSpool:
             "node": first_partial or (done_nodes[-1] if done_nodes else ""),
             "reused": reused_items + len(done_nodes),
             **({"step": step} if step else {}),
-            # Items that never reached disk, by node (000485): the reason a
-            # resume can recover less than the block produced.
             **({"dropped": dict(self.dropped)} if self.dropped else {}),
         }
 

@@ -1,21 +1,3 @@
-"""The parity gate (task 000661): a verb on one surface is on all three,
-or its absence is written down with the reason.
-
-- Every command line command is a noun, a shorter name for a noun's verb
-  (`ALIASES`), or this machine's own (`CLI_ONLY`), and every MCP tool is
-  a noun or `MCP_ONLY`: a new command or tool that is none of these fails
-  until it is one.
-- Every noun parser on the command line has exactly the registry's verbs,
-  each with the registry's arguments, and every noun's MCP tool offers
-  exactly those verbs.
-- Every noun has list, read, create, update, delete and history, or says
-  why not.
-- Every verb's API route is declared in mechbench-api's routes, read from
-  a checkout beside this one (`MECHBENCH_API_SRC` names another; skipped
-  when there is none).
-- docs/CAPABILITIES.md carries the matrix the registry writes.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -44,7 +26,7 @@ CFG = Config(
 
 
 def subcommands(p: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
-    for a in p._actions:  # noqa: SLF001 — argparse keeps its subparsers nowhere public
+    for a in p._actions:  # noqa: SLF001
         if isinstance(a, argparse._SubParsersAction):  # noqa: SLF001
             return dict(a.choices)
     return {}
@@ -111,8 +93,6 @@ def api_source() -> Path | None:
 
 
 def declared_routes(src: Path) -> set[tuple[str, str]]:
-    """`(METHOD, /mount/path)` for every route mechbench-api declares: each
-    routes file's `r.get("/…")`, under where app.ts mounts it."""
     app = (src / "app.ts").read_text()
     files: dict[str, Path] = {}
     for fn, mod in re.findall(r"import \{([^}]*)\} from \"\./routes/(\w+)\.js\"", app):

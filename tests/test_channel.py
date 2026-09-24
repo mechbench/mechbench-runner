@@ -1,11 +1,3 @@
-"""The live channel, runner side (task 000289).
-
-Driven against a real WebSocket server rather than a mocked transport:
-what is worth checking here is the handshake, the heartbeat reply,
-command application and the de-duplication — none of which a stubbed
-socket would exercise.
-"""
-
 from __future__ import annotations
 
 import json
@@ -22,8 +14,6 @@ websockets_sync = pytest.importorskip("websockets.sync.server")
 
 
 class FakeApi:
-    """A one-connection API that records what the runner said."""
-
     def __init__(self):
         self.received: queue.Queue[dict] = queue.Queue()
         self.connected = threading.Event()
@@ -76,7 +66,6 @@ class FakeApi:
         self._outbound.put(frame)
 
     def next(self, kind: str | None = None, timeout: float = 5.0) -> dict:
-        """Next frame, optionally of a given type."""
         deadline = timeout
         while deadline > 0:
             step = min(0.5, deadline)
@@ -173,12 +162,6 @@ class TestCommands:
         assert ack["state"]["runner_version"] == "0.1.0"
 
     def test_a_redelivered_command_is_acked_but_not_reapplied(self, channel):
-        """The property the task asks for: a pause delivered twice is a pause.
-
-        Checked against a command whose second application would be
-        visible — resume between the two deliveries, and if the duplicate
-        were applied the runner would end up paused again.
-        """
         _, state, api = channel
         api.next("hello")
         api.send(command("dup", "pause"))
@@ -211,7 +194,7 @@ class TestTelemetry:
     def test_forwarding_never_breaks_the_job_thread(self, channel):
         ch, state, api = channel
         api.next("hello")
-        ch.stop()  # the channel is gone; the job thread must not care
+        ch.stop()
         state.job_claimed("job_10", "layer_ablation", None)
         state.job_finished("job_10")
         assert state.snapshot()["completed"] == 1
@@ -232,8 +215,6 @@ class TestResilience:
         ch.stop()
 
     def test_an_unreachable_api_is_not_fatal(self):
-        # Port 1 refuses instantly. The channel must keep retrying in its
-        # own thread and never raise into the caller.
         state = RunnerState(version="0.1.0", api_url="http://127.0.0.1:1")
         config = Config(
             api_base_url="http://127.0.0.1:1",
@@ -243,6 +224,6 @@ class TestResilience:
         )
         ch = LiveChannel(config, state)
         ch.start()
-        state.job_claimed("job_11", "layer_ablation", None)  # must not raise
+        state.job_claimed("job_11", "layer_ablation", None)
         assert ch.connected is False
         ch.stop()

@@ -1,5 +1,3 @@
-"""The control socket (task 000283): protocol, state, events, staleness."""
-
 from __future__ import annotations
 
 import json
@@ -21,8 +19,6 @@ from mechbench_runner.control import (
 
 @pytest.fixture()
 def short_tmp():
-    """A short directory: AF_UNIX paths are capped near 104 bytes, and
-    pytest's tmp_path is already most of that."""
     d = tempfile.mkdtemp(prefix="mbr-", dir="/tmp")
     try:
         yield Path(d)
@@ -77,7 +73,7 @@ def test_pause_and_resume_are_visible_to_the_job_loop(served):
     state, server = served
     assert state.paused is False
     request("pause", path=server.path)
-    assert state.paused is True          # the loop reads exactly this
+    assert state.paused is True
     request("resume", path=server.path)
     assert state.paused is False
 
@@ -92,7 +88,6 @@ def test_a_version_mismatch_says_so(served):
     s.close()
     assert reply["ok"] is False
     assert reply["error"]["code"] == "version_mismatch"
-    # The message has to name both sides, or it is useless in the field.
     assert str(PROTOCOL_VERSION) in reply["error"]["message"]
 
 
@@ -105,7 +100,6 @@ def test_unknown_ops_and_junk_do_not_kill_the_connection(served):
     assert json.loads(s.recv(65536))["error"]["code"] == "bad_json"
     s.sendall((json.dumps({"v": PROTOCOL_VERSION, "op": "fly"}) + "\n").encode())
     assert json.loads(s.recv(65536))["error"]["code"] == "unknown_op"
-    # Still usable afterwards.
     s.sendall((json.dumps({"v": PROTOCOL_VERSION, "op": "status"}) + "\n").encode())
     assert json.loads(s.recv(65536))["ok"] is True
     s.close()
@@ -126,9 +120,8 @@ def test_subscribers_are_pushed_events(served):
         line, buf = buf.split(b"\n", 1)
         return json.loads(line)
 
-    assert read_message()["ok"] is True        # the snapshot that opens a stream
+    assert read_message()["ok"] is True
 
-    # Emitted from this (non-server) thread, exactly as the job loop does.
     state.job_claimed("j_2", "layer_ablation", "gemma@abc")
     state.job_progress(1, 2)
     state.job_finished("j_2")
@@ -149,8 +142,6 @@ def test_probe_finds_a_live_runner_and_ignores_a_stale_socket(short_tmp: Path):
     finally:
         server.stop()
 
-    # A crashed runner leaves the file behind. It must not read as "running",
-    # or a machine could never start a runner again after one crash.
     stale = short_tmp / "stale.sock"
     stale.touch()
     assert probe(stale) is None
@@ -163,20 +154,15 @@ def test_a_missing_socket_explains_itself(short_tmp: Path):
 
 
 class TestSignedOut:
-    """A revoked key is terminal, and says so on the socket (task 000284)."""
-
     def test_phase_and_event(self):
         state = RunnerState(version="0.1.0", api_url="https://api.mechbench.ai")
         state.job_claimed("job_1", "layer_ablation", "google/gemma-4")
         state.signed_out("credential rejected")
         snap = state.snapshot()
         assert snap["phase"] == "signed-out"
-        # The in-flight job is cleared: nothing is going to finish it.
         assert snap["job"] is None
 
     def test_survives_having_no_subscribers(self):
-        # emit() runs from the job thread; with no event loop bound it
-        # must be a no-op rather than an exception on the way out.
         state = RunnerState(version="0.1.0", api_url="http://x")
         state.signed_out("nobody is listening")
         assert state.snapshot()["phase"] == "signed-out"

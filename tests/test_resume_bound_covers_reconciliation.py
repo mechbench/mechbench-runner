@@ -1,15 +1,3 @@
-"""The transport-resume bound holds whichever path resumes the job
-(task 000483, the hole found the same day it shipped).
-
-0.19.0 bounded resumes in `_report_error` only. A job can also come back
-through reconciliation — the server shows it claimed here but nothing is
-executing it — and that path resumed `j_zbgy3qqb49ngw3zg7mrz` around the
-bound: "resume 1/2", then reconciliation's "attempt 2", "attempt 3", until
-the runner was stopped by hand. Every resume, from either path, enters
-`_handle` with the server's `resumeCount` and the last interrupt reason
-in `errorMessage`; the bound now lives there.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -78,8 +66,6 @@ class TestTheBoundAtTheResumeDecision:
         assert api.failed == []
 
     def test_a_crash_resume_is_never_bounded_here(self, monkeypatch):
-        """A watchdog kill or a laptop sleep is not a transport failure;
-        those may legitimately resume many times."""
         r = _runner(monkeypatch)
         api = RecordingApi()
         job = _job(9, "interrupted by a crash or restart; it resumes with this process")
@@ -92,8 +78,6 @@ class TestTheBoundAtTheResumeDecision:
         assert r._refuse_exhausted_transport_resume(api, _job(9, None)) is False
 
     def test_the_interrupt_reason_written_matches_the_prefix_read(self, monkeypatch):
-        """The two ends of the contract: what `_report_error` records is
-        what `_refuse_exhausted_transport_resume` looks for."""
         from mechbench_compute.bench import BenchTransportError
 
         r = _runner(monkeypatch)

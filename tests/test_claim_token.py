@@ -1,11 +1,3 @@
-"""The runner carries the per-claim token (task 000491).
-
-The claim response returns it once; every job-scoped write sends it as
-X-Claim-Token; the spool persists it beside the result so a late delivery
-after a restart — by a process that never saw the claim — still carries
-the claim that produced it.
-"""
-
 from __future__ import annotations
 
 import httpx
@@ -49,8 +41,6 @@ class TestTheClientCarriesTheToken:
         assert api.claim_tokens == {"j_1": "tok-first"}
 
     def test_the_claim_asks_for_a_token(self):
-        """The negotiation that keeps a mixed-version fleet working: the
-        server issues a token only to a runner that says it can carry one."""
         seen: dict[str, str | None] = {}
 
         def handler(req: httpx.Request) -> httpx.Response:
@@ -60,7 +50,6 @@ class TestTheClientCarriesTheToken:
         assert seen["supported"] == "1"
 
     def test_the_claim_says_which_compute_will_run_it(self):
-        """The runs listing's compute version comes from here."""
         from mechbench_compute import __version__
         seen: dict[str, str | None] = {}
 
@@ -92,8 +81,6 @@ class TestTheClientCarriesTheToken:
         assert rec.calls[-1][2] is None
 
     def test_the_claim_response_without_a_token_is_tolerated(self):
-        """An API from before 000491 returns no claimToken; nothing breaks
-        and no header is sent — the server's null-hash rows pass."""
         def handler(req: httpx.Request) -> httpx.Response:
             if req.url.path == "/jobs/next":
                 return httpx.Response(200, json={"id": "j_old"})

@@ -1,7 +1,3 @@
-"""The item / checkpoint spool and resume on re-claim (epic 000320,
-task 000323 second half). The executor decides what a partial is
-worth; this side only has to keep it faithfully and hand it back."""
-
 from __future__ import annotations
 
 import numpy as np
@@ -26,7 +22,6 @@ def _runner(monkeypatch, runner_id="r_mine"):
             return None
 
     monkeypatch.setattr(jr, "ControlServer", StubControl)
-    # No real caffeinate in tests.
     monkeypatch.setattr(jr.shutil, "which", lambda _name: None)
     config = Config(
         api_base_url="http://127.0.0.1:1", api_key="k",
@@ -58,8 +53,8 @@ class TestJobSpool:
         sp = JobSpool("j_c")
         sp.node_start("gen", "fp1")
         sp.item("gen", "k", {"v": 1})
-        sp.node_start("gen", "fp2")  # the process changed
-        assert sp.resume_map() == {}  # fingerprint alone is not an entry
+        sp.node_start("gen", "fp2")
+        assert sp.resume_map() == {}
 
     def test_a_done_node_wins_over_its_items(self):
         sp = JobSpool("j_d")
@@ -71,9 +66,6 @@ class TestJobSpool:
         assert sp.summary()["reused"] == 1
 
     def test_a_held_result_resumes_under_its_fingerprint_and_not_another(self):
-        # keep: outputs (000561): a node's result held here instead of
-        # emitted is offered to a resume as `held`, counts as a done
-        # node, and goes with a changed fingerprint like any partial.
         sp = JobSpool("j_h")
         sp.node_start("grid", "fp")
         sp.item("grid", "k", {"v": 1})
@@ -116,7 +108,7 @@ class TestJobSpool:
                               state["weights"]["model.layers.0.self_attn.q_proj.lora_a"])
         assert back["opt_state"]["learning_rate"] == 1e-4
         assert int(back["opt_state"]["step"]) == 50
-        assert back["np_rng"] == state["np_rng"]  # 128-bit ints intact
+        assert back["np_rng"] == state["np_rng"]
         g = np.random.default_rng(0)
         g.bit_generator.state = back["np_rng"]
         assert g.random() == rng.random()
@@ -183,7 +175,7 @@ class TestHandleResumes:
         first = next(p for p in api.progress if p["resumed_from"] is not None)
         assert first["resumed_from"] == {"node": "gen", "reused": 1}
         assert api.completed == ["j_1"]
-        assert sp.resume_map() == {}  # delivered: spool cleared
+        assert sp.resume_map() == {}
 
     def test_a_fresh_job_passes_no_resume_and_spools_as_it_goes(self, monkeypatch):
         runner = _runner(monkeypatch)
@@ -191,7 +183,6 @@ class TestHandleResumes:
 
         def run(_spec, on_progress=None, secrets=None, **kw):
             seen.update(kw)
-            # the executor's hooks reach the active job's spool
             runner._executor._on_node_start("gen", "fp")
             runner._executor._on_spool_item("gen", "flash:0", {"id": "s0"})
             assert (JobSpool("j_2").resume_map()["gen"]["items"]
@@ -205,7 +196,7 @@ class TestHandleResumes:
         api = RecordingApi()
         runner._handle(api, _job("j_2"))
         assert "resume" not in seen
-        assert runner._spool is None  # released after the job
+        assert runner._spool is None
 
     def test_a_real_failure_clears_the_partials(self, monkeypatch):
         runner = _runner(monkeypatch)

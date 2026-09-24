@@ -1,11 +1,3 @@
-"""Protocols as files and runs by label, on the command line and over MCP.
-
-Both surfaces are thin over `mechbench_compute.bench`, which is faked
-here, held to the real verbs' signatures: what is tested is that each
-surface passes the same arguments to the same verb, and renders the
-server's answer (an action, a refusal with its findings, a row).
-"""
-
 from __future__ import annotations
 
 import inspect
@@ -31,8 +23,6 @@ CFG = Config(
 
 @pytest.fixture
 def fake(monkeypatch, tmp_path):
-    """Swap bench verbs for fakes checked against the real signatures, and
-    record every call as (verb, args, kwargs)."""
     calls: list[tuple[str, tuple, dict]] = []
     monkeypatch.setattr(b, "HISTORY", tmp_path / "runs.jsonl")
     monkeypatch.setattr(bench, "configure", lambda **_k: None)

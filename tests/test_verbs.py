@@ -1,17 +1,3 @@
-"""Every noun's verbs, on the command line and over MCP (task 000661).
-
-Each verb is run twice with the same arguments, once as `mechbench <noun>
-<verb> …` and once as the MCP tool `<noun>(verb, args)`, against a fake
-API and fake bench verbs that record every call. The two surfaces must
-make the same calls: the same routes with the same query and body, the
-same bench verbs with the same arguments. The bench fakes are held to
-the real verbs' signatures.
-
-Then the shapes an agent relies on: summaries by default and `full` on
-request, `{items, next}` from a listing, a dry run unless `yes`, a
-refusal as data, and an unknown argument refused with the verb's list.
-"""
-
 from __future__ import annotations
 
 import inspect
@@ -81,7 +67,6 @@ BENCH_VERBS = (
 
 @pytest.fixture
 def rec(monkeypatch, tmp_path):
-    """Record API calls (through `Ctx.api`) and bench calls, in order."""
     calls: list[tuple] = []
 
     def api(self, method, route, *, query=None, body=None):
@@ -135,7 +120,6 @@ IDS = {
 
 
 def sample(noun: str, a: Arg, tmp) -> Any:
-    """A value for one argument, the same whichever surface gets it."""
     if a.name in ("id", "path"):
         return IDS[noun]
     if a.name == "into":
@@ -187,14 +171,12 @@ def argv_of(noun: str, v: Verb, args: dict[str, Any]) -> list[str]:
             for x in val:
                 out += [flag(a), x]
         elif a.type == "json":
-            continue  # the command line takes a FILE for what MCP passes inline
+            continue
         else:
             out += [flag(a), str(val)]
     return out
 
 
-#: Verbs whose command line keeps its own way of waiting or reading
-#: (bench_cmd's watch and result), tested on their own below.
 OWN_WAY = {("run", "watch"), ("run", "result")}
 
 CASES = [(n.name, v.name) for n in NOUNS for v in n.verbs]
@@ -210,7 +192,7 @@ def test_each_verb_makes_the_same_calls_on_both_surfaces(
     if (noun, verb) == ("run", "update"):
         args.pop("clear")
     if (noun, verb) == ("protocol", "read"):
-        args.pop("format")  # a format reads the live protocol, not a version
+        args.pop("format")
     tools = build_tools(CFG, executor=object())
     out = tools[noun](verb, args)
     assert not (isinstance(out, dict) and "error" in out), out
@@ -273,7 +255,7 @@ class TestShapes:
         tools = build_tools(CFG, executor=object())
         out = tools["protocol"]("delete", {"id": "prt_1", "yes": True})
         assert out["deleted"] is False and out["refusal"]["code"] == "CITED"
-        assert len(rec) == 1  # the dry run only
+        assert len(rec) == 1
         out = tools["protocol"](
             "delete", {"id": "prt_1", "yes": True, "acknowledge_citations": True}
         )

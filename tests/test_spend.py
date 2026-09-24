@@ -1,12 +1,3 @@
-"""The job spend ledger and the machine's shared limiter (task 000338).
-
-The ledger is the runner's view of money: what a job has spent so far,
-reported with progress and shown in `mechbench status`. The limiter is
-the machine's view of quota: one set of buckets for every job here,
-surviving a restart, because an account that was throttled ten seconds
-ago is still throttled after the process comes back.
-"""
-
 from __future__ import annotations
 
 import json
@@ -62,7 +53,7 @@ class TestLedger:
 
     def test_a_job_that_bought_nothing_reports_nothing(self):
         ledger = SpendLedger(None)
-        assert ledger.changed() is False        # most jobs are local
+        assert ledger.changed() is False
         ledger.budget.settle(0.0, 0.001)
         assert ledger.changed() is True
         ledger.mark_reported()
@@ -72,7 +63,7 @@ class TestLedger:
         from mechbench_compute.providers.errors import BudgetExceeded
 
         ledger = SpendLedger(0.10)
-        node = ledger.budget.child(5.0)         # a node cap far above it
+        node = ledger.budget.child(5.0)
         assert node.cap_usd == 0.10
         with pytest.raises(BudgetExceeded):
             node.reserve(0.5)
@@ -87,7 +78,6 @@ class TestSharedLimiter:
         state = json.loads(path.read_text())
         assert state["holds"] and state["holds"][0]["until"] > time.time() + 20
 
-        # A new process, the same machine: still held.
         second = SharedLimiter(path)
         snap = second.snapshot()
         assert snap["holds"][0]["provider"] == "anthropic"
@@ -125,7 +115,6 @@ class TestReporting:
             poll_interval_seconds=0.01, warm_model_id=None))
 
         def fake_run(_spec, *, on_progress=None, secrets=None, budget=None):
-            # Stand in for the transport settling a call mid-run.
             for i in (1, 2, 3, 4, 5):
                 if i == 3 and budget is not None:
                     budget.settle(0.0, 0.0125)
@@ -141,7 +130,5 @@ class TestReporting:
         })
         spends = [p["spent_usd"] for p in api.progress if p["spent_usd"] is not None]
         assert spends and spends[0] == pytest.approx(0.0125)
-        # The total is reported, not a delta, so a dropped report is free.
         assert all(s == pytest.approx(0.0125) for s in spends)
-        # Ticks before any spend carry nothing at all.
         assert api.progress[0]["spent_usd"] is None

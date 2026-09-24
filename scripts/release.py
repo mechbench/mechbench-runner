@@ -1,29 +1,4 @@
 #!/usr/bin/env python3
-"""The release gate (task 000300): one command between HEAD and PyPI.
-
-Seven bugs shipped in one day because a development environment differs
-from a fresh install in exactly the ways that hide bugs: pinned deps,
-exported env vars, editable installs, plaintext localhost APIs. Twice
-since, a publish outran its own verification. This script is the
-antidote to both: it will not upload until
-
-  1. the test suite is green,
-  2. the wheel builds,
-  3. the wheel installs into a FRESH venv with dependencies resolved
-     from the real index (floors get exercised, not inherited),
-  4. and that venv passes the cheap smoke list from 000300 — CLI alive,
-     modules importable, no-credential paths answer with sentences
-     rather than tracebacks, and a real `wss://` dial to production
-     that must fail with the server's POLICY close, not an SSL error
-     (the certifi wiring that broke twice lives exactly there).
-
-The smoke runs with HOME pointed at a scratch dir and every MECHBENCH_*
-variable scrubbed — the env-vars-that-happened-to-be-there class.
-
-Usage:
-    python scripts/release.py              # gate, then upload
-    python scripts/release.py --dry-run    # gate only
-"""
 
 from __future__ import annotations
 
@@ -54,10 +29,6 @@ def die(step: str, proc: subprocess.CompletedProcess | None = None) -> None:
     sys.exit(1)
 
 
-#: Both headings are required, and an empty list says `_None._` — see
-#: mechbench/docs/RELEASE_NOTES.md. "There were none" and "nobody
-#: thought about it" must not look the same, which is the whole point
-#: of gating on it rather than trusting it.
 REQUIRED_HEADINGS = (
     "### Changes that raise",
     "### Changes that alter results without raising",
@@ -65,7 +36,6 @@ REQUIRED_HEADINGS = (
 
 
 def check_changelog(version: str) -> str | None:
-    """The version's entry, or a sentence saying what is wrong with it."""
     path = REPO / "CHANGELOG.md"
     if not path.exists():
         return "CHANGELOG.md is missing"
@@ -95,8 +65,6 @@ def main() -> None:
     ver = version.group(1)
     print(f"gating mechbench {ver}")
 
-    # 1. Tests. The suite is fenced (tests/conftest.py), so this cannot
-    # touch the live machine.
     print("[1/5] release notes")
     problem = check_changelog(ver)
     if problem:
@@ -107,7 +75,6 @@ def main() -> None:
     if proc.returncode != 0:
         die("pytest", proc)
 
-    # 2. Build.
     print("[3/5] build")
     run(["rm", "-rf", str(REPO / "dist")])
     proc = run(["uv", "build"])
@@ -124,9 +91,6 @@ def main() -> None:
         home = tmp / "home"
         home.mkdir()
 
-        # 3. Fresh install: the wheel from disk, every DEPENDENCY from
-        # the real index — an unbounded or wrong floor fails here, not
-        # on a user's machine.
         print("[4/5] fresh venv install (deps from the real index)")
         proc = run(["uv", "venv", str(venv)])
         if proc.returncode != 0:
@@ -138,8 +102,6 @@ def main() -> None:
 
         py = str(venv / "bin" / "python")
         cli = str(venv / "bin" / "mechbench")
-        # The scrubbed environment: no MECHBENCH_*, HOME with no
-        # credentials — the fresh-machine shape.
         env = {k: v for k, v in os.environ.items()
                if not k.startswith("MECHBENCH_")}
         env["HOME"] = str(home)
@@ -148,9 +110,6 @@ def main() -> None:
         proc = run([cli, "--help"], env=env)
         if proc.returncode != 0 or "install-service" not in proc.stdout:
             die("mechbench --help", proc)
-        # mcp_server is here by earned right: 0.1.0 shipped with an
-        # unbounded mcp floor, every fresh install resolved 2.0, and
-        # `mechbench mcp` raised ModuleNotFoundError (000298).
         proc = run([py, "-c",
                     "import mechbench.cli, mechbench_runner.job_runner, "
                     "mechbench_runner.channel, mechbench_runner.mcp_server, "
@@ -163,13 +122,7 @@ def main() -> None:
             if "Traceback" in out:
                 die(f"mechbench {sub} crashed without credentials", proc)
 
-        # 5. Real TLS to production: the dial must fail with the
-        # server's POLICY close (no key -> not a runner), never an SSL
-        # error. Certifi wiring broke twice in exactly this spot.
         print(f"[6/6] real wss:// dial to {API_HOST}")
-        # The server accepts the handshake (which proves the TLS
-        # wiring — certifi in a fresh venv) and then delivers its
-        # policy verdict as a 4401 close on the first exchange.
         snippet = (
             "import asyncio, ssl, certifi, websockets\n"
             "async def go():\n"

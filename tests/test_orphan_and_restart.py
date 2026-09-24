@@ -1,19 +1,3 @@
-"""No orphans, and a restart that proves it restarted (task 000462).
-
-The incident these come from: a supervisor was SIGKILLed by launchd while
-waiting out a 40-minute job, its child was re-parented to pid 1, and that
-orphan went on holding the control socket and answering `status` with a
-compute version nobody had installed any more. Every later `restart`
-reported success — it asked the service manager whether SOMETHING was
-running, and something was — while each new supervisor's child died
-on the held socket with exit 1, which both supervisors read as "come
-back", forever, into a log nobody was watching.
-
-Four properties close it: the supervisor always outlives its child, a
-child notices being orphaned, a child that cannot have the socket stops
-deliberately, and a restart is judged by a CHANGED pid.
-"""
-
 from __future__ import annotations
 
 import os
@@ -29,13 +13,9 @@ from mechbench_runner.supervisor import Supervisor
 
 class TestTheSupervisorOutlivesItsChild:
     def test_the_grace_period_beats_the_service_managers_kill(self):
-        # The race that made the orphan: both waits were 300s, so launchd
-        # killed us while we were still waiting on the child.
         assert supervisor.STOP_GRACE < service.STOP_TIMEOUT_SECONDS
 
     def test_a_real_child_is_reaped_when_the_supervisor_returns(self):
-        # A child that ignores SIGTERM, as the runner does while it
-        # finishes a job. The supervisor must still not leave it behind.
         sup = Supervisor(argv=[
             sys.executable, "-c",
             "import signal,time\n"
@@ -44,7 +24,6 @@ class TestTheSupervisorOutlivesItsChild:
         ])
         proc = subprocess.Popen(sup.child_argv)  # noqa: S603
         sup._child = proc
-        # A one-second grace for the test; the module default is minutes.
         original = supervisor.STOP_GRACE
         supervisor.STOP_GRACE = 1.0
         try:
@@ -54,8 +33,6 @@ class TestTheSupervisorOutlivesItsChild:
         assert proc.poll() is not None, "the child survived the supervisor"
 
     def test_every_exit_path_reaps(self, monkeypatch):
-        """`run()` returning for ANY reason stops the child — the crash
-        limit, an exception, a deliberate stop."""
         stopped: list[str] = []
         monkeypatch.setattr(Supervisor, "_stop_child",
                             lambda self, why: stopped.append(why))
@@ -119,8 +96,6 @@ class TestOrphanDetection:
 
 class TestASecondRunnerStopsDeliberately:
     def test_a_live_holder_is_a_deliberate_exit_not_a_crash(self, monkeypatch, capsys):
-        """Exit 0, not 1. Both supervisors restart on non-zero, so the old
-        `SystemExit(<message>)` (which exits 1) was a hot loop."""
         from mechbench_runner import job_runner as jr
 
         monkeypatch.setattr(jr, "probe", lambda: {"pid": 4242})
@@ -129,7 +104,6 @@ class TestASecondRunnerStopsDeliberately:
             jr.JobRunner._claim_control_socket(runner)
         assert exc.value.code == EXIT_OK
         assert exc.value.code != EXIT_CRASH
-        # and it names the holder, so the person can go look
         assert "4242" in capsys.readouterr().err
 
     def test_a_dead_socket_is_adopted(self, monkeypatch, tmp_path, capsys):
@@ -140,17 +114,13 @@ class TestASecondRunnerStopsDeliberately:
         monkeypatch.setattr(jr, "probe", lambda: None)
         monkeypatch.setattr(jr, "socket_path", lambda: sock)
         runner = jr.JobRunner.__new__(jr.JobRunner)
-        jr.JobRunner._claim_control_socket(runner)  # no raise
+        jr.JobRunner._claim_control_socket(runner)
         assert not sock.exists()
         assert "stale" in capsys.readouterr().out
 
 
 class TestRestartProvesItself:
-    """`restart()` is judged by a CHANGED pid, never by liveness."""
-
     def _service(self, monkeypatch, pids, rc=0):
-        """A service whose unit exists, whose restart command returns `rc`,
-        and whose control socket reports `pids` in turn."""
         monkeypatch.setattr(service, "unit_path",
                             lambda: __import__("pathlib").Path("/tmp/unit.plist"))
         monkeypatch.setattr(service.Path, "exists", lambda self: True)
@@ -173,7 +143,6 @@ class TestRestartProvesItself:
         assert "200" in st.detail and "was 100" in st.detail
 
     def test_the_same_pid_is_not_success(self, monkeypatch):
-        # The old bug: something was running, so it reported success.
         self._service(monkeypatch, [100])
         st = service.restart(settle=2)
         assert "still serving" in st.detail
@@ -191,10 +160,6 @@ class TestRestartProvesItself:
 
 
 class TestForceEscalates:
-    """`--force` interrupts the job on the SERVER, then escalates by pid:
-    SIGTERM means 'finish the job first' by contract, so politeness alone
-    cannot make a forced restart happen."""
-
     def test_it_interrupts_then_kills_then_restarts(self, monkeypatch, capsys):
         from mechbench import cli
 
@@ -214,7 +179,6 @@ class TestForceEscalates:
                             lambda op, **kw: {"pid": 777, "job": {"id": "j_x"},
                                               "phase": "executing",
                                               "compute_version": "9.9.9"})
-        # The first restart leaves pid 777 serving; after the kill, 888.
         serving = [777, 777, 888]
         monkeypatch.setattr("mechbench_runner.service.serving_pid",
                             lambda: serving[0] if len(serving) == 1 else serving.pop(0))

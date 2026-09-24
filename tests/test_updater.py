@@ -1,11 +1,3 @@
-"""Self-update (task 000296).
-
-The worst outcome this feature can produce is a machine that needed no
-attention until it bricked itself. So the assertions here are mostly
-about failure: that a bad upgrade is undone, that a broken install does
-not loop against the supervisor, and that a checkout is never touched.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -29,7 +21,6 @@ class TestState:
         assert updater.load(state) is None
 
     def test_garbage_reads_as_no_update(self, state):
-        # Never let an unreadable file wedge startup.
         state.write_text("{{{ not json")
         assert updater.load(state) is None
         state.write_text('{"nope": 1}')
@@ -49,17 +40,14 @@ class TestNoPendingUpdate:
 
 class TestRefusals:
     def test_a_source_checkout_is_never_upgraded(self, state, monkeypatch, capsys):
-        """`git pull` is the developer's to run, not ours."""
         updater.request("0.2.0", "0.1.0", state)
         monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
                             install_mod.Installation("source", None, "use git pull"))
         assert updater.take_pending_step(path=state) is False
-        assert updater.load(state) is None          # not left pending forever
+        assert updater.load(state) is None
         assert "cannot self-upgrade" in capsys.readouterr().out
 
     def test_it_gives_up_rather_than_looping(self, state, capsys):
-        # A supervisor restarts us as fast as we exit; a third attempt
-        # would be a loop, not a retry.
         updater.UpdateState(stage="requested", target="0.2.0", previous="0.1.0",
                             attempts=updater.MAX_ATTEMPTS,
                             error="boom").save(state)
@@ -92,7 +80,6 @@ class TestVerifyAndRollback:
         calls = self._installed(monkeypatch, ok=False)
         monkeypatch.setattr(updater, "_reexec", lambda say: True)
         assert updater.take_pending_step(path=state) is True
-        # It reinstalled the version it came from.
         assert "0.1.0" in calls
         st = updater.load(state)
         assert st.stage == "rollback"
@@ -110,7 +97,7 @@ class TestVerifyAndRollback:
         self._installed(monkeypatch, ok=False)
         updater.take_pending_step(path=state)
         assert "still fails" in capsys.readouterr().out
-        assert updater.load(state) is None   # never wedged
+        assert updater.load(state) is None
 
 
 class TestSelfCheck:
@@ -119,13 +106,6 @@ class TestSelfCheck:
 
 
 class TestManualUpdate:
-    """`mechbench update` — the path that does not need a browser.
-
-    The web route exists because a *service* cannot upgrade itself while
-    running. Run by hand there is no such constraint: this process is not
-    the supervised one, so it upgrades and then restarts the service.
-    """
-
     def test_a_checkout_refuses(self, monkeypatch, capsys):
         monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
                             install_mod.Installation("source", None, "use git pull"))
@@ -133,8 +113,6 @@ class TestManualUpdate:
         assert "git pull" in capsys.readouterr().out
 
     def test_nothing_to_do_is_success_not_failure(self, monkeypatch, capsys):
-        # The no-op path now checks for a stale running service; a test
-        # about the EXIT CODE stubs that check quiet (not installed).
         from mechbench_runner import service
 
         monkeypatch.setattr(service, "status",
@@ -148,12 +126,6 @@ class TestManualUpdate:
         assert "nothing to do" in capsys.readouterr().out
 
     def test_it_reports_what_moved(self, monkeypatch, capsys):
-        # This test is why tests/conftest.py exists: before the fence it
-        # mocked the upgrade but not the service module, so update_now()
-        # ran a real `launchctl kickstart -k` — restarting the live
-        # runner on any machine that had one, ~6 times per local test
-        # session (task 000306). The stubs also assert the restart is
-        # REQUESTED, which the old test never checked.
         from mechbench_runner import service
 
         kicked = []
@@ -173,16 +145,10 @@ class TestManualUpdate:
         out = capsys.readouterr().out
         assert "0.2.1 -> 0.2.2" in out
         assert kicked, "a changed version must restart the service"
-        # Only what changed; an unchanged dependency is noise.
         assert "mechbench-compute" not in out
 
 
 class TestStaleServiceRestart:
-    """A manual uv install swaps the venv under a running service; a
-    no-op `update` must notice the running version disagrees with the
-    disk and kick the service (000312 follow-up: a night of tracebacks
-    printed from files the crashing process had never imported)."""
-
     def _quiet(self, monkeypatch, running_version):
         from mechbench_runner import service
 

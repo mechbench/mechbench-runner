@@ -1,18 +1,3 @@
-"""`run diff`: two runs, or two nodes of them, compared record by record.
-
-The comparison is compute's `records/diff`, the same function a protocol
-node runs, so the verb and the operation cannot disagree. What the verb
-adds is the fetching: each side is a run (its id or its job's) and a
-node, or an object path, read with its envelope so the two results'
-provenance is compared too.
-
-It runs where the command runs, not in the API: the API is one small
-instance, and a comparison reads two whole collections. A run is not
-queued for it either, since a comparison asked at the command line is a
-question, not a result to keep; a protocol that should keep one names
-`records/diff` as a node.
-"""
-
 from __future__ import annotations
 
 import json
@@ -21,12 +6,10 @@ from typing import Any
 
 from .core import Ctx, VerbError
 
-#: How long a string is shown before it is abbreviated, unless `full`.
 SHOWN = 160
 
 
 def split_list(value: Any) -> list[str] | None:
-    """A comma-separated string or a list, as a list; None when empty."""
     if value is None:
         return None
     parts = value.split(",") if isinstance(value, str) else list(value)
@@ -35,8 +18,6 @@ def split_list(value: Any) -> list[str] | None:
 
 
 def locate(ctx: Ctx, side: str, node: str | None) -> dict[str, Any]:
-    """Where one side's result is: an object path as given, or a finished
-    run's result path and the node."""
     if "/" in side:
         return {"path": side}
     if not node:
@@ -51,7 +32,6 @@ def locate(ctx: Ctx, side: str, node: str | None) -> dict[str, Any]:
 
 
 def fetch_side(ctx: Ctx, where: Mapping[str, Any]) -> tuple[Any, Any]:
-    """The payload and its provenance (None for an object stored bare)."""
     obj = ctx.bench().fetch_envelope(where["path"])
     if isinstance(obj, dict) and "payload" in obj and "provenance" in obj:
         return obj["payload"], obj["provenance"]
@@ -59,7 +39,6 @@ def fetch_side(ctx: Ctx, where: Mapping[str, Any]) -> tuple[Any, Any]:
 
 
 def read_json(value: Any, name: str) -> Any:
-    """A json argument: parsed when it came as text (the command line)."""
     if not isinstance(value, str):
         return value
     try:
@@ -69,7 +48,6 @@ def read_json(value: Any, name: str) -> Any:
 
 
 def params_of(a: Mapping[str, Any]) -> dict[str, Any]:
-    """The verb's arguments as `records/diff`'s parameters."""
     return {
         "key": split_list(a.get("key")) or "id",
         "fields": split_list(a.get("fields")),
@@ -92,7 +70,6 @@ def abbreviate(value: Any, width: int = SHOWN) -> Any:
 
 
 def show_extension(change: Mapping[str, Any]) -> dict[str, Any]:
-    """An `extends` change as where the old text stopped and what follows."""
     old, new = change["a"], change["b"]
     return {
         "relation": "extends",

@@ -1,5 +1,3 @@
-"""The project noun."""
-
 from __future__ import annotations
 
 from typing import Any
@@ -39,7 +37,6 @@ def project_read(ctx: Ctx, a: dict) -> Any:
 
 
 def project_id(ctx: Ctx, target: str) -> str:
-    """A project's id, from its id or its `owner/slug`."""
     if "/" not in target:
         return target
     return str(unwrap(project_read(ctx, {"id": target}), "project")["id"])

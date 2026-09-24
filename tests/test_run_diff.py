@@ -1,6 +1,3 @@
-"""`run diff`: two runs' nodes compared by compute's `records/diff`,
-fetched where the command runs, the same answer on both surfaces."""
-
 from __future__ import annotations
 
 import json

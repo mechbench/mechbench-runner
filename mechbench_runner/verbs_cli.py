@@ -1,21 +1,3 @@
-"""`mechbench <noun> <verb>`, built from the registry in `verbs/`.
-
-Each verb's arguments become its flags: an argument's name with dashes
-for underscores (`--label-contains`), or a positional where the verb
-declares one. A listing prints one line per item under its columns and
-the next page's offset; `--json` prints `{items, next}`. A collection's
-items print as JSON lines, or a table with `--table`. A read prints
-JSON, the summary unless `--full`. The verbs that had their own command
-before this registry (push, export, publish, unpublish, copy, launch,
-relabel, watch, result, cancel, delete, history) keep the printing they
-had, from `bench_cmd`.
-
-`run` is a noun and also the launch (`mechbench run PROTOCOL`): its verbs
-are dispatched by name before argparse sees them, so `mechbench run list`
-lists and `mechbench run prt_…` launches. A protocol whose id is a verb's
-name does not exist; ids are `prt_…`.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -28,7 +10,6 @@ from . import bench_cmd
 from .config import Config
 from .verbs import NOUNS, Arg, Ctx, Noun, Verb, VerbError, invoke, noun, refusal
 
-#: The noun parsed for `mechbench run <verb>`; `run` itself launches.
 RUN_NOUN = "run-verb"
 
 
@@ -57,7 +38,6 @@ def add_arg(p: argparse.ArgumentParser, a: Arg) -> None:
 
 
 def add_nouns(sub: argparse._SubParsersAction) -> None:
-    """A parser per noun, a sub-parser per verb."""
     for n in NOUNS:
         name = RUN_NOUN if n.name == "run" else n.name
         p = sub.add_parser(
@@ -88,14 +68,10 @@ def add_nouns(sub: argparse._SubParsersAction) -> None:
 
 
 def rewrite_run(argv: list[str]) -> list[str]:
-    """`mechbench run list …` → the verb parser; `run PROTOCOL` untouched."""
     verbs = {v.name for v in noun("run").verbs}
     if len(argv) >= 2 and argv[0] == "run" and argv[1] in verbs:
         return [RUN_NOUN, *argv[1:]]
     return argv
-
-
-# --- the command-line answers ------------------------------------------------
 
 
 def pairs(
@@ -158,9 +134,6 @@ def print_list(v: Verb, out: dict[str, Any], as_json: bool) -> None:
 
 
 def print_items(out: Any, table: bool) -> None:
-    """A collection's items (000660): one JSON line each, or a table under
-    the fields; how many passed and where the next page starts on stderr,
-    so the lines alone can be piped. A count or header prints as JSON."""
     if not isinstance(out, dict) or "items" not in out:
         print(json.dumps(out, indent=1, default=str))
         return
@@ -185,7 +158,6 @@ def print_items(out: Any, table: bool) -> None:
 
 
 def resolve(ctx: Ctx, n: Noun, target: str) -> str:
-    """What `delete`/`history` name: a run's job, a project's id."""
     from .verbs import job_of, project_id
 
     if n.name == "run":
@@ -330,9 +302,6 @@ def main(config: Config, ns: argparse.Namespace, ctx: Ctx | None = None) -> int:
             f"{body.get('error') or ''}",
             file=sys.stderr,
         )
-        # Markdown the API could not take (epic 000525): each refusal where
-        # it stands, `file:field:line:column: construct — message`, the
-        # shape editors and agents already parse.
         source = a.get("body_file") or a.get("description_file") or a.get("file") or "-"
         for r in body.get("refusals") or []:
             print(

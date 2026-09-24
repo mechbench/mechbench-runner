@@ -1,17 +1,3 @@
-"""In-process smoke test for the MCP tools (task 000185 acceptance).
-
-Exercises the server's tool functions directly — no stdio
-subprocess, no MCP client — so CI / local dev can verify the
-surface without spawning a Claude session. Assumes mechbench-api is
-running on MECHBENCH_API_URL with a seeded `benji` user; a fresh
-API key must be available via MECHBENCH_API_KEY.
-
-The layer-ablation run is gated behind --full because loading Gemma
-4 and running 42 forward passes takes 1-2 minutes; the default run
-asserts only `run list` and `run result` (the noun tools, task
-000661), which are fast and enough to verify the wiring.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -30,16 +16,11 @@ def main(full: bool = False) -> int:
         )
         return 2
 
-    # The tools are plain functions (000298): no server, no MCP
-    # client, no private access — the smoke calls what the server
-    # registers.
     tools = build_tools(config)
 
-    # --- run list: sanity check that the runner can reach the API.
     runs = tools["run"]("list", {"limit": 20})["items"]
     print(f"✓ run list returned {len(runs)} run(s)")
 
-    # --- run read: the newest finished run's summary, if there is one.
     done = [r for r in runs if r.get("jobStatus") in ("done", "done_with_missing")]
     if done:
         row = tools["run"]("read", {"id": done[0]["jobId"]})

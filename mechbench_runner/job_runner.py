@@ -1,14 +1,3 @@
-"""Job-runner subsystem: poll mechbench-api, execute, report back.
-
-Claim a job via `GET /jobs/next`, execute it in-process, and post the
-result bytes with their sha256.
-
-Intentionally synchronous and single-tenant: one job at a time, on one
-machine. Running more than one machine is what the registry is for, and
-scaling within a machine is a question for when a single one is the
-bottleneck.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -43,30 +32,9 @@ from .spool import JobSpool
 from .watchdog import Watchdog
 
 BACKOFF_MAX_SECONDS = 30.0
-#: How often to compare the server's idea of this machine's work with
-#: local truth. Startup always reconciles; this is the steady-state
-#: cadence after that.
 RECONCILE_SECONDS = 300.0
-#: Transitional (000319): jobs claimed before attribution existed name
-#: no runner. Only an idle runner touches those, and only after this
-#: much silence — stale by any measure.
 LEGACY_STALE_SECONDS = 900.0
-#: How many times a job may be resumed after a TRANSPORT failure before
-#: the runner calls it a failure instead (000483).
-#:
-#: Two, not more. Interrupt-and-resume pays off when the failure was a
-#: blip; when it is deterministic — a result the server will not accept —
-#: each cycle re-runs the whole node to reach the same rejection. A
-#: 35-minute generation node turned that into an unbounded loop, so the
-#: bound is the thing that makes resuming safe rather than optimistic.
 MAX_TRANSPORT_RESUMES = 2
-#: Results above this go to object storage under a grant rather than
-#: through the API (000492). Well under the API's 64 MiB body cap, so a
-#: result that would be refused directly is never attempted directly;
-#: high enough that the two extra round trips are not paid on the small
-#: results that are the common case. MECHBENCH_PRESIGN_THRESHOLD_BYTES
-#: overrides it — set to 0 to force every result through the grant path,
-#: which is how the path is exercised live without a multi-megabyte job.
 PRESIGN_THRESHOLD_BYTES = 8 * 1024 * 1024
 
 
@@ -78,37 +46,16 @@ def _presign_threshold() -> int:
         return max(0, int(raw))
     except ValueError:
         return PRESIGN_THRESHOLD_BYTES
-#: The interrupt reason a transport failure is recorded under. The server
-#: keeps it as the job's `errorMessage` across the resume, which is how
-#: a later claim — by this process or via reconciliation — can tell a
-#: transport interrupt from a crash and apply the bound above (000483).
+
+
 TRANSPORT_INTERRUPT_PREFIX = "the API was unreachable while storing a result"
 
-#: The server states a job never leaves. `done_with_missing` (000515) is
-#: one of them: a run that finished having lost a branch is finished. A
-#: spooled result for a job in any of these has nowhere to go and is
-#: cleared — which is exactly why this is a named set and not a literal
-#: repeated at each site, where a new terminal status becomes a spool
-#: that retries a delivery forever.
 TERMINAL_SERVER_STATUS = ("done", "done_with_missing", "failed", "cancelled")
 
 
 def _spool_result(job_id: str, cbor_bytes: bytes, digest: str,
                   claim_token: str | None = None,
                   missing: Mapping[str, Any] | None = None) -> None:
-    """Persist a finished result BEFORE the upload is attempted (epic
-    000320). Written whole-then-renamed so a crash mid-write leaves no
-    half file; the digest rides alongside so reconciliation can
-    re-deliver without re-hashing a file it did not write.
-
-    The claim token rides alongside too (000491): a late delivery after a
-    restart is only accepted if it carries the token of the claim that
-    produced the result, and the process that knew it is gone.
-
-    So does the manifest's `nodes_missing` (000515), for the same
-    reason as the digest: a late delivery must be able to declare what
-    did not run without decoding a result it did not produce — which
-    for a multi-gigabyte CBOR is not a thing to do for one key."""
     d = spool_dir() / job_id
     d.mkdir(mode=0o700, parents=True, exist_ok=True)
     tmp = d / "result.cbor.tmp"
@@ -123,19 +70,11 @@ def _spool_result(job_id: str, cbor_bytes: bytes, digest: str,
         tok.chmod(0o600)
 
 
-#: What a declared `nodes_missing` is bounded to. The API refuses a
-#: reason past its own cap, and a refused finalize is not a small
-#: problem: the result goes back to the spool and is retried forever.
-#: The manifest keeps the untruncated reason — the row is a summary of
-#: the result, not a second copy of it.
 MAX_MISSING_NODES = 64
 MAX_MISSING_REASON = 2000
 
 
 def _missing_of(payload: Any) -> dict[str, Any] | None:
-    """`nodes_missing` off a run/result payload: node id -> {reason,
-    source}. Absent on every result where nothing went missing, which is
-    almost all of them. Bounded, because this one is sent to the API."""
     if not isinstance(payload, Mapping):
         return None
     inner = payload.get("payload")
@@ -172,16 +111,11 @@ def _spooled_claim_token(job_id: str) -> str | None:
 
 
 def _claim_token_of(api: Any, job_id: str) -> str | None:
-    """The token the client holds for this job, if the client keeps any:
-    an ApiClient does; a test's recording fake need not."""
     store = getattr(api, "claim_tokens", None)
     return store.get(job_id) if isinstance(store, dict) else None
 
 
 def _remember_claim_token(api: Any, job_id: str, token: str) -> None:
-    """Hand a spooled token back to the client for a late delivery,
-    never overriding one the client already holds for the job — a
-    re-claim in this process issued a fresher one."""
     store = getattr(api, "claim_tokens", None)
     if isinstance(store, dict):
         store.setdefault(job_id, token)
@@ -200,12 +134,6 @@ def _clear_spool(job_id: str) -> None:
 
 
 def _disown_spool(job_id: str, why: str) -> Path | None:
-    """Stop offering a spooled result the server will not take (000511).
-
-    The bytes are kept — a result nobody asked for is still a result
-    somebody computed — but renamed out of the way, so the flush stops
-    retrying a delivery that is refused for a standing reason rather than
-    a transient one. Returns where they are, for the operator."""
     d = spool_dir() / job_id
     blob = d / "result.cbor"
     if not blob.is_file():
@@ -220,10 +148,6 @@ def _disown_spool(job_id: str, why: str) -> Path | None:
 
 
 def _standing_refusal(exc: BaseException) -> str | None:
-    """The reason a write will keep being refused, or None if it might
-    yet succeed. A 403 on a claim is a verdict about who this machine is,
-    not a blip: retrying it on a cadence is the five-minute loop of
-    000511. A 409 says the job has moved on — also final."""
     if not isinstance(exc, ApiError) or exc.status not in (403, 409):
         return None
     body = exc.body if isinstance(exc.body, dict) else {}
@@ -242,7 +166,6 @@ def _spooled_job_ids() -> list[str]:
 
 
 def _seconds_since(iso: object) -> float:
-    """Age of an ISO timestamp; 0 (fresh, untouchable) when unreadable."""
     from datetime import datetime
 
     if not isinstance(iso, str) or not iso:
@@ -255,12 +178,6 @@ def _seconds_since(iso: object) -> float:
 
 
 def _binding_model(spec: dict[str, Any]) -> str | None:
-    """The model a pipeline run bound, for display only.
-
-    Run bindings fill the graph's holes; conventionally the model one is
-    called "model". This is a label for the board, never an input to
-    execution — the graph decides what actually loads.
-    """
     bindings = spec.get("bindings")
     if not isinstance(bindings, dict):
         return None
@@ -272,34 +189,15 @@ class JobRunner:
     def __init__(self, config: Config) -> None:
         self.config = config
         self._shutdown = False
-        # Set while a job is in flight so the download callbacks, which the
-        # compute layer calls with no idea a job exists, can report against it.
         self._active_job: str | None = None
         self._active_api: ApiClient | None = None
         self._last_byte_report = 0.0
-        # The executor's latest node view, so a mid-node download can
-        # report bytes against the node the board is watching (000316
-        # follow-up: the checkpoint fetch that reported nothing).
         self._last_node: dict[str, Any] | None = None
         self._last_scalar: tuple[int, int] = (0, 0)
-        # The active job's spool (epic 000320). The executor is built
-        # once; its resume hooks dispatch to whichever spool is current,
-        # so partial work lands on disk as it is made.
         self._spool: JobSpool | None = None
-        # Jobs this process has been told, in so many words, are not its
-        # to repair — a claim another machine holds now, a job whose
-        # owner withdrew it (000511). Recorded so a standing refusal is
-        # heard once instead of retried on every reconcile.
         self._disowned: set[str] = set()
         self._caffeinate: subprocess.Popen | None = None
-        # Transport interrupts issued per job id, bounding the
-        # resume loop (000483). In-process only; the server's
-        # `resumeCount` carries the bound across a restart.
         self._transport_interrupts: dict[str, int] = {}
-        # The machine's rate limiter and the active job's spend ledger
-        # (task 000338). The limiter is shared by every node and job
-        # here — one account, one set of buckets — and survives a
-        # restart; the ledger is per job.
         self._limiter = SharedLimiter(limits_path())
         self._spend: SpendLedger | None = None
         hooks = dict(
@@ -313,17 +211,17 @@ class JobRunner:
         )
         try:
             self._executor = ProtocolExecutor(on_node_kept=self._spool_node_kept, **hooks)
-        except TypeError:  # a compute before held results (000561)
+        except TypeError:
             try:
                 self._executor = ProtocolExecutor(**hooks)
-            except TypeError:  # an older compute without resume hooks
+            except TypeError:
                 self._executor = ProtocolExecutor(
                     on_download=self._announce_download,
                     on_download_bytes=self._announce_download_bytes,
                 )
         try:
             from . import __version__ as runner_version
-        except ImportError:  # version is optional metadata, not a dependency
+        except ImportError:
             runner_version = "unknown"
         try:
             from mechbench_compute import __version__ as compute_version
@@ -333,12 +231,7 @@ class JobRunner:
                                  compute_version=compute_version)
         self.state.limits_snapshot = self._limiter.snapshot
         self._control = ControlServer(self.state)
-        # The live channel is best-effort by construction: it dials out on
-        # its own thread and a runner with no channel at all claims and
-        # finishes jobs exactly as before (task 000289).
         self._channel = LiveChannel(config, self.state)
-        # Nothing outside this process can tell a wedged forward pass from
-        # a slow one, so it has to notice for itself (task 000294).
         self._watchdog = Watchdog(
             stall_seconds=config.watchdog_seconds,
             on_stall=self._announce_stall,
@@ -346,14 +239,6 @@ class JobRunner:
         )
 
     def install_signal_handlers(self) -> None:
-        """Stop claiming, finish what is in flight, exit 0.
-
-        SIGTERM is how a supervisor stops a service, so it has to mean
-        the same deliberate thing SIGINT does — an exit code of 0, which
-        under `KeepAlive{SuccessfulExit: false}` is what keeps a stopped
-        runner stopped instead of instantly restarted.
-        """
-
         def _handler(signum: int, _frame: FrameType | None) -> None:
             self._shutdown = True
             name = signal.Signals(signum).name
@@ -363,16 +248,6 @@ class JobRunner:
         signal.signal(signal.SIGTERM, _handler)
 
     def _sleep(self, seconds: float) -> None:
-        """Sleep that a shutdown signal actually interrupts (task 000306).
-
-        `time.sleep(30)` is not interrupted by SIGTERM: PEP 475 restarts
-        the sleep after the handler returns, so a stop request sat for
-        up to a full poll interval before the loop noticed. That delay
-        is what made the service linger in launchd's SIGTERMed state for
-        ~30s per stop — long enough that a restart lands well after
-        whatever caused it, which is exactly how the cause of 000306
-        hid. One-second slices bound the latency at one second.
-        """
         deadline = time.monotonic() + seconds
         while not self._shutdown:
             remaining = deadline - time.monotonic()
@@ -381,12 +256,8 @@ class JobRunner:
             time.sleep(min(1.0, remaining))
 
     def run(self) -> int:
-        """The poll loop. Returns the process's exit code — see exits.py."""
         self.install_signal_handlers()
         if not self.config.api_key:
-            # Not a crash. A supervisor restarts a crash, and a machine
-            # that is merely not signed in would spin against the
-            # throttle forever instead of waiting quietly for `login`.
             print(
                 "[runner] this machine is not signed in; nothing to do.\n"
                 "[runner] Run `mechbench login` to connect it."
@@ -397,21 +268,11 @@ class JobRunner:
         print(f"[runner] control socket at {self._control.path}")
         self._channel.start()
         self._watchdog.start()
-        # The compute layer emits intermediate pipeline objects through
-        # mechbench_compute.bench, which otherwise reads credentials from
-        # the environment. Ours live in ~/.mechbench/config.toml since
-        # `login`, so hand them over explicitly rather than exporting a
-        # key into the process environment (task 000284 follow-up).
         self._configure_bench()
         self._sweep_cache(None)
         warm = self.config.warm_model_id
         if warm:
             print("[runner] loading model (first call is slow)...")
-            # Warm the configured model (MECHBENCH_WARM_MODEL_ID, which
-            # may carry a @revision pin) so the first claimed job does not
-            # pay cold-start cost. Pin it: an unpinned warm-up resolves
-            # upstream's current revision, which drifts out from under the
-            # local mlx stack.
             self.state.model_loading(warm)
             self._executor._model_loaded(warm)  # noqa: SLF001
             self.state.model_loaded(warm)
@@ -422,21 +283,10 @@ class JobRunner:
 
         with ApiClient(self.config) as api:
             backoff = self.config.poll_interval_seconds
-            # Startup is the reconciliation moment that matters most: if
-            # a previous process died holding a job, this is the first
-            # chance anyone has to say so.
             self._reconcile_jobs(api)
             last_reconcile = time.monotonic()
             while not self._shutdown:
-                # Every trip round is progress — including an empty poll,
-                # which is how an idle runner proves it is alive rather
-                # than stuck.
                 self._watchdog.stamp()
-                # Have we outlived the supervisor that owns us? An orphan
-                # keeps the control socket and answers `status` with its
-                # own stale version, which is how a dead deployment reads
-                # as the live one (task 000462). Checked between jobs, so
-                # work in flight still finishes.
                 if supervisor_mod.orphaned():
                     print("[runner] the supervisor that started this runner is "
                           "gone; exiting so a fresh one can take the socket.",
@@ -460,20 +310,15 @@ class JobRunner:
                     job = api.claim_next_job()
                 except ApiError as e:
                     if e.status == 401:
-                        # Revoked, or pointed at an account that no longer
-                        # knows this machine. Backing off would just hide it.
                         self._signed_out()
                         self._stop_channel()
-                        # Deliberate, not a fault: a revoked key does not
-                        # start working again, and a restart loop against
-                        # it would bury the reason.
                         return EXIT_OK
                     print(f"[runner] /jobs/next error ({e}); "
                           f"retrying in {backoff:.0f}s")
                     self._sleep(backoff)
                     backoff = min(backoff * 2, BACKOFF_MAX_SECONDS)
                     continue
-                except Exception as e:  # noqa: BLE001 — surface + keep looping
+                except Exception as e:  # noqa: BLE001
                     print(f"[runner] API unreachable ({e}); "
                           f"retrying in {backoff:.0f}s")
                     self._sleep(backoff)
@@ -486,17 +331,13 @@ class JobRunner:
                     self._sleep(self.config.poll_interval_seconds)
                     continue
 
-                # Between jobs is the only safe moment to evict (000297):
-                # nothing is loaded, and whatever THIS job fetches comes
-                # after. Its own model is protected by name besides.
                 self._sweep_cache(job)
 
                 try:
                     self._handle(api, job)
                     self.state.job_finished(job["id"])
-                    # A job that finished has no resume budget to carry.
                     self._transport_interrupts.pop(job["id"], None)
-                except Exception as exc:  # noqa: BLE001 — report + continue
+                except Exception as exc:  # noqa: BLE001
                     traceback.print_exc()
                     if self._is_transport(exc):
                         self.state.job_interrupted(job.get("id", "?"), str(exc))
@@ -516,23 +357,10 @@ class JobRunner:
                 api_url=self.config.api_base_url,
                 api_key=self.config.api_key,
             )
-        except Exception as exc:  # noqa: BLE001 — older compute, or no backend
+        except Exception as exc:  # noqa: BLE001
             print(f"[runner] could not configure the bench emitter: {exc}")
 
     def _flush_spool(self, api: ApiClient) -> None:
-        """Deliver every spooled result whose job will still take it.
-
-        `interrupted` takes a late completion outright. A job the
-        server still shows in flight under this machine is interrupted
-        first (it is not executing here — the result IS its finish),
-        then completed. A job that ended otherwise (`done`, `failed`,
-        `cancelled`) has nothing to gain from an old result; the spool
-        is cleared.
-
-        A delivery refused for a STANDING reason — the claim belongs to
-        another machine now, or the job's owner withdrew it — is not
-        retried on the next pass (000511): the bytes are disowned, said
-        once, and the cadence moves on."""
         try:
             spooled = _spooled_job_ids()
         except OSError:
@@ -544,14 +372,12 @@ class JobRunner:
             if found is None:
                 continue
             cbor_bytes, digest = found
-            # The claim that produced this result (000491): the process
-            # that knew the token is gone; the spool remembers it.
             tok = _spooled_claim_token(job_id)
             if tok:
                 _remember_claim_token(api, job_id, tok)
             try:
                 j = api.get_job(job_id)
-            except Exception as e:  # noqa: BLE001 — next pass retries
+            except Exception as e:  # noqa: BLE001
                 print(f"[runner] spool: could not look up {job_id} ({e})")
                 continue
             status = j.get("status")
@@ -560,7 +386,7 @@ class JobRunner:
                 continue
             claimed_by = j.get("claimedByRunnerId")
             if claimed_by is not None and claimed_by != self.config.runner_id:
-                continue  # another machine holds it now; not ours to deliver
+                continue
             try:
                 if status in ("preparing", "running"):
                     api.interrupt_job(
@@ -571,7 +397,7 @@ class JobRunner:
                     )
                 self._upload_result(api, job_id, cbor_bytes, digest,
                                     _spooled_missing(job_id))
-            except Exception as e:  # noqa: BLE001 — keep the spool, retry later
+            except Exception as e:  # noqa: BLE001
                 standing = _standing_refusal(e)
                 if standing is None:
                     print(f"[runner] spool: {job_id} not accepted yet ({e})")
@@ -589,27 +415,10 @@ class JobRunner:
             self.state.emit("job.delivered_late", {"id": job_id})
 
     def _reconcile_jobs(self, api: ApiClient) -> None:
-        """Repair the server's idea of this machine's work (000319).
-
-        The runner is the authority on what it is actually executing. A
-        job the server shows in flight, CLAIMED BY THIS MACHINE, that is
-        not the job in hand was orphaned by a crash, a kill -9, or a
-        watchdog death whose dying breath never landed — and the next
-        process (this one) is the party that can notice. Jobs claimed by
-        other runners are never touched; attribution is what makes that
-        distinction safe.
-
-        A repair the server refuses for a standing reason is attempted
-        ONCE (000511): the job is disowned for the life of this process
-        rather than retried every five minutes forever."""
-        # Results that exist on this disk but not on the server come
-        # first (epic 000320): a finished job is worth more than a
-        # tidy board, and delivering it may retire an orphan below
-        # before it is ever reported.
         self._flush_spool(api)
         try:
             listed = api.list_jobs()
-        except Exception as e:  # noqa: BLE001 — periodic; next pass retries
+        except Exception as e:  # noqa: BLE001
             print(f"[runner] reconcile skipped ({e})")
             return
         for j in listed:
@@ -619,16 +428,12 @@ class JobRunner:
             if not isinstance(job_id, str) or job_id == self._active_job:
                 continue
             if job_id in self._disowned:
-                continue  # said once already (000511)
+                continue
             claimed_by = j.get("claimedByRunnerId")
             if claimed_by is not None:
                 if (self.config.runner_id is None
                         or claimed_by != self.config.runner_id):
-                    continue  # another machine's work — never ours to touch
-                # An orphan of OURS had no error of its own — it was
-                # interrupted (epic 000320), and this process is the
-                # one that resumes it: the server hands it back on the
-                # next /jobs/next, ahead of new work.
+                    continue
                 reason = (
                     "this machine holds the claim on this job but is not "
                     "executing it — interrupted by a crash or restart; "
@@ -636,15 +441,13 @@ class JobRunner:
                 )
                 try:
                     api.interrupt_job(job_id, reason, timeout=15.0)
-                except Exception as e:  # noqa: BLE001 — the server may disagree
+                except Exception as e:  # noqa: BLE001
                     self._note_unreconciled(job_id, e)
                     continue
                 print(f"[runner] reconciled {job_id}: interrupted ({reason})")
                 self.state.emit("job.reconciled", {"id": job_id, "reason": reason})
                 continue
             else:
-                # Transitional: pre-attribution claims (API < 0048) name
-                # no runner. This clause retires itself as they drain.
                 if self._active_job is not None:
                     continue
                 if _seconds_since(j.get("updatedAt")) < LEGACY_STALE_SECONDS:
@@ -657,18 +460,13 @@ class JobRunner:
                 )
             try:
                 api.fail_job(job_id, reason, timeout=15.0)
-            except Exception as e:  # noqa: BLE001 — the server may disagree
+            except Exception as e:  # noqa: BLE001
                 self._note_unreconciled(job_id, e)
                 continue
             print(f"[runner] reconciled {job_id}: failed ({reason})")
             self.state.emit("job.reconciled", {"id": job_id, "reason": reason})
 
     def _note_unreconciled(self, job_id: str, exc: BaseException) -> None:
-        """A repair the server refused. Transient refusals are retried on
-        the next pass; a standing one is recorded and dropped, because
-        repeating it on a cadence produces a five-minute loop and no
-        progress (000511) — the board's own reaper owns the job from
-        there."""
         standing = _standing_refusal(exc)
         if standing is None:
             print(f"[runner] could not reconcile {job_id}: {exc}")
@@ -679,8 +477,6 @@ class JobRunner:
         self.state.emit("job.disowned", {"id": job_id, "reason": standing})
 
     def _sweep_cache(self, job: dict[str, Any] | None) -> None:
-        """Record use and enforce the cache budget (000297). A no-op in
-        microseconds when no budget is set; never allowed to fail a job."""
         try:
             from . import budget
 
@@ -698,27 +494,16 @@ class JobRunner:
                 say=lambda m: print(f"[runner] {m}"),
                 emit=self.state.emit,
             )
-        except Exception as exc:  # noqa: BLE001 — housekeeping, not the job
+        except Exception as exc:  # noqa: BLE001
             print(f"[runner] cache sweep skipped ({exc})")
 
     def _announce_stall(self, idle: float) -> None:
-        """Say so on the way down, so the board shows a restart rather
-        than a machine that simply went quiet.
-
-        This includes the JOB: the watchdog dies by os._exit (no
-        unwinding — the process is presumed stuck), which on 2026-08-25
-        left a job reading "running" on the board for an hour after its
-        runner was gone. The fail report gets a short timeout so a
-        truly-wedged network cannot stop the process from dying."""
         self.state.set_phase("wedged")
         self.state.emit(
             "runner.wedged",
             {"idle_seconds": round(idle, 1), "job": self._active_job},
         )
         if self._active_job is not None and self._active_api is not None:
-            # The job had no error of its own — the PROCESS stalled. It
-            # is interrupted (epic 000320); the next process re-claims
-            # and resumes it.
             with suppress(Exception):
                 self._active_api.interrupt_job(
                     self._active_job,
@@ -727,10 +512,9 @@ class JobRunner:
                     f"resumes with the next process",
                     timeout=10.0,
                 )
-        time.sleep(0.25)  # give the channel a moment to flush
+        time.sleep(0.25)
 
     def _stop_channel(self) -> None:
-        # Teardown must never mask the reason we are exiting.
         with suppress(Exception):
             self._channel.stop()
 
@@ -754,21 +538,8 @@ class JobRunner:
         kind = job["protocolKind"]
         spec_dict = job.get("spec") or {}
         prompt = spec_dict.get("prompt") or ""
-        # Where the model is named depends on the shape of the job.
-        #
-        # A flat job (layer_ablation, decision_distribution) carries
-        # `spec.modelId`. A **pipeline** does not: its graph names models
-        # per node, as `params.model`, usually as a `$model` hole the run
-        # bindings fill — so the executor resolves it and this layer must
-        # not demand it. Requiring `spec.modelId` of every kind rejected
-        # every protocol run ever queued from the website.
-        #
-        # No fallback either way: a protocol that does not name its model
-        # cannot be executed reproducibly, and a result that cannot say
-        # which weights produced it is worse than no result.
         model_id = spec_dict.get("modelId") or self.config.warm_model_id
         if kind == "pipeline":
-            # Only for display — the graph is authoritative.
             model_id = model_id or _binding_model(spec_dict)
         elif not model_id:
             raise ValueError(
@@ -787,14 +558,7 @@ class JobRunner:
             print(f"[runner] resuming {job_id} (attempt {job.get('resumeCount', '?')})")
         spooled = _spooled_result(job_id)
         if spooled is not None:
-            # The whole result already exists here: the previous process
-            # finished but its upload never landed. Nothing to compute.
             cbor_bytes, digest = spooled
-            # Deliver under the CURRENT claim (000491). A re-claim in this
-            # process already holds the fresh token, and that is the one
-            # the server now expects; the spooled token is only for a
-            # delivery by a process that never claimed — reconciliation —
-            # where the row's hash is still the one that produced the bytes.
             tok = _spooled_claim_token(job_id)
             if tok:
                 _remember_claim_token(api, job_id, tok)
@@ -812,10 +576,6 @@ class JobRunner:
         self.state.job_claimed(job_id, kind, model_id)
         self._spool = JobSpool(job_id)
         self._hold_awake()
-        # A re-claimed job resumes from whatever this machine spooled
-        # (epic 000320). The executor re-derives every node's
-        # fingerprint and honours an entry only under equality, so a
-        # stale partial costs nothing but the read.
         resume_map: dict = {}
         resume_summary: dict | None = None
         if resumed and "resume" in inspect.signature(self._executor.run).parameters:
@@ -825,17 +585,11 @@ class JobRunner:
             if resume_map:
                 print(f"[runner] {job_id}: resuming from spool — "
                       f"{resume_summary}")
-        # The download callbacks come from the compute layer, which knows
-        # nothing about jobs; this is how they find the one to report against.
         self._active_job = job_id
         self._active_api = api
         self._last_byte_report = 0.0
         self._last_node = None
         self._last_scalar = (0, 0)
-        # What getting ready will involve, declared before any of it happens.
-        # Whether the weights need fetching is not known until the hub is
-        # asked, so that step starts pending and becomes active only if a
-        # download actually begins.
         weights_label = (
             f"Weights for {model_id.split('@')[0]}" if model_id else "Weights"
         )
@@ -846,48 +600,23 @@ class JobRunner:
         spec = ProtocolSpec(kind=kind, prompt=prompt, model_id=model_id,
                               extra={**spec_dict,
                                      "resultPath": job.get("resultPath")})
-        # Secret lifecycle (000266): claim-delivered credentials are
-        # held in memory, passed explicitly, and disposed in the
-        # finally below — never env, never specs, never logs.
         secrets = job.get("integrations") or {}
-        # The run's own cap (000338), when it declared one. Node caps
-        # are mandatory and bind individually; this binds their sum,
-        # and compute chains every node budget under it.
         self._spend = SpendLedger(spec_dict.get("budgetUsd"))
 
-        # Flips on the first progress report, which is also what carries
-        # the job from "preparing" to "running". The claim put it in
-        # preparing; nothing else ever takes it out.
         promoted = False
         reported_node = -1
 
         def on_progress(done: int, total: int,
                         node: dict | None = None) -> None:
             nonlocal promoted, reported_node
-            # Progress is progress: the watchdog measures exactly this,
-            # and a 40-step training node that never stamped would read
-            # as a wedge at step one.
             self._watchdog.stamp()
             self._last_node = dict(node) if node else None
             self._last_scalar = (done, total)
-            # Throttle: report every 5th unit and the final one. Progress
-            # is cosmetic — a failed PATCH must never fail the job.
-            # The control surface gets every tick; only the API is throttled.
             self.state.job_progress(done, total, node)
-            # The promotion itself is not cosmetic and is not throttled:
-            # until it lands the board still says "preparing", and the
-            # first tick can easily be one the throttle would drop.
-            # Neither is a node boundary (000316): "node 3/5" flipping to
-            # 4/5 is exactly what a watcher watches for, so it must not
-            # wait out the modulo.
             node_index = int(node.get("index", 0)) if node else 0
             if (promoted and done % 5 != 0 and done != total
                     and node_index == reported_node):
                 return
-            # Phase 1 resumes from scratch (no item spool yet): the first
-            # report says so honestly — nothing reused. The keyword is
-            # only passed when it carries a value, so older API clients
-            # and test doubles keep their signatures.
             extra: dict[str, Any] = {}
             if resumed and not promoted:
                 extra["resumed_from"] = resume_summary or {
@@ -895,9 +624,6 @@ class JobRunner:
                 }
             ledger = self._spend
             if ledger is not None and ledger.changed():
-                # Money rides with progress: the running total, so the
-                # board can show spend against cap while it happens
-                # rather than after the bill.
                 extra["spent_usd"] = ledger.spent_usd
                 self.state.job_spend(ledger.spent_usd, ledger.cap_usd)
             try:
@@ -908,13 +634,11 @@ class JobRunner:
                     node=node,
                     **extra,
                 )
-                # Only on success: a failed first report must leave the
-                # promotion owed, not silently spent.
                 promoted = True
                 reported_node = node_index
                 if "spent_usd" in extra and self._spend is not None:
                     self._spend.mark_reported()
-            except Exception as e:  # noqa: BLE001 — best-effort by design
+            except Exception as e:  # noqa: BLE001
                 print(f"[runner] progress report failed ({e}); continuing")
 
         try:
@@ -931,20 +655,11 @@ class JobRunner:
 
             cbor_bytes = dump_canonical(payload)
             digest = hashlib.sha256(cbor_bytes).hexdigest()
-            # What did not run (000515), read once here where the
-            # payload is an object rather than a megabyte of CBOR.
             missing = _missing_of(payload)
-            # Spool first (epic 000320): from here on the result exists
-            # on disk, and no server state can make this process discard
-            # it. The upload is attempted now and, failing that, by
-            # reconciliation until the server takes it.
             _spool_result(job_id, cbor_bytes, digest,
                           _claim_token_of(api, job_id), missing)
             self._deliver(api, job_id, cbor_bytes, digest, missing)
         finally:
-            # The last word on what this job cost, even if it failed:
-            # a budget refusal is exactly the case where the number
-            # matters most.
             if self._spend is not None and self._spend.spent_usd > 0:
                 with suppress(Exception):
                     api.report_progress(job_id, *self._last_scalar or (0, 1),
@@ -957,27 +672,17 @@ class JobRunner:
             secrets.clear()
             job.pop("integrations", None)
 
-    # Spool hooks: best-effort by contract. A spool that cannot be
-    # written costs resumability, never the job.
     def _spool_node_start(self, nid: str, fingerprint: str) -> None:
         if self._spool is not None:
             with suppress(Exception):
                 self._spool.node_start(nid, fingerprint)
 
     def _spool_item(self, nid: str, key: str, item) -> None:
-        # A failure to spool must not fail the job — the item exists in
-        # memory and the run continues — but it must never be SILENT.
-        # `suppress(Exception)` here dropped every item of a generate
-        # node for weeks: each raised CBOREncodeError on a live object it
-        # carried (000488), and "resume recovered nothing" read as
-        # "nothing was there" (000485). Now: counted, and logged once per
-        # node with the reason, so the next reader sees it in the log
-        # and in the spool summary.
         if self._spool is None:
             return
         try:
             self._spool.item(nid, key, item)
-        except Exception as e:  # noqa: BLE001 — record, never raise
+        except Exception as e:  # noqa: BLE001
             n = self._spool.dropped.get(nid, 0) + 1
             self._spool.dropped[nid] = n
             if n == 1:
@@ -997,22 +702,14 @@ class JobRunner:
                 self._spool.node_done(nid, path, fingerprint)
 
     def _spool_node_kept(self, nid: str, fingerprint: str, result) -> None:
-        # A held result that cannot be spooled costs only a resume: the
-        # run continues from memory. Said once, since a resume that then
-        # recomputes the node would otherwise look like a lost spool.
         if self._spool is None:
             return
         try:
             self._spool.node_kept(nid, fingerprint, result)
-        except Exception as exc:  # noqa: BLE001 — logged, the run continues
+        except Exception as exc:  # noqa: BLE001
             print(f"[runner] could not hold {nid}'s result in the spool: {exc}")
 
     def _hold_awake(self) -> None:
-        """Keep the machine from idle-sleeping while a job is in
-        flight (macOS `caffeinate -i`, tied to this pid so it can
-        never outlive us). It cannot beat a closed lid on battery —
-        that is an operational rule — but it removes the common case
-        on AC, which is what interrupted the 023 series."""
         if self._caffeinate is not None or shutil.which("caffeinate") is None:
             return
         with suppress(Exception):
@@ -1032,19 +729,6 @@ class JobRunner:
     def _upload_result(api: ApiClient, job_id: str,
                        cbor_bytes: bytes, digest: str,
                        missing: Mapping[str, Any] | None = None) -> None:
-        """Get the finished result onto the server, by whichever path its
-        size wants (000492): above the threshold, a grant, a PUT straight
-        to object storage, and a finalize; otherwise, or when this
-        deployment's store cannot grant, the direct completion. Both the
-        first delivery and a reconcile-time late delivery come through
-        here, so a large result is never attempted through the API's
-        body cap by either.
-
-        `missing` is the manifest's `nodes_missing` (000515), declared
-        only on the grant path: there the API never holds the bytes, so
-        what did not run has to be told rather than read. On the direct
-        path the API reads it from the result itself and a declaration
-        would be a second, weaker copy of the same fact."""
         content_hash = f"sha256:{digest}"
         grant = None
         if len(cbor_bytes) > _presign_threshold():
@@ -1058,19 +742,9 @@ class JobRunner:
     def _deliver(self, api: ApiClient, job_id: str,
                  cbor_bytes: bytes, digest: str,
                  missing: Mapping[str, Any] | None = None) -> None:
-        """Upload a spooled result. Refusal is not failure: the job's
-        result exists; the server's state is what has to catch up. A
-        409 (reaped meanwhile, or still `preparing` after a re-claim)
-        and a dead network both leave the spool in place for
-        `_flush_spool` — the job is never FAILED over a delivery
-        problem.
-
-        A large result takes the presigned path (000492): grant, PUT to
-        object storage, finalize. A store that cannot grant says so and
-        the direct path is taken instead."""
         try:
             self._upload_result(api, job_id, cbor_bytes, digest, missing)
-        except Exception as e:  # noqa: BLE001 — keep the spool, retry later
+        except Exception as e:  # noqa: BLE001
             print(f"[runner] {job_id}: result spooled; upload not accepted "
                   f"yet ({e}) — reconciliation retries")
             self.state.emit("job.spooled", {"id": job_id})
@@ -1080,18 +754,9 @@ class JobRunner:
 
     @staticmethod
     def _is_transport(exc: BaseException) -> bool:
-        """Did the job die because the API was unreachable, rather than
-        because its own compute was wrong? (000464)
-
-        Asked by class, not by string match, so compute owns the
-        judgement: `bench.BenchTransportError` is raised only after the
-        bounded retry has exhausted itself on a dead socket, a timeout, or
-        a 5xx. Older compute has no such class and every failure stays a
-        failure, which is the previous behaviour.
-        """
         try:
             from mechbench_compute.bench import BenchTransportError
-        except Exception:  # noqa: BLE001 — older compute: nothing to match
+        except Exception:  # noqa: BLE001
             return False
         seen: set[int] = set()
         cur: BaseException | None = exc
@@ -1103,35 +768,11 @@ class JobRunner:
         return False
 
     def _transport_resumes(self, job_id: str, job: dict[str, Any]) -> int:
-        """How many times this job has already been resumed after a
-        transport failure.
-
-        The server's `resumeCount` is the floor rather than the whole
-        answer: it survives a runner restart (an in-process tally does
-        not), but it also counts resumes this branch had nothing to do
-        with, such as a watchdog kill. Taking the max of the two means the
-        bound can trip early for an unrelated reason — acceptable, because
-        the failure mode it prevents costs half an hour per cycle and the
-        operator gets told exactly why.
-        """
         local = self._transport_interrupts.get(job_id, 0)
         return max(local, int(job.get("resumeCount") or 0))
 
     def _refuse_exhausted_transport_resume(self, api: ApiClient,
                                            job: dict[str, Any]) -> bool:
-        """At the resume decision, whichever path brought the job back:
-        a job whose LAST interrupt was a transport failure and whose
-        server-side resumeCount has reached the bound is failed here
-        rather than executed again (000483).
-
-        `_report_error` alone could not hold the bound: reconciliation
-        resumes a claimed-but-idle job without passing through it, and
-        did — "attempt 2", "attempt 3" — until the runner was stopped by
-        hand. Every resume enters `_handle`, so the check lives here.
-        The reason is matched by prefix against what `_report_error`
-        wrote; a crash or watchdog resume carries a different reason and
-        is never bounded by this.
-        """
         job_id = job.get("id")
         reason = str(job.get("errorMessage") or "")
         if not job_id or not reason.startswith(TRANSPORT_INTERRUPT_PREFIX):
@@ -1147,7 +788,7 @@ class JobRunner:
             f"API's body limit before resuming again.")
         try:
             api.fail_job(job_id, message)
-        except Exception:  # noqa: BLE001 — best-effort, like every report
+        except Exception:  # noqa: BLE001
             print(f"[runner] failed to report failure for {job_id}")
         self._transport_interrupts.pop(job_id, None)
         print(f"[runner] {job_id}: refusing to resume — transport failure "
@@ -1163,18 +804,6 @@ class JobRunner:
         import re as _re
         message = _re.sub(r"hf_[A-Za-z0-9]{8,}", "hf_[redacted]", str(exc))
 
-        # A job whose compute succeeded and whose UPLOAD did not has not
-        # failed; the platform has. Interrupt it instead — claim,
-        # progress and resultPath survive, the spool stays, and the next
-        # claim resumes from the node boundary rather than from zero.
-        # Experiment 014 lost 35 minutes of generation twice to a single
-        # un-retried PUT before this branch existed (000464).
-        #
-        # But only a BOUNDED number of times. Interrupt-and-resume assumes
-        # the failure was transient; when it is deterministic — a payload
-        # the server will not accept, say — resuming re-runs the same
-        # expensive node to reach the same rejected upload, forever. 014
-        # turned a 35-minute node into exactly that loop (000483).
         if self._is_transport(exc):
             resumes = self._transport_resumes(job_id, job)
             if resumes < MAX_TRANSPORT_RESUMES:
@@ -1183,16 +812,13 @@ class JobRunner:
                           f"after retries: {message}")
                 try:
                     api.interrupt_job(job_id, reason, timeout=15.0)
-                except Exception:  # noqa: BLE001 — reconciliation retries
+                except Exception:  # noqa: BLE001
                     print(f"[runner] {job_id}: could not report the interrupt; "
                           f"reconciliation will")
                 print(f"[runner] {job_id}: interrupted, not failed — transport "
                       f"({message}); spool kept, resume "
                       f"{resumes + 1}/{MAX_TRANSPORT_RESUMES}")
                 return
-            # Out of resumes: say so in the failure itself, because the
-            # next reader's question is "was it the network or the
-            # payload", and a repeat at the same node answers it.
             self._transport_interrupts.pop(job_id, None)
             message = (
                 f"the API would not accept a result after {resumes} "
@@ -1203,30 +829,13 @@ class JobRunner:
 
         try:
             api.fail_job(job_id, message)
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # noqa: BLE001
             print(f"[runner] failed to report failure for {job_id}")
-        # A job that FAILED (the block raised) is not coming back;
-        # its partials would only mislead a later reader.
         _clear_spool(job_id)
 
     def _claim_control_socket(self) -> None:
-        """Refuse to start beside another runner; adopt a dead one's socket.
-
-        A crashed runner leaves its socket file behind. Treating that as
-        "already running" would mean a machine could never start a runner
-        again after one crash, so the file alone is not the test — whether
-        anything answers on it is.
-        """
         existing = probe()
         if existing is not None:
-            # DELIBERATE exit, not a crash (task 000462). This used to be
-            # `SystemExit(<message>)`, which exits 1 — and 1 means "come
-            # back" to both supervisors, so a runner that could never have
-            # the socket was restarted forever: the supervisor hit its
-            # crash limit, launchd restarted the supervisor, and round it
-            # went, every message going to a log nobody was watching.
-            # "Something else is already running here" is a reason to stop
-            # and stay stopped.
             print(
                 f"[runner] another runner (pid {existing.get('pid')}) is already "
                 f"listening at {socket_path()}. Stop it first, or ask it what it "
@@ -1242,7 +851,7 @@ class JobRunner:
     def _report_plan(self, api: ApiClient, job_id: str, steps: list[dict]) -> None:
         try:
             api.declare_preparing(job_id, steps)
-        except Exception:  # noqa: BLE001 — display only, never fatal
+        except Exception:  # noqa: BLE001
             pass
 
     def _report_step(self, step: dict) -> None:
@@ -1250,15 +859,10 @@ class JobRunner:
             return
         try:
             self._active_api.report_preparing_step(self._active_job, step)
-        except Exception:  # noqa: BLE001 — display only, never fatal
+        except Exception:  # noqa: BLE001
             pass
 
     def _announce_download(self, repo_id: str, revision: str | None) -> None:
-        """Weights are about to be fetched — say so, loudly and over the wire.
-
-        A first run against an uncached model is minutes of silence otherwise,
-        which reads as a hang. `status --watch` and the Mac app both see this.
-        """
         self._watchdog.stamp()
         what = f"{repo_id}@{revision}" if revision else repo_id
         print(f"[runner] downloading {what} (this can take a while)")
@@ -1267,11 +871,6 @@ class JobRunner:
                            "status": "active", "unit": "bytes"})
 
     def _announce_download_bytes(self, done: int, total: int) -> None:
-        """Report download progress against the job that triggered it.
-
-        Throttled to once a second: a multi-gigabyte fetch calls this
-        thousands of times, and the board only needs a moving bar.
-        """
         self._watchdog.stamp()
         self.state.job_progress(done, total)
         now = time.monotonic()
@@ -1279,16 +878,11 @@ class JobRunner:
             return
         self._last_byte_report = now
         if self._last_node is None:
-            # Getting ready: the preparing checklist is the display.
             self._report_step({"key": "weights", "label": "Download weights",
                                "status": "done" if done >= total else "active",
                                "num": done, "den": max(total, 1),
                                "unit": "bytes"})
             return
-        # Mid-run (a checkpoint materializing inside a node): the
-        # preparing checklist is over, so the bytes ride the node view's
-        # `detail` — the board shows "node 1/2 · downloading 3.2 of
-        # 10.3 GB" instead of fifteen silent minutes.
         if self._active_job is None or self._active_api is None:
             return
         detail = (f"downloading weights · {done / 1e9:.1f} of "
@@ -1300,12 +894,11 @@ class JobRunner:
                 self._active_job, sd, st,
                 node={**self._last_node, "detail": detail},
             )
-        except Exception as e:  # noqa: BLE001 — best-effort by design
+        except Exception as e:  # noqa: BLE001
             print(f"[runner] progress report failed ({e}); continuing")
 
 
 def _unit_for(protocol_kind: str) -> str:
-    """What this kind's progress numbers count, for the board's label."""
     return {
         "layer_ablation": "layers",
         "decision_distribution": "conditions",

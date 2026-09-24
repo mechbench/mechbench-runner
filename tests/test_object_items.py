@@ -1,10 +1,3 @@
-"""`object items`: a collection's items read on the server (task 000660).
-
-The same query from both surfaces, `where` repeated on the wire, and the
-command line's two ways of printing: JSON lines by default, a table on
-request, the count of what matched on stderr so the lines can be piped.
-"""
-
 from __future__ import annotations
 
 import json
@@ -71,7 +64,6 @@ def test_both_surfaces_ask_the_same(rec, capsys):
         "where": ["coords.prompt=flash", "metadata.tokens>100"],
         "lines": 1, "limit": 2,
     }
-    # One condition may be a bare string over MCP.
     tools["object"]("items", {"path": "p", "where": "coords.prompt=flash"})
     assert rec[-1]["where"] == ["coords.prompt=flash"]
 

@@ -1,5 +1,3 @@
-"""The run noun: a protocol launched, and the job that executes it."""
-
 from __future__ import annotations
 
 import time
@@ -27,11 +25,8 @@ from .core import (
 )
 from .run_diff import run_diff
 
-# --- run ----------------------------------------------------------------------
-
 
 def job_of(ctx: Ctx, run: str) -> str:
-    """A run's job id: its own when given one (`j_…`), else its newest."""
     if run.startswith("j_"):
         return run
     job = ctx.get(f"/runs/{run}", view="summary").get("jobId")
@@ -62,8 +57,6 @@ TERMINAL = ("done", "done_with_missing", "failed", "cancelled", "interrupted")
 
 
 def run_watch(ctx: Ctx, a: dict) -> Any:
-    """Wait for a run to reach a terminal state, up to `timeout` seconds
-    (default 120), and answer its summary as it then stands."""
     deadline = time.monotonic() + float(a.get("timeout") or 120)
     interval = float(a.get("interval") or 4)
     while True:
@@ -74,8 +67,6 @@ def run_watch(ctx: Ctx, a: dict) -> Any:
 
 
 def finished(ctx: Ctx, run: str) -> dict:
-    """A run's summary, when it has finished and so has results to read;
-    otherwise it says what state it is in, rather than a missing object."""
     row = ctx.get(f"/runs/{run}", view="summary")
     if row.get("jobStatus") not in ("done", "done_with_missing"):
         raise VerbError(f"run {run} has no result: it is {row.get('jobStatus')}")

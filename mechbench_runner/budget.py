@@ -1,32 +1,3 @@
-"""A model-cache budget, so an untended runner does not fill the disk
-(task 000297).
-
-Every distinct model a job names is downloaded and never evicted — and
-the waste is whole models, one copy each of things needed once (000285
-measured 13 models, 132 GB). This module bounds it:
-
-- The budget is a *floor of free disk* to preserve (`keep_free_gb`,
-  because "leave me 100 GB" is what a person actually means), an
-  optional cache-size cap (`max_cache_gb`), or both. Unset means no
-  eviction — opting a machine in is deliberate, because deleting a
-  25 GB model costs a long download to get it back.
-- Eviction is least-recently-USED, not least-recently-downloaded. The
-  hub's `last_modified` moves on fetch, not on use, so the runner keeps
-  its own journal (`record_use` at every claim) and the checkpoint
-  materializer refreshes its `.complete` mark on cache hits; last-used
-  is the max of what any of them know.
-- A recency floor (`recent_days`, default 3) beats the budget: nothing
-  used that recently is evicted, even if the budget stays exceeded.
-  Exceeding quietly is cheaper than thrashing loudly.
-- The sweep runs between jobs — at startup and on claim, before
-  execution — so nothing a running job holds can vanish under it, and
-  the claimed job's own model is protected by name besides.
-
-Both caches are accounted: the HF hub cache (whole repos, deleted
-through `inventory.delete_revisions`) and `~/.mechbench/checkpoints`
-(merged models materialized from the bench, deleted as directories).
-"""
-
 from __future__ import annotations
 
 import json
@@ -46,13 +17,8 @@ USAGE_NAME = "model-usage.json"
 DEFAULT_RECENT_DAYS = 3.0
 
 
-# -- the policy, on disk
-
-
 @dataclass(frozen=True)
 class Budget:
-    """What the machine's owner asked the cache to respect."""
-
     keep_free_gb: float | None = None
     max_cache_gb: float | None = None
     recent_days: float = DEFAULT_RECENT_DAYS
@@ -99,22 +65,16 @@ def clear(root: Path | None = None) -> None:
         budget_path(root).unlink()
 
 
-# -- the usage journal
-
-
 def usage_path(root: Path | None = None) -> Path:
     return (root or paths.mechbench_dir()) / USAGE_NAME
 
 
 def repo_of(model_id: str) -> str:
-    """`org/name@revision` -> `org/name`. Eviction is whole-repo."""
     return model_id.split("@", 1)[0]
 
 
 def record_use(model_id: str, root: Path | None = None,
                now: float | None = None) -> None:
-    """A job named this model: remember when. Failures are swallowed —
-    the journal improves eviction, it must never fail a job."""
     with suppress(Exception):
         p = usage_path(root)
         journal = _read_journal(p)
@@ -131,23 +91,17 @@ def _read_journal(p: Path) -> dict[str, float]:
             if isinstance(v, (int, float))} if isinstance(data, dict) else {}
 
 
-# -- what could go
-
-
 @dataclass(frozen=True)
 class Candidate:
-    kind: str  # "model" | "checkpoint"
-    name: str  # repo id, or the checkpoint's label (key when unlabelled)
+    kind: str
+    name: str
     size_bytes: int
     last_used: float
-    commits: tuple[str, ...] = ()  # models: every revision, for delete
-    path: Path | None = None  # checkpoints: the directory itself
+    commits: tuple[str, ...] = ()
+    path: Path | None = None
 
 
 def checkpoint_candidates(root: Path | None = None) -> list[Candidate]:
-    """The materialized-checkpoint cache, one candidate per directory.
-    Last-used is the `.complete` mark's mtime (the materializer touches
-    it on every cache hit); the `.label` note gives the human name."""
     ckpt_root = root if root is not None else paths.checkpoints_dir()
     out: list[Candidate] = []
     if not ckpt_root.is_dir():
@@ -169,9 +123,6 @@ def checkpoint_candidates(root: Path | None = None) -> list[Candidate]:
 
 
 def model_candidates(inventory: Any, journal: dict[str, float]) -> list[Candidate]:
-    """The hub cache, one candidate per repository. Last-used is the
-    freshest thing anyone knows: the journal beats `last_modified`,
-    which only moves on download."""
     out: list[Candidate] = []
     for repo in inventory.scan():
         stamps = [journal.get(repo.repo_id, 0.0)]
@@ -185,16 +136,11 @@ def model_candidates(inventory: Any, journal: dict[str, float]) -> list[Candidat
     return out
 
 
-# -- the sweep
-
-
 @dataclass(frozen=True)
 class Plan:
-    """What a sweep would do, before it does it."""
-
-    deficit_bytes: int  # how much must go to satisfy the budget
-    evictions: list[Candidate]  # oldest-first, until the deficit is met
-    short_bytes: int  # deficit left uncovered (recency floor won)
+    deficit_bytes: int
+    evictions: list[Candidate]
+    short_bytes: int
     cache_bytes: int
     free_bytes: int
 
@@ -255,13 +201,11 @@ def plan(
 
 
 def _cache_volume(inventory: Any) -> Path:
-    """Where to measure free disk: the hub cache's volume, since that is
-    where the weight of the weights lives."""
     try:
         from mechbench_compute.hub import hf_hub_cache
 
         p = Path(hf_hub_cache())
-    except Exception:  # noqa: BLE001 — no compute, no cache yet
+    except Exception:  # noqa: BLE001
         p = Path.home()
     while not p.exists() and p != p.parent:
         p = p.parent
@@ -280,12 +224,6 @@ def sweep(
     disk_usage: Callable[[str], Any] = shutil.disk_usage,
     now: float | None = None,
 ) -> list[Candidate]:
-    """Enforce the budget. Returns what was actually evicted.
-
-    Each eviction is announced through `emit` as a `cache.evicted`
-    event, so a model disappearing from a machine is something the UI
-    can show rather than a surprise on the next run.
-    """
     if inventory is None:
         try:
             from mechbench_compute import inventory as inventory_mod
@@ -308,7 +246,7 @@ def sweep(
                 shutil.rmtree(c.path)
             else:
                 continue
-        except Exception as exc:  # noqa: BLE001 — skip, keep sweeping
+        except Exception as exc:  # noqa: BLE001
             say(f"could not evict {c.kind} {c.name}: {exc}")
             continue
         done.append(c)
@@ -334,7 +272,6 @@ def _age_days(last_used: float, now: float | None) -> float:
 
 
 def describe(budget: Budget) -> str:
-    """One line of what the policy is, for `budget` and `doctor`."""
     if not budget.is_set:
         return "no budget set"
     parts = []

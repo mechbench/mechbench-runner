@@ -1,16 +1,3 @@
-"""`mechbench doctor` — will this machine actually work?
-
-Answering that with a checklist rather than letting someone discover it
-through a stack trace three minutes into a model download. Every check
-is cheap, none of them loads a model, and the whole thing runs on a
-machine that cannot import the compute layer at all — which is exactly
-the machine most likely to need it.
-
-Checks are ordered so the first failure is the most useful one: there is
-no point reporting a missing model on a machine with no backend to run
-it on.
-"""
-
 from __future__ import annotations
 
 import shutil
@@ -34,7 +21,6 @@ class Check:
     name: str
     status: str
     detail: str
-    #: Shown only when the check is not OK — what to actually do.
     fix: str | None = None
 
     def render(self) -> str:
@@ -78,9 +64,6 @@ def run(config: Config) -> int:
     return 0
 
 
-# --- the machine -------------------------------------------------------------
-
-
 def _python() -> Check:
     v = sys.version_info
     rendered = f"{v.major}.{v.minor}.{v.micro}"
@@ -100,8 +83,6 @@ def _platform() -> Check:
 
 
 def _backend() -> Check:
-    """The substrate question, asked of the compute layer rather than
-    guessed at here — and answerable even when there is no substrate."""
     try:
         from mechbench_compute import backends
     except ImportError as exc:
@@ -147,9 +128,6 @@ def _version_of(module_name: str) -> str:
         return "version unknown"
 
 
-# --- the account -------------------------------------------------------------
-
-
 def _account(config: Config) -> list[Check]:
     stored = credentials.load()
     if not config.api_key:
@@ -186,7 +164,7 @@ def _account(config: Config) -> list[Check]:
                 )
             ]
         return checks + [Check("api", FAIL, f"{exc}", "Check MECHBENCH_API_URL.")]
-    except Exception as exc:  # noqa: BLE001 — an unreachable API reads as one
+    except Exception as exc:  # noqa: BLE001
         return checks + [
             Check(
                 "api", FAIL, f"unreachable: {exc}",
@@ -208,15 +186,6 @@ def _account(config: Config) -> list[Check]:
 
 
 def _service() -> Check:
-    """Installed but not running is the interesting state.
-
-    macOS attributes background items to whoever signed the executable,
-    and for any python.org-derived interpreter that is "Ned Deily" —
-    CPython's macOS release manager, and a name nobody recognizes. It is
-    easy to switch that off in Login Items & Extensions without knowing
-    it was the runner, after which this machine quietly stops taking
-    work and nothing else would say so.
-    """
     from . import service
 
     try:
@@ -241,9 +210,6 @@ def _service() -> Check:
     )
 
 
-# --- the weights -------------------------------------------------------------
-
-
 def _models() -> list[Check]:
     try:
         from mechbench_compute import inventory
@@ -252,7 +218,7 @@ def _models() -> list[Check]:
 
     try:
         repos = inventory.scan()
-    except Exception as exc:  # noqa: BLE001 — an unreadable cache is a warning
+    except Exception as exc:  # noqa: BLE001
         return [Check("model cache", WARN, f"could not be read: {exc}")]
 
     if not repos:
@@ -277,9 +243,6 @@ def _models() -> list[Check]:
     reclaimable = sum(r.reclaimable_bytes for r in repos)
     superseded = sum(len(r.superseded) for r in repos)
     if superseded:
-        # Deliberately reporting what deleting would actually return, not
-        # the sum of the revisions' sizes: they share blobs, and the
-        # difference between those two numbers is usually enormous.
         checks.append(
             Check(
                 "unused revisions",
@@ -293,9 +256,6 @@ def _models() -> list[Check]:
 
 
 def _budget() -> Check:
-    """"217 GB free" and "no budget" together are a prediction, not a
-    reassurance (000297): every model a job names is cached and nothing
-    bounds the cache unless the owner says so."""
     from . import budget
 
     b = budget.load()

@@ -1,5 +1,3 @@
-"""The object noun: a stored object, by its path."""
-
 from __future__ import annotations
 
 import json
@@ -25,8 +23,6 @@ from .core import (
     page,
 )
 
-# --- object -------------------------------------------------------------------
-
 PATH = Arg("path", "Its path: owner/project/…", required=True, positional=True)
 
 
@@ -46,10 +42,6 @@ def object_read(ctx: Ctx, a: dict) -> Any:
 
 
 def object_items(ctx: Ctx, a: dict) -> Any:
-    """A collection's items, read on the server (task 000660): only the
-    fields asked for, of the items that pass every `where`, a page at a
-    time; or how many there are (`count`), or the object without its
-    items (`header`)."""
     fields = a.get("fields")
     if isinstance(fields, (list, tuple)):
         fields = ",".join(fields)

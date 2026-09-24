@@ -1,15 +1,3 @@
-"""An item the spool cannot write is counted and logged, never silently
-dropped (task 000485, corrected).
-
-For weeks every item of an adapted generate node raised CBOREncodeError
-inside `JobSpool.item` — it carried a live ModelRef (000488) — and the
-runner's `suppress(Exception)` around the call discarded each one. The
-spool looked like the block had never produced anything, and a resume
-that recovered nothing read as "nothing was there". The failure must
-still not fail the job (the item exists in memory; the run goes on), but
-it has to be visible in the log and in the spool summary.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -22,7 +10,7 @@ from mechbench_runner.spool import JobSpool  # noqa: E402
 
 
 class Live:
-    """Nothing canonical can encode this."""
+    pass
 
 
 def _runner(monkeypatch):
@@ -48,7 +36,7 @@ def _runner(monkeypatch):
 class TestADroppedItem:
     def test_does_not_raise(self, monkeypatch):
         r = _runner(monkeypatch)
-        r._spool_item("gen", "k1", {"item": Live()})  # must not propagate
+        r._spool_item("gen", "k1", {"item": Live()})
 
     def test_is_counted_per_node(self, monkeypatch):
         r = _runner(monkeypatch)

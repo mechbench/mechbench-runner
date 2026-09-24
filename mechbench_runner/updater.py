@@ -1,25 +1,3 @@
-"""Self-update, as a state machine on disk (task 000296).
-
-**A process cannot safely replace its own running code**, so the upgrade
-happens at *startup*, before any of the code it is about to replace has
-been imported — not in a helper spawned on the way out, which would race
-the supervisor's restart. At startup it is serialised by construction:
-one process, and it has not loaded anything yet.
-
-The state lives in `~/.mechbench/update.json` because it has to survive
-the restart that does the work:
-
-    requested  a person approved an update; upgrade, then verify
-    verify     new code is running; check it, or roll back
-    rollback   the new version failed; restore the old one
-
-The worst thing this feature can produce is a machine that needed no
-attention until it bricked itself, so every path out of a failure ends
-with a runner that starts. An upgrade that cannot be verified is undone,
-and one that fails twice stops trying and says so rather than looping
-against the supervisor.
-"""
-
 from __future__ import annotations
 
 import json
@@ -30,8 +8,6 @@ from pathlib import Path
 
 from .paths import mechbench_dir
 
-#: Two attempts. A third would be a loop, and a supervisor will restart
-#: us as fast as we exit.
 MAX_ATTEMPTS = 2
 
 
@@ -79,11 +55,7 @@ def clear(path: Path | None = None) -> None:
 
 
 def request(target: str, previous: str, path: Path | None = None) -> None:
-    """Record an approved update. The next start performs it."""
     UpdateState(stage="requested", target=target, previous=previous).save(path)
-
-
-# --- the startup hook --------------------------------------------------------
 
 
 def take_pending_step(
@@ -91,12 +63,6 @@ def take_pending_step(
     path: Path | None = None,
     report=None,
 ) -> bool:
-    """Advance the update if one is in flight. True if we re-exec'd.
-
-    Called before anything heavy is imported. `report` is an optional
-    callback for a human-readable line; the channel is not up yet, so
-    the log is the only place this can be said.
-    """
     st = load(path)
     if st is None:
         return False
@@ -159,16 +125,8 @@ def take_pending_step(
 
 
 def _self_check() -> list[str]:
-    """Cheap proof that the code that just landed can actually run.
-
-    Deliberately not `doctor`: this must not fail because a machine is
-    offline or its disk is full — only because the *install* is broken.
-    """
     problems: list[str] = []
     try:
-        # Both halves of the distribution (task 000307): the engine, and
-        # the `mechbench` front door the service unit re-execs into. An
-        # upgrade that delivered one without the other must roll back.
         from mechbench import cli  # noqa: F401
 
         from . import (  # noqa: F401
@@ -188,7 +146,6 @@ def _self_check() -> list[str]:
 
 
 def _reexec(say) -> bool:
-    """Replace this process with the freshly installed code."""
     say("restarting into the new version")
     try:
         sys.stdout.flush()
@@ -196,20 +153,10 @@ def _reexec(say) -> bool:
     except Exception:  # noqa: BLE001
         pass
     os.execv(sys.executable, [sys.executable, "-m", "mechbench.cli", *sys.argv[1:]])
-    return True  # unreachable
-
-
-# --- the manual path ---------------------------------------------------------
+    return True
 
 
 def update_now(report=None) -> int:
-    """`mechbench update` — upgrade this machine right now.
-
-    The web UI route (approve, exit 75, upgrade at the next start) exists
-    because a *service* cannot upgrade itself while running. Run by hand
-    there is no such constraint: this process is not the one being
-    supervised, so it can upgrade and then restart the service that is.
-    """
     say = report or (lambda m: print(m))
     from . import install as install_mod
 
@@ -246,17 +193,6 @@ def update_now(report=None) -> int:
 
 
 def _restart_if_stale(installed: dict, say) -> None:
-    """Restart a service still running code the disk no longer holds.
-
-    A manual `uv tool install` swaps the venv under a RUNNING service
-    without restarting it — which produced a night of tracebacks whose
-    printed source lines came from the NEW files at the OLD process's
-    line numbers (Python reads source at print time). `update` is where
-    people go to get current, so even a nothing-moved update checks the
-    running service's version against the disk and kicks it when they
-    disagree. (Compute-only drift with an identical runner version is
-    not detectable this way; every CLI-driven update restarts anyway,
-    so the gap is exactly the manual-uv case this covers.)"""
     from . import install as install_mod
     from . import service
 
@@ -270,7 +206,7 @@ def _restart_if_stale(installed: dict, say) -> None:
         from .control import request
 
         running = str(request("status").get("runner_version") or "")
-    except Exception:  # noqa: BLE001 — no socket, nothing to compare
+    except Exception:  # noqa: BLE001
         return
     disk = installed.get(install_mod.DIST) or ""
     if running and disk and running != disk:

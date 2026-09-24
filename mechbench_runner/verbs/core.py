@@ -1,7 +1,3 @@
-"""The registry's parts: an argument, a verb, a noun, and what a verb
-reaches the platform through (task 000661). The nouns are the modules
-beside this one; `__init__` gathers them."""
-
 from __future__ import annotations
 
 import json
@@ -16,12 +12,6 @@ from ..config import Config
 
 @dataclass(frozen=True)
 class Arg:
-    """One argument, by the name it has on every surface: the CLI's
-    `--name` (dashes for underscores) or positional, and the MCP `args`
-    key. `type` is str, int, float, bool, json (an object or list given as
-    JSON on the command line), pairs (`NAME=VALUE`, repeated) or strs (a
-    repeated string)."""
-
     name: str
     help: str
     type: str = "str"
@@ -29,7 +19,6 @@ class Arg:
     positional: bool = False
     many: bool = False
     choices: tuple[str, ...] = ()
-    #: The command line's spelling when it is not `--name` (`--param`).
     flag: str | None = None
 
 
@@ -38,13 +27,10 @@ class Verb:
     noun: str
     name: str
     help: str
-    #: The route, `METHOD /path`, as mechbench-api declares it.
     api: str
     args: tuple[Arg, ...]
     do: Callable[[Ctx, dict[str, Any]], Any]
-    #: list, read or act: how the command line prints the answer.
     shape: str = "act"
-    #: A listing's columns on the command line.
     columns: tuple[str, ...] = ()
 
 
@@ -53,7 +39,6 @@ class Noun:
     name: str
     help: str
     verbs: tuple[Verb, ...]
-    #: A lifecycle verb this noun does not have, and why.
     absent: Mapping[str, str] = field(default_factory=dict)
 
     def verb(self, name: str) -> Verb:
@@ -64,9 +49,6 @@ class Noun:
 
 
 class Ctx:
-    """What a verb reaches the platform through: this machine's
-    credentials, the API, and the bench library for the calls it owns."""
-
     def __init__(
         self, config: Config, client: Callable[[Config], ApiClient] = ApiClient
     ) -> None:
@@ -97,10 +79,8 @@ class Ctx:
 
 
 class VerbError(RuntimeError):
-    """A verb was asked for something it cannot do as asked."""
+    pass
 
-
-# --- shared shapes ------------------------------------------------------------
 
 ID = Arg("id", "Its id.", required=True, positional=True)
 FULL = Arg("full", "The whole thing, not the summary.", type="bool")
@@ -161,7 +141,6 @@ def given(
     *names: str,
     rename: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """The named arguments that were given, under the API's field names."""
     rename = rename or {}
     return {rename.get(n, _camel(n)): a[n] for n in names if a.get(n) is not None}
 
@@ -172,7 +151,6 @@ def _camel(name: str) -> str:
 
 
 def owner_of(a: Mapping[str, Any], ctx: Ctx) -> tuple[str, str]:
-    """`(ownerKind, ownerHandle)` for a create: the named owner, or you."""
     handle = a.get("owner")
     if not handle:
         handle = str(ctx.get("/auth/me").get("user", {}).get("handle") or "")
@@ -182,8 +160,6 @@ def owner_of(a: Mapping[str, Any], ctx: Ctx) -> tuple[str, str]:
 def delete(
     ctx: Ctx, target: str, a: Mapping[str, Any], prefix: bool = False
 ) -> dict[str, Any]:
-    """The bench's deletion: a dry run unless `yes`, its refusal answered
-    as data. What it deletes is gone; there is no restore."""
     bench = ctx.bench()
     plan = bench.delete(target, prefix=prefix, dry_run=True)
     if plan.get("refusal") or not a.get("yes"):
@@ -212,7 +188,6 @@ def history(ctx: Ctx, kind: str, entity_id: str) -> Any:
 
 
 def text_of(a: Mapping[str, Any], name: str) -> str | None:
-    """A `*_file` argument's text, when one was given."""
     f = a.get(name)
     return None if f is None else pathlib.Path(f).read_text()
 
@@ -220,12 +195,6 @@ def text_of(a: Mapping[str, Any], name: str) -> str | None:
 def edit(
     ctx: Ctx, noun: str, route: str, a: Mapping[str, Any], text_arg: str, field: str
 ) -> Any:
-    """An edit of a whole article or protocol at a base version (epic
-    000525, `PUT`): the object a formatted read gave (the `file`), with
-    any field given as an argument in place of the file's, sent back with
-    the version it was read at. The API diffs it against the document at
-    that version, so edits made since are kept, and answers the object as
-    it now stands."""
     obj: dict[str, Any] = {}
     base = a.get("base_version")
     fmt = a.get("format")
@@ -261,9 +230,6 @@ LIFECYCLE = ("list", "read", "create", "update", "delete", "history")
 
 
 def invoke_on(ctx: Ctx, n: Noun, verb_name: str, args: Mapping[str, Any] | None) -> Any:
-    """Run one of a noun's verbs with its arguments by name. Unknown and
-    missing arguments are refused here with the verb's own list, so a
-    caller learns its shape from the error."""
     noun_name = n.name
     try:
         v = n.verb(verb_name)
@@ -287,7 +253,6 @@ def invoke_on(ctx: Ctx, n: Noun, verb_name: str, args: Mapping[str, Any] | None)
 
 
 def refusal(e: Exception) -> dict[str, Any] | None:
-    """An API refusal as data (`{status, code, error, …}`), or None."""
     status = getattr(e, "status", None)
     body = getattr(e, "body", None)
     if status is None:

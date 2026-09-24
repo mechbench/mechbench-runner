@@ -1,11 +1,3 @@
-"""The exit contract, the watchdog, and bounded logs (task 000294).
-
-These are what a supervisor sees. An OS supervisor understands nothing
-about this process except the code it exits with, so the codes are the
-contract and deserve tests that name the consequence rather than the
-value.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -18,15 +10,12 @@ from mechbench_runner.watchdog import Watchdog
 
 class TestExitContract:
     def test_deliberate_is_zero_so_a_supervisor_leaves_it_stopped(self):
-        # KeepAlive{SuccessfulExit:false} and Restart=on-failure both key
-        # off exactly this.
         assert EXIT_OK == 0
 
     def test_a_fault_is_non_zero_so_it_comes_back(self):
         assert EXIT_CRASH != 0
 
     def test_an_asked_for_restart_is_non_zero_but_distinct(self):
-        # Non-zero so it restarts; distinct so a log says why (000296).
         assert EXIT_RESTART != 0
         assert EXIT_RESTART != EXIT_CRASH
 
@@ -50,8 +39,6 @@ class TestWatchdog:
         w.resume()
 
     def test_it_kills_the_process_rather_than_the_thread(self, monkeypatch):
-        """The whole point: the rest of the process is wedged and will
-        not unwind, so sys.exit from a thread would achieve nothing."""
         killed: list[int] = []
         monkeypatch.setattr(
             "mechbench_runner.watchdog.os._exit", lambda code: killed.append(code)
@@ -98,21 +85,17 @@ class TestRotatingLog:
         for i in range(200):
             w.write(f"{i} " + "y" * 40 + "\n")
         w.flush()
-        # runner.log + .1 + .2, and nothing past the cap.
         assert not path.with_suffix(".log.3").exists()
         rolled = sorted(p.name for p in tmp_path.iterdir())
         assert rolled == ["runner.log", "runner.log.1", "runner.log.2"]
 
     def test_the_total_stays_bounded(self, tmp_path):
-        """The property that matters on a machine nobody looks at."""
         path = tmp_path / "runner.log"
         w = logs.RotatingWriter(path, max_bytes=1000, keep=2)
         for i in range(5000):
             w.write(f"{i} " + "z" * 50 + "\n")
         w.flush()
         total = sum(p.stat().st_size for p in tmp_path.iterdir())
-        # Three files, each capped: finite, which is the whole
-        # difference from what launchd does on its own.
         assert total < 1000 * 4
 
     def test_it_survives_the_terminal_going_away(self, tmp_path):

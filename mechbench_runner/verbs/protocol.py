@@ -1,5 +1,3 @@
-"""The protocol noun: a graph with its params, inputs and outputs, and its versions."""
-
 from __future__ import annotations
 
 from typing import Any
@@ -32,8 +30,6 @@ from .core import (
     unwrap,
     view,
 )
-
-# --- protocol -----------------------------------------------------------------
 
 
 def protocol_read(ctx: Ctx, a: dict) -> Any:
@@ -122,7 +118,6 @@ def protocol_restore(ctx: Ctx, a: dict) -> Any:
 
 
 VERSION = Arg("version", "A sealed version (default: the head).", type="int")
-#: The version a restore makes the head again.
 RESTORED = Arg("version", "The version to restore.", type="int", required=True)
 INTO = Arg("into", "owner/project.", required=True)
 

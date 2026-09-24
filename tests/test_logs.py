@@ -1,10 +1,3 @@
-"""RotatingWriter's timestamping (task 000306).
-
-The rotation itself is exercised where it was built; what is new here
-is the stamp, which exists because six service restarts were logged
-with no indication of when.
-"""
-
 from __future__ import annotations
 
 import re
@@ -24,8 +17,6 @@ class TestStamping:
         assert all(STAMP.match(ln) for ln in lines)
 
     def test_a_partial_line_is_stamped_once(self, tmp_path):
-        # print() often writes the text and the newline separately; the
-        # continuation must not get a second stamp mid-line.
         w = RotatingWriter(tmp_path / "x.log", max_bytes=1 << 20)
         w.write("progress: ")
         w.write("done")
@@ -33,4 +24,4 @@ class TestStamping:
         (line,) = (tmp_path / "x.log").read_text().splitlines()
         assert STAMP.match(line)
         assert line.endswith("progress: done")
-        assert line.count(line[:10]) == 1  # the date appears exactly once
+        assert line.count(line[:10]) == 1

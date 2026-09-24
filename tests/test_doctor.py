@@ -1,10 +1,3 @@
-"""`doctor` (task 000285).
-
-What is worth testing is the verdicts and the advice attached to them:
-doctor exists so a person reads one line instead of a stack trace, and a
-check that says FAIL without saying what to do has not done its job.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -15,8 +8,6 @@ from mechbench_runner.api_client import ApiError
 from mechbench_runner.config import Config
 from mechbench_runner.doctor import FAIL, OK, WARN, Check
 
-# shutil.disk_usage and sys.version_info both return named tuples, and
-# the code reads them by attribute; stand-ins have to do the same.
 Usage = namedtuple("Usage", "total used free")
 Version = namedtuple("Version", "major minor micro releaselevel serial")
 
@@ -107,8 +98,6 @@ class TestAccountChecks:
         assert "signed out" in (api.fix or "").lower()
 
     def test_a_plain_key_is_a_warning_not_a_failure(self, monkeypatch):
-        # Jobs still work with a hand-minted key; it just has no machine
-        # behind it, so the website cannot show it.
         monkeypatch.setattr(doctor.credentials, "load", lambda: None)
         monkeypatch.setattr(
             doctor, "ApiClient", lambda _c: FakeApi(error=ApiError(400, "nope"))
@@ -202,14 +191,6 @@ class TestExitCode:
 
 
 class TestServiceCheck:
-    """A disabled background item is silent otherwise.
-
-    macOS names background items after whoever signed the executable —
-    "Ned Deily" for any python.org-derived interpreter. Turning that off
-    in Login Items stops the runner, and before this check `doctor`
-    would still have reported a perfectly healthy machine.
-    """
-
     def _status(self, monkeypatch, **kw):
         from pathlib import Path
 
@@ -228,7 +209,6 @@ class TestServiceCheck:
         self._status(monkeypatch, running=False, detail="loaded, not running")
         check = doctor._service()  # noqa: SLF001
         assert check.status == WARN
-        # The fix is only findable if the warning says whose name to look for.
         assert "Ned Deily" in (check.fix or "")
         assert "Login Items" in (check.fix or "")
 

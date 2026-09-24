@@ -1,13 +1,3 @@
-"""Write the verb matrix from the registry (task 000661).
-
-    python scripts/capabilities.py                 # docs/CAPABILITIES.md
-    python scripts/capabilities.py --docs PATH     # and the docs site's page
-
-The matrix in docs/CAPABILITIES.md sits between its verbs markers; the
-docs site's page (mechbench-docs content/verbs.md) is written whole.
-tests/test_parity.py fails when the first is stale.
-"""
-
 from __future__ import annotations
 
 import argparse

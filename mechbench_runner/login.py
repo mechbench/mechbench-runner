@@ -1,17 +1,3 @@
-"""Pairing this machine with an account (task 000284).
-
-The flow, and why it is shaped this way: the website shows a
-**short-lived registration token**; this machine trades it for a
-durable key and stores that key itself. The token expires in minutes
-and is single-use, so a copy left in scrollback is worth nothing
-tomorrow — and the durable key it becomes is never displayed, so it
-never lands in shell history at all.
-
-`login` with no token prints the link and, at a terminal, waits for a
-paste. Piped or scripted, it prints the link and stops rather than
-blocking forever on stdin nobody is attached to.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -23,8 +9,6 @@ from .api_client import ApiClient, ApiError, register_runner
 from .config import DEFAULT_API_URL, Config
 from .credentials import StoredCredentials
 
-#: Where the copy-paste block lives. Derived from the API host so that a
-#: dev runner points at the dev site without a second setting.
 WEB_HOSTS = {
     "api.mechbench.ai": "https://mechbench.ai",
     "localhost:3000": "http://localhost:5173",
@@ -34,7 +18,6 @@ SETTINGS_PATH = "/settings/runners"
 
 
 def web_url(api_base_url: str) -> str:
-    """The page rendering the registration block, for this API."""
     trimmed = api_base_url.rstrip("/")
     for scheme in ("https://", "http://"):
         if trimmed.startswith(scheme):
@@ -44,8 +27,6 @@ def web_url(api_base_url: str) -> str:
         host = trimmed
     base = WEB_HOSTS.get(host)
     if base is None:
-        # An unrecognized API host: guess the site by dropping the `api.`
-        # label, and say so rather than pretending to be sure.
         base = trimmed.replace("//api.", "//", 1)
     return f"{base}{SETTINGS_PATH}"
 
@@ -56,26 +37,14 @@ def login(
     token: str | None = None,
     name: str | None = None,
 ) -> int:
-    """Pair this machine with an account.
-
-    The default is the browser flow: the machine asks to be adopted, a
-    person approves it on the website, and the machine collects its own
-    credential. `--token` remains for the cases a browser cannot serve —
-    a headless box, a script, someone who would rather paste.
-    """
     if not token:
         return _login_via_browser(config, name)
     return _login_with_token(config, token, name)
 
 
 def _login_with_token(config: Config, token: str, name: str | None) -> int:
-    """Redeem a pasted registration token. Kept for headless boxes,
-    scripts, and anyone who would rather not involve a browser."""
     url = web_url(config.api_base_url)
 
-    # Read now, report later: announcing a replacement before the token
-    # has been validated tells someone their credential is gone when a
-    # failed login has in fact left it exactly where it was.
     existing = credentials.load()
 
     try:
@@ -102,9 +71,6 @@ def _login_with_token(config: Config, token: str, name: str | None) -> int:
             )
             return 1
         if exc.status == 404:
-            # Almost always the wrong host rather than a real 404: an
-            # older or unrelated server answering where the API should
-            # be. Naming the URL is the whole diagnosis.
             print(
                 f"{config.api_base_url} does not have a runner registration "
                 f"endpoint.\n"
@@ -118,7 +84,7 @@ def _login_with_token(config: Config, token: str, name: str | None) -> int:
             file=sys.stderr,
         )
         return 1
-    except Exception as exc:  # noqa: BLE001 — a bad URL should read as one
+    except Exception as exc:  # noqa: BLE001
         print(f"could not reach {config.api_base_url}: {exc}", file=sys.stderr)
         return 1
 
@@ -150,11 +116,6 @@ def _login_with_token(config: Config, token: str, name: str | None) -> int:
 
 
 def _offer_service() -> None:
-    """Offer to start automatically, so the promise really is one command.
-
-    A runner you have to remember to start is one you have to touch
-    again. Declining leaves a perfectly good manual runner.
-    """
     from . import service
 
     try:
@@ -164,9 +125,6 @@ def _offer_service() -> None:
         return
 
     if existing.installed:
-        # It exited deliberately when the key was revoked, so the
-        # supervisor is correctly leaving it alone. Nothing else will
-        # bring it back.
         if service.kickstart():
             print("\nRestarted the background service with the new credentials.")
         else:
@@ -202,8 +160,6 @@ def _offer_service() -> None:
 
 
 def logout(config: Config) -> int:
-    """Forget the stored credential — and revoke it, when we can reach
-    the API. A key that only stops being *used* is still a live key."""
     stored = credentials.load()
     if not stored:
         print("this machine is not signed in.")
@@ -214,7 +170,7 @@ def logout(config: Config) -> int:
             with ApiClient(config) as api:
                 api.revoke_runner(stored.runner_id)
             print(f"Revoked {stored.name or stored.runner_id} on {stored.api_url}.")
-        except Exception as exc:  # noqa: BLE001 — local forget still proceeds
+        except Exception as exc:  # noqa: BLE001
             print(
                 f"warning: could not revoke the key on {stored.api_url} ({exc}).\n"
                 f"         Remove this runner at {web_url(stored.api_url)} to be "
@@ -270,15 +226,6 @@ def whoami(config: Config) -> int:
     return 0
 
 def _login_via_browser(config: Config, name: str | None) -> int:
-    """Ask to be adopted, then wait while a person approves in a browser.
-
-    The machine has no credential — that is the whole problem — so it
-    starts unauthenticated, holds a secret only it knows, and polls. The
-    URL a person opens carries a *different* code that grants nothing on
-    its own: approving still requires being signed in.
-
-    Nothing long-lived is ever typed, pasted, or shown on screen.
-    """
     import time
     import webbrowser
 
@@ -309,17 +256,13 @@ def _login_via_browser(config: Config, name: str | None) -> int:
         print(f"could not start sign-in against {config.api_base_url}: {exc}",
               file=sys.stderr)
         return 1
-    except Exception as exc:  # noqa: BLE001 — a bad URL should read as one
+    except Exception as exc:  # noqa: BLE001
         print(f"could not reach {config.api_base_url}: {exc}", file=sys.stderr)
         return 1
 
     verification = started.get("verificationUri") or web_url(config.api_base_url)
     interval = float(started.get("intervalSeconds") or 3)
 
-    # Flushed explicitly: piped or redirected, Python block-buffers
-    # stdout, so a headless operator would see nothing at all until the
-    # command finished — and the URL is the one thing they need *while*
-    # it is still running.
     print(f'Connecting this machine as "{machine_name}".', flush=True)
     print(f"\nApprove it at:\n\n    {verification}\n", flush=True)
 
@@ -329,8 +272,6 @@ def _login_via_browser(config: Config, name: str | None) -> int:
         except (EOFError, KeyboardInterrupt):
             print()
             return 1
-        # Failure here is not failure of the flow: the URL is printed
-        # above and polling continues either way.
         with suppress(Exception):
             webbrowser.open(verification)
 
@@ -341,7 +282,7 @@ def _login_via_browser(config: Config, name: str | None) -> int:
             time.sleep(interval)
             try:
                 answer = poll_device_auth(config.api_base_url, started["deviceCode"])
-            except Exception:  # noqa: BLE001 — a blip must not end the wait
+            except Exception:  # noqa: BLE001
                 continue
             status = answer.get("status")
             if status == "approved":
@@ -351,7 +292,6 @@ def _login_via_browser(config: Config, name: str | None) -> int:
                 return 1
             if status == "expired":
                 break
-            # pending / slow_down: keep waiting.
     except KeyboardInterrupt:
         print("\ncancelled; nothing was connected.")
         return 1
@@ -375,7 +315,6 @@ def _seconds_until(iso: object) -> float:
 
 
 def _store_and_finish(config: Config, answer: dict) -> int:
-    """Write the credential the poll returned, and offer the service."""
     runner = answer.get("runner") or {}
     existing = credentials.load()
     path = credentials.save(

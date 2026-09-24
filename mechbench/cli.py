@@ -1,11 +1,3 @@
-"""CLI entry.
-
-`mechbench {login,logout,whoami,doctor,models,mcp,run,runs,label,delete,
-             history,status,…}`, and the nouns with their verbs:
-`mechbench {object,protocol,run,article,dataset,project} <verb>`
-(mechbench_runner/verbs/).
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -13,9 +5,6 @@ import sys
 
 from mechbench_runner.config import Config
 
-#: The three service commands, mapped to what each does. The old
-#: `*-agent` spellings died with the `mechbench` rename (task 000307):
-#: a brand-new command name owes nothing to the old one's muscle memory.
 SERVICE_COMMANDS = {
     "install-service": "install",
     "uninstall-service": "uninstall",
@@ -24,12 +13,7 @@ SERVICE_COMMANDS = {
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Every command, for `main` and for the parity check
-    (tests/test_parity.py), which reads the commands from here."""
     parser = argparse.ArgumentParser(prog="mechbench")
-    # metavar, or argparse prints every subcommand name in the usage
-    # line's {...} blob — including the ones whose help is SUPPRESSed,
-    # which defeats hiding them at all (task 000305).
     sub = parser.add_subparsers(dest="cmd", required=True, metavar="<command>")
 
     login_p = sub.add_parser(
@@ -55,18 +39,6 @@ def build_parser() -> argparse.ArgumentParser:
         "service-status",
         help="Is the service installed, loaded and running?",
     )
-    # The old names, kept working and kept out of --help (task 000305).
-    #
-    # These said "agent" because launchd calls a per-user background job a
-    # LaunchAgent. Systemd has no such word — the same command writes a
-    # user *unit* there — and in this platform "agent" already means the
-    # model-driven kind: agent keys, agent.object_write, the
-    # agent-callable MCP surface. One word, two unrelated jobs, and the
-    # louder job was not the one the command meant.
-    #
-    # Aliases rather than a clean break because 0.4.0 is published and
-    # these are in muscle memory, README, and the download page. They can
-    # go once those have turned over.
     sub.add_parser("whoami", help="Which machine, which account, which scope.")
     sub.add_parser(
         "update", help="Upgrade this machine now, and restart the service."
@@ -196,10 +168,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--reason", default="",
         help="Why, recorded on the job and in the audit log.")
 
-    # The nouns and their verbs (`mechbench protocol list`, `mechbench
-    # article read …`), from the registry in mechbench_runner/verbs/
-    # (task 000661). `protocol push/export/publish/unpublish/copy` are
-    # among them now, with the arguments they had.
     from mechbench_runner import verbs_cli
 
     verbs_cli.add_nouns(sub)
@@ -255,7 +223,7 @@ def build_parser() -> argparse.ArgumentParser:
     result_p.add_argument(
         "--protocol", metavar="REF",
         help="Find the job by what it RAN instead of a job id: pair with "
-             "--bind (task 000449, kills the job-id sidecars).")
+             "--bind.")
     result_p.add_argument(
         "--bind", action="append", metavar="NAME=VALUE",
         help="A binding to match when --protocol is given.")
@@ -375,9 +343,6 @@ def main(argv: list[str] | None = None) -> int:
         from mechbench_runner import service as service_mod
         from mechbench_runner.control import ControlError, request
 
-        # Who is serving, and are they busy? Both matter: the pid is the
-        # identity a restart has to change, and a job in flight is work
-        # that must be handed back to the server rather than dropped.
         before: int | None = None
         busy_job: str | None = None
         try:
@@ -386,13 +351,12 @@ def main(argv: list[str] | None = None) -> int:
             before = int(pid) if isinstance(pid, int) else None
             if snap.get("orphaned"):
                 print(f"note: pid {before} is an ORPHAN — its supervisor is "
-                      f"gone, so the service manager cannot reach it "
-                      f"(task 000462).")
+                      f"gone, so the service manager cannot reach it.")
             if snap.get("job") is not None or snap.get("phase") in (
                     "executing", "loading-model", "downloading-model"):
                 busy_job = (snap.get("job") or {}).get("id")
         except ControlError:
-            pass  # nothing answering — nothing to interrupt
+            pass
 
         if busy_job and not args.force:
             print(f"a job is running ({busy_job}), and SIGTERM means "
@@ -403,16 +367,6 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         if busy_job:
-            # --force abandons the job NOW, and that has to reach the
-            # SERVER first: an interrupted job keeps its claim, progress
-            # and resultPath and is re-claimable (epic 000320), where a
-            # job whose runner merely vanished waits on the watchdog.
-            #
-            # This runs in a DIFFERENT process from the one holding the
-            # claim's token, which is why `/interrupt` is authorized by
-            # the claim's identity (task 000511). Before that it could
-            # not land, and the job stayed `running` — uncancellable,
-            # re-adopted on every start.
             print(f"interrupting {busy_job} so it can be resumed…")
             try:
                 from mechbench_runner.api_client import ApiClient
@@ -421,16 +375,13 @@ def main(argv: list[str] | None = None) -> int:
                     api.interrupt_job(busy_job, "mechbench restart --force")
                 print(f"  interrupted. `mechbench cancel {busy_job}` ends it "
                       f"for good; otherwise it resumes when the runner is back.")
-            except Exception as exc:  # noqa: BLE001 — advisory, never fatal
+            except Exception as exc:  # noqa: BLE001
                 print(f"  could not interrupt it on the server: {exc}\n"
                       f"  the job stays claimed by this machine and will be "
                       f"resumed on the next start.", file=sys.stderr)
 
         try:
             st = service_mod.restart()
-            # SIGTERM is a request the runner is entitled to finish a job
-            # under, and an orphan is not the service manager's to stop at
-            # all. A FORCED restart therefore escalates, by pid, once.
             if args.force and before and service_mod.serving_pid() == before:
                 print(f"  pid {before} did not yield; stopping it.")
                 try:
@@ -446,10 +397,6 @@ def main(argv: list[str] | None = None) -> int:
 
         print(f"restart  {st.detail}")
         if st.running:
-            # The service manager reports "running" the moment the process
-            # exists, but the control socket is not answering until the
-            # runner has finished importing and bound it — poll a short
-            # window so the version line is there when it can be.
             for _ in range(20):
                 try:
                     data = request("status")
@@ -510,13 +457,6 @@ def main(argv: list[str] | None = None) -> int:
         return bench_cmd.history(config, args.kind, args.id)
 
     if args.cmd in {"run", "watch", "result"}:
-        # `run` overloads: with a PROTOCOL it launches (the researcher's
-        # verb, task 000448); with none it is the runner loop (what the
-        # supervisor invokes). `watch`/`result` are always the researcher.
-        #
-        # A launch flag with no protocol is a typo, not a request to start
-        # the daemon in the foreground: `mechbench run --wait` used to do
-        # exactly that, silently dropping the flag. Refuse it.
         if args.cmd == "run" and args.protocol is None and (
                 args.bind or args.param or args.input or args.keep
                 or args.budget is not None or args.wait or args.label):
@@ -541,21 +481,10 @@ def main(argv: list[str] | None = None) -> int:
         from mechbench_runner.logs import excepthook_to_log
         from mechbench_runner.logs import install as install_logs
 
-        # Bounded logs, because launchd has no rotation and this process
-        # is meant to run for months unattended (task 000294).
-        #
-        # Installed *before* the update hook, so what an update did lands
-        # in runner.log with everything else. It went to the boot log at
-        # first — technically where boot-time output belongs, and
-        # practically somewhere nobody would think to look, while being
-        # the only record of why an upgrade failed.
         if not args.no_log_file:
             install_logs()
             excepthook_to_log()
 
-        # An approved update replaces this code and can only do that
-        # while the code is still unloaded — so before the runner itself
-        # is imported.
         from mechbench_runner import updater
 
         updater.take_pending_step()
@@ -566,8 +495,6 @@ def main(argv: list[str] | None = None) -> int:
         except SystemExit:
             raise
         except BaseException:
-            # A crash has to *be* a crash to the supervisor, and it has
-            # to be legible in the file afterwards.
             import traceback
 
             traceback.print_exc()
@@ -603,7 +530,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _render(data: dict) -> str:
-    """One screen of prose, not a table — this is read at a glance."""
     lines = []
     phase = data.get("phase", "unknown")
     job = data.get("job")
@@ -629,8 +555,6 @@ def _render(data: dict) -> str:
     )
     limits = data.get("limits") or {}
     for hold in limits.get("holds", []):
-        # A rate-limit hold is the difference between "wedged" and
-        # "waiting", and it is exactly what a person checks status for.
         lines.append(
             f"limited  {hold['provider']} held {hold['seconds']:.0f}s more"
         )
@@ -644,10 +568,6 @@ def _render(data: dict) -> str:
     up = data.get("uptime_seconds", 0)
     compute = data.get("compute_version")
     compute_note = f" (compute {compute})" if compute else ""
-    # Whose answer this is (task 000462). An orphan answers `status` as
-    # readily as the live runner, with its own stale version, and the
-    # service manager cannot reach it — so say so on the line a reader
-    # takes the version from.
     if data.get("orphaned"):
         whose = " ORPHAN — supervisor gone; `restart --force` to replace it"
     elif data.get("supervised"):
@@ -662,7 +582,6 @@ def _render(data: dict) -> str:
 
 
 def _watch() -> int:
-    """Follow the event stream. The runner pushes; this never polls."""
     import json
     import socket as _socket
 

@@ -1,4 +1,3 @@
-"""Detecting how the runner was installed (task 000296)."""
 from __future__ import annotations
 
 from mechbench_runner import install as m
@@ -6,13 +5,9 @@ from mechbench_runner import install as m
 
 class TestDetect:
     def test_uv_tool(self, monkeypatch):
-        # The host's PATH is not part of the contract: the first CI run
-        # (a VM with no uv installed) failed exactly here.
         monkeypatch.setattr(m, "find_executable", lambda name: f"/stub/{name}")
         i = m.detect("/Users/x/.local/share/uv/tools/mechbench")
         assert i.method == "uv-tool"
-        # `--reinstall` leaves satisfied dependencies alone -- observed
-        # 2026-08-23 with compute stuck a version behind a moved floor.
         assert i.upgrade[-2:] == ["upgrade", "mechbench"]
 
     def test_pipx(self):
@@ -22,12 +17,9 @@ class TestDetect:
         i = m.detect("/opt/somewhere/odd")
         assert i.method == "unknown"
         assert i.upgradable is False
-        # Refusing has to say what to do instead.
         assert "installed" in i.advice
 
     def test_a_checkout_is_never_upgraded(self):
-        # Asked of the running module, because a stale egg-info in a
-        # tree shadows the real dist-info and hides direct_url.json.
         assert m.detect().method == "source"
         assert m.detect().upgradable is False
 
@@ -64,14 +56,6 @@ class TestRunUpgrade:
 
 
 class TestFindingInstallers:
-    """A service does not inherit a login shell's PATH.
-
-    A LaunchAgent runs with PATH=/usr/bin:/bin:/usr/sbin:/sbin — no
-    Homebrew, no ~/.local/bin. The first real self-update died on
-    FileNotFoundError for `uv` while the identical command worked by
-    hand, which is the whole reason this does not trust `which`.
-    """
-
     def test_path_is_tried_first(self, monkeypatch):
         monkeypatch.setattr(m.shutil, "which", lambda n: "/from/path/" + n)
         assert m.find_executable("uv") == "/from/path/uv"
@@ -99,15 +83,6 @@ class TestFindingInstallers:
 
 
 class TestSuccessIsMeasuredNotAssumed:
-    """Exit 0 does not mean anything moved.
-
-    `uv tool upgrade` on a tool installed with an exact pin prints
-    "Nothing to upgrade" and exits 0; pip does the same when the
-    requirement is already satisfied. Trusting the return code would
-    report a successful update that never happened — and then the verify
-    step would pass, because the old version does still work.
-    """
-
     def _proc(self, monkeypatch, code=0):
         import subprocess
 
@@ -130,13 +105,6 @@ class TestSuccessIsMeasuredNotAssumed:
         assert ok is True
 
     def test_no_target_reinstalls_the_whole_env(self, monkeypatch):
-        # Targeted self-updates pin the tool at an exact version, and
-        # `uv tool upgrade` honors that pin by refusing to move ANYTHING
-        # — including a dependency fix the machine actually needs. A
-        # no-target update therefore upgrades the whole env: --upgrade moves
-        # deps (--reinstall would rebuild them at current versions), and
-        # installing unpinned clears the pin (task 000312 follow-up: "already on 0.5.3;
-        # nothing to do" while compute sat one fix behind).
         seen: list[list[str]] = []
         import subprocess
 
@@ -160,8 +128,5 @@ class TestSuccessIsMeasuredNotAssumed:
         )
         monkeypatch.setattr(m, "installed_versions", lambda: {m.DIST: "0.2.1"})
         m.run_upgrade(m.Installation("uv-tool", ["/bin/uv", "tool", "upgrade", m.DIST], "x"), "0.2.1")
-        # `upgrade` honours the pin a tool was installed with and refuses
-        # to move; naming the version is what actually changes it, and is
-        # what a rollback needs.
         assert seen[0] == ["/bin/uv", "tool", "install", "--reinstall",
                            f"{m.DIST}==0.2.1"]

@@ -1,19 +1,3 @@
-"""The three bench verbs — `run`, `watch`, `result` (task 000448).
-
-Every `mechbench` verb until now served the machine (`login`, `status`,
-`pause`, the runner loop). None served the person using the bench, so
-experiments 023 and 024 each rewrote the same three by hand — a
-`launch.py` that records the job id, a `watch.py` that prints only on
-change, and a reader that unwraps the API envelope.
-
-The launch/watch/find/read plumbing itself now lives ONCE, in
-`mechbench_compute.bench` (task 000450) — the same library an experiment
-script imports. These verbs are thin wrappers over it: they parse the
-command line, render (the job-id line, the change-only progress, the
-metric table), and keep the local run history. The transport, the
-envelope-stripping and the find-run-by-binding are the library's, not a
-second copy here.
-"""
 from __future__ import annotations
 
 import json
@@ -29,30 +13,16 @@ from .endings import ended_notes
 
 TERMINAL = ("done", "done_with_missing", "failed", "cancelled", "interrupted")
 
-#: The terminal statuses that mean the work landed. `done_with_missing`
-#: (000515) is a result worth reading — part of the graph did not run,
-#: which `watch` says out loud rather than treating as a failure.
 FINISHED = ("done", "done_with_missing")
 
-#: Every run's job id, appended the moment the API answers. A job id
-#: held only in a terminal scrollback is a job id lost — and `run`
-#: writes here before it does anything else, `--wait` included.
 HISTORY = pathlib.Path.home() / ".mechbench" / "runs.jsonl"
 
 
 def _connect(config: Config) -> None:
-    """Point the bench library at this machine's credentials — the host
-    embedding hook (mechbench_compute.bench.configure). The runner
-    resolved its key from `~/.mechbench/config.toml` or the environment;
-    the library would find the same file on its own, but handing it the
-    already-resolved pair keeps one source of truth."""
     bench.configure(api_url=config.api_base_url, api_key=config.require_api_key())
 
 
 def _binds(pairs: list[str] | None) -> dict[str, Any]:
-    """`name=value` pairs. A value that starts with `{` or `[` is JSON —
-    a model-ref binding is an object, not a string, which 024's launcher
-    learned the hard way."""
     out: dict[str, Any] = {}
     for p in pairs or []:
         if "=" not in p:
@@ -76,12 +46,10 @@ def _remember(entry: dict[str, Any]) -> None:
         with HISTORY.open("a") as f:
             f.write(json.dumps(entry) + "\n")
     except OSError:
-        pass  # a logging failure must never lose the run — the id still prints
+        pass
 
 
 def _params(pairs: list[str] | None) -> dict[str, Any]:
-    """`--param n=12`: a value that parses as JSON is that value, any
-    other is text — so `n=12` is a number and `label=draws` a string."""
     out: dict[str, Any] = {}
     for p in pairs or []:
         name, _, value = p.partition("=")
@@ -108,13 +76,6 @@ def run(config: Config, protocol: str, binds: list[str] | None,
         budget: float | None, wait: bool, *,
         params: list[str] | None = None, inputs: list[str] | None = None,
         keep: str | None = None, label: str | None = None) -> int:
-    """Bind a protocol, queue its job, print the job id, record it. With
-    `--wait`, then watch to a terminal state and exit on the result.
-
-    `--param` and `--input` bind by the names the protocol declares, and
-    `--label` says what the run is for, so `mechbench runs --label` finds
-    it again. `--bind`, the legacy binding, is refused: the server no
-    longer reads it."""
     if binds:
         print("run: --bind is the legacy binding, which is no longer read; "
               "bind a param with --param NAME=VALUE and an input with "
@@ -131,7 +92,6 @@ def run(config: Config, protocol: str, binds: list[str] | None,
     except bench.BenchError as e:
         print(f"run failed: {e}", file=sys.stderr)
         return 1
-    # One shape (task 000451): the bare run, with `jobId` on it.
     run_id = out.get("id")
     job = out.get("jobId")
     if not job:
@@ -143,7 +103,7 @@ def run(config: Config, protocol: str, binds: list[str] | None,
                **({"keep": keep} if keep else {}),
                **({"label": label} if label else {}),
                "run": run_id, "job": job})
-    print(job, flush=True)  # first line is the job id, for JOB=$(mechbench run …)
+    print(job, flush=True)
     detail = f"  run {run_id} · {protocol}" + (f" · {label}" if label else "")
     if budget is not None:
         detail += f" · cap ${budget}"
@@ -154,12 +114,6 @@ def run(config: Config, protocol: str, binds: list[str] | None,
 
 
 def cancel(config: Config, jobs: list[str], reason: str = "") -> int:
-    """Withdraw work nobody is running (tasks 000463, 000511). Takes
-    several ids, because draining a queue is the reason this exists;
-    reports each one and exits non-zero if any could not be cancelled.
-
-    A job a runner is executing is refused: interrupt it first
-    (`mechbench restart --force` on that machine), then cancel it."""
     _connect(config)
     failed = 0
     for job in jobs:
@@ -188,17 +142,10 @@ def _line(j: dict[str, Any]) -> str:
 
 
 def watch(config: Config, jobs: list[str], interval: float = 4.0) -> int:
-    """Poll jobs to a terminal state, printing each change the library
-    hands up — it yields only when something CHANGES, so a long local run
-    does not bury the interesting moment under identical lines — and
-    printing failures loudly: a watcher that reports only success is
-    indistinguishable from one that has stopped watching. Non-zero exit if
-    any job did not finish — `done_with_missing` counts as finished
-    (000515), and each absent node is named."""
     _connect(config)
     failed: list[str] = []
     for jid, j in bench.watch(jobs, interval=interval):
-        if j.get("status") is None:  # a transient fetch error, retried next round
+        if j.get("status") is None:
             print(f"{time.strftime('%H:%M:%S')} {jid[:14]} "
                   f"(fetch error: {j.get('error')})", flush=True)
             continue
@@ -209,8 +156,6 @@ def watch(config: Config, jobs: list[str], interval: float = 4.0) -> int:
             err = str(j.get("errorMessage") or j.get("error") or "")[:500]
             print(f"  !! {jid} {str(status).upper()}: {err}", flush=True)
         elif status == "done_with_missing":
-            # Not a failure, and not silent either: the result is real
-            # and something in it is absent (000515).
             for node, why in (j.get("missingNodes") or {}).items():
                 reason = str((why or {}).get("reason", ""))[:200] if isinstance(
                     why, dict) else str(why)[:200]
@@ -219,7 +164,6 @@ def watch(config: Config, jobs: list[str], interval: float = 4.0) -> int:
 
 
 def _as_table(payload: Any) -> str | None:
-    """A metric table renders as a table; everything else does not."""
     if not (isinstance(payload, dict)
             and payload.get("kind") in ("records/table", "metric_table")):
         return None
@@ -250,13 +194,7 @@ def _cell(v: Any) -> str:
 
 def _resolve(spec: str, protocol: str | None,
              binds: list[str] | None) -> tuple[str | dict, str] | int:
-    """`(source, node)` for a `result` request, where `source` is a job id
-    or a run row carrying its result path. From a `<job>/<node>` spec, or
-    from `--protocol <ref> --bind k=v <node>`, which finds the run by what
-    it RAN (task 000449) so no job-id sidecar is needed."""
     if protocol is not None:
-        # bench.results_for filters on the server, newest first; take the
-        # newest that actually has a finished job with a result.
         runs = bench.results_for(protocol, **_binds(binds))
         done = [r for r in runs if r.get("resultPath")]
         if not done:
@@ -273,10 +211,6 @@ def _resolve(spec: str, protocol: str | None,
 
 def result(config: Config, spec: str, fmt: str, out_path: str | None,
            protocol: str | None = None, binds: list[str] | None = None) -> int:
-    """Read one node's output — `<job>/<node>`, or `--protocol <ref>
-    --bind k=v <node>` to find it by what it ran. Prints a table for a
-    metric table and JSON for anything else (the library returns the
-    payload, no envelope), or writes the JSON to `-o file`."""
     _connect(config)
     resolved = _resolve(spec, protocol, binds)
     if isinstance(resolved, int):
@@ -289,7 +223,6 @@ def result(config: Config, spec: str, fmt: str, out_path: str | None,
         return 1
 
     code = _print_result(payload, fmt, out_path)
-    # Last, on stderr, where the eye lands after the output scrolls by.
     for note in ended_notes(payload, node):
         print(f"!! {note}", file=sys.stderr)
     return code
@@ -311,12 +244,7 @@ def _print_result(payload: Any, fmt: str, out_path: str | None) -> int:
     return 0
 
 
-# --- publishing, copying, deleting, histories (epic 000535, task 000542) ------
-
-
 def protocol_publish(config: Config, protocol: str, version: int | None) -> int:
-    """Publish a version — the head unless one is named — and print where
-    the public reads it. An article embeds exactly this version."""
     _connect(config)
     try:
         n = (version if version is not None
@@ -327,8 +255,6 @@ def protocol_publish(config: Config, protocol: str, version: int | None) -> int:
         return 1
     print(f"{protocol} v{n} published")
     if out.get("publicPath"):
-        # The site is the API's host without `api.` (mechbench.ai); any
-        # other API (a local one) gets the path alone.
         site = config.api_base_url.replace("://api.", "://", 1)
         print(f"  {site if site != config.api_base_url else ''}{out['publicPath']}")
     for inc in out.get("unpublishedIncludes") or []:
@@ -351,8 +277,6 @@ def protocol_unpublish(config: Config, protocol: str, version: int) -> int:
 
 def protocol_copy(config: Config, source: str, into: str, name: str | None,
                   org: bool, dry_run: bool) -> int:
-    """`<protocol>@<version> --into owner/project`: a new protocol there,
-    its sub-protocols copied (or reused) with it."""
     pid, sep, ver = source.partition("@")
     owner, slash, project = into.partition("/")
     if not sep or not ver.isdigit() or not slash or not owner or not project:
@@ -399,10 +323,6 @@ def _counts(counts: dict[str, Any]) -> str:
 
 def delete(config: Config, target: str, prefix: bool, yes: bool,
            acknowledge: bool) -> int:
-    """Say what deleting `target` would do; with `--yes`, do it. A path is an
-    object (everything under it with `--prefix`); a `prt_`, `j_`, `art_`,
-    `ds_` or `proj_` id is that thing. Exit 0 when it is (or was) deleted,
-    or could be now; 1 when something refuses it."""
     _connect(config)
     try:
         plan = bench.delete(target, prefix=prefix, dry_run=True)
@@ -441,7 +361,6 @@ def delete(config: Config, target: str, prefix: bool, yes: bool,
 
 
 def history(config: Config, kind: str, entity_id: str) -> int:
-    """A lifetime's audit log, readable after the thing is gone."""
     _connect(config)
     try:
         out = bench.history(kind, entity_id)
@@ -463,9 +382,6 @@ def history(config: Config, kind: str, entity_id: str) -> int:
     return 0
 
 
-# --- protocols as files, runs by label (epic 000654) -------------------------
-
-
 def _findings(body: Any) -> None:
     found = body.get("findings") if isinstance(body, dict) else None
     for f in found or []:
@@ -475,10 +391,6 @@ def _findings(body: Any) -> None:
 
 
 def protocol_push(config: Config, file: str, into: str, org: bool) -> int:
-    """Push a protocol file into `owner/project`: created, a new version,
-    a new description, or unchanged, as the server finds it by name. A
-    legacy-form or miswired file is refused with its findings, and exits
-    1 with nothing stored."""
     _connect(config)
     try:
         out = bench.push_protocol(file, into, owner_kind="org" if org else "user")
@@ -500,8 +412,6 @@ def protocol_push(config: Config, file: str, into: str, org: bool) -> int:
 
 def protocol_export(config: Config, protocol: str, version: int | None,
                     out_path: str | None) -> int:
-    """Write a protocol version (the head by default) as its canonical
-    file: to `-o FILE`, or to stdout."""
     _connect(config)
     try:
         out = bench.export_protocol(protocol, version=version, path=out_path)
@@ -523,8 +433,6 @@ def _money(v: Any) -> str:
 def runs(config: Config, *, label: str | None, label_contains: str | None,
          protocol: str | None, project: str | None, owner: str | None,
          limit: int | None, as_json: bool) -> int:
-    """Runs newest first, one line each: job, status, protocol and
-    version, compute version, spend, label. `--json` prints the rows."""
     _connect(config)
     try:
         rows = bench.runs(label=label, label_contains=label_contains,
@@ -554,8 +462,6 @@ def runs(config: Config, *, label: str | None, label_contains: str | None,
 
 
 def label_run(config: Config, run: str, text: str | None) -> int:
-    """Relabel a run (its id or its job's), or clear it: the change is
-    kept in the job's history."""
     _connect(config)
     try:
         out = bench.label_run(run, text)

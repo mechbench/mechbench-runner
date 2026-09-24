@@ -1,15 +1,3 @@
-"""The result spool (epic 000320, task 000323 first half).
-
-On 2026-09-07 a runner finished a job the server had already reaped,
-was refused on upload (409), printed "failed to report failure" and
-moved on — a complete, hash-verified result discarded. Three
-behaviours make that impossible: the result is written to disk BEFORE
-the upload is attempted; a refused or failed upload keeps the spool
-and never fails the job; reconciliation delivers spooled results to
-jobs that will still take them (interrupted, or our own orphans, which
-are interrupted first) and clears those that ended otherwise.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -28,7 +16,7 @@ class RecordingApi:
         self.interrupted: list[str] = []
         self.failed: list[str] = []
         self.progress: list[dict] = []
-        self.refuse: set[str] = set()  # job ids whose completion 409s
+        self.refuse: set[str] = set()
 
     def list_jobs(self):
         return list(self.jobs.values())
@@ -118,7 +106,7 @@ class TestDeliver:
         api = RecordingApi([{"id": "j_1", "status": "failed"}])
         api.refuse.add("j_1")
         jr._spool_result("j_1", b"\xa0", "00")
-        runner._deliver(api, "j_1", b"\xa0", "00")  # must not raise
+        runner._deliver(api, "j_1", b"\xa0", "00")
         assert api.completed == [] and api.failed == []
         assert _spooled("j_1")
 
@@ -131,7 +119,7 @@ class TestFlushAtReconciliation:
         jr._spool_result("j_1", b"\xa0", "00")
         runner._flush_spool(api)
         assert api.completed == [("j_1", b"\xa0", "sha256:00")]
-        assert api.interrupted == []  # already interrupted; no extra call
+        assert api.interrupted == []
         assert not _spooled("j_1")
 
     def test_our_own_running_orphan_is_interrupted_then_completed(self, monkeypatch):
@@ -178,12 +166,10 @@ class TestFlushAtReconciliation:
                              "claimedByRunnerId": "r_mine"}])
         api.refuse.add("j_1")
         jr._spool_result("j_1", b"\xa0", "00")
-        runner._flush_spool(api)  # must not raise
+        runner._flush_spool(api)
         assert _spooled("j_1")
 
     def test_a_cancelled_job_clears_its_stale_result(self, monkeypatch):
-        # Task 000511: cancel now reaches an interrupted job, so a spool
-        # can outlive the job its owner withdrew. Nothing to deliver.
         runner = _runner(monkeypatch)
         api = RecordingApi([{"id": "j_gone", "status": "cancelled",
                              "claimedByRunnerId": "r_mine"}])
@@ -195,9 +181,6 @@ class TestFlushAtReconciliation:
     def test_a_standing_refusal_disowns_the_result_instead_of_looping(
         self, monkeypatch
     ):
-        # The five-minute loop of 000511: a claim the server will not
-        # honour was retried on every pass, forever. Said once now — and
-        # the bytes are kept, because somebody computed them.
         runner = _runner(monkeypatch)
         api = RecordingApi([{"id": "j_1", "status": "interrupted",
                              "claimedByRunnerId": "r_mine"}])
@@ -214,7 +197,6 @@ class TestFlushAtReconciliation:
         assert kept.read_bytes() == b"\xa0"
         assert "another key holds the claim" in (
             spool_dir() / "j_1" / "disowned.txt").read_text()
-        # …and the next pass has nothing to offer.
         runner._flush_spool(api)
         assert api.completed == []
 
@@ -233,21 +215,19 @@ class TestFlushAtReconciliation:
         monkeypatch.setattr(api, "complete_job_cbor", flaky)
         jr._spool_result("j_1", b"\xa0", "00")
         runner._flush_spool(api)
-        assert _spooled("j_1")  # kept for the next pass
+        assert _spooled("j_1")
         runner._flush_spool(api)
         assert [c[0] for c in api.completed] == ["j_1"]
         assert not _spooled("j_1")
 
     def test_reconciliation_flushes_before_it_reports_orphans(self, monkeypatch):
-        # The spooled orphan is delivered (interrupted + completed) and is
-        # therefore NOT reported as an orphan by the pass that follows.
         runner = _runner(monkeypatch)
         api = RecordingApi([{"id": "j_1", "status": "running",
                              "claimedByRunnerId": "r_mine",
                              "updatedAt": "2026-09-07T00:00:00.000Z"}])
         jr._spool_result("j_1", b"\xa0", "00")
         runner._reconcile_jobs(api)
-        assert api.interrupted == ["j_1"]  # once, by the flush
+        assert api.interrupted == ["j_1"]
         assert [c[0] for c in api.completed] == ["j_1"]
 
 
@@ -267,7 +247,7 @@ class TestHandleWithASpooledResult:
             "resumeCount": 1,
             "spec": {"prompt": "hi", "modelId": "org/m@r"},
         })
-        assert ran == []  # nothing recomputed
+        assert ran == []
         assert [c[0] for c in api.completed] == ["j_1"]
         assert api.progress and api.progress[0]["status"] == "running"
         assert api.progress[0]["resumed_from"]["reused"] == 1
@@ -289,7 +269,6 @@ class TestHandleWithASpooledResult:
         })
         assert [c[0] for c in api.completed] == ["j_2"]
         assert not _spooled("j_2")
-        # a fresh (non-resumed) run reports no resumedFrom
         assert all(p["resumed_from"] is None for p in api.progress)
 
     def test_a_resumed_run_from_scratch_says_reused_zero(self, monkeypatch):

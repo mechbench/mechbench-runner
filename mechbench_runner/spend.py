@@ -1,26 +1,3 @@
-"""What a job spends with external providers (task 000338, epic 000334).
-
-Two objects, both owned by the runner because the runner is what
-survives a job:
-
-`SpendLedger` wraps the compute `Budget` the executor chains every
-remote node under. The cap comes from the run (`spec.budgetUsd`);
-without one the ledger still counts, because the number belongs on the
-job board either way. Spend rides along with progress reports — the
-running TOTAL, never a delta, so a dropped report costs nothing.
-
-`SharedLimiter` is the machine's rate limiter: one set of buckets per
-(provider, model, key scope) shared by every node and job here, since a
-conversation with three remote participants on one key drains one
-account. It persists to `~/.mechbench/limits.json`, so a restart does
-not forget that the account was throttled ten seconds ago.
-
-Neither ever holds a credential. The limiter's scope key is a
-credential FINGERPRINT — `providers.limiter.scope_for`, a short hash —
-so two keys for one provider get different buckets without this file
-ever containing a secret.
-"""
-
 from __future__ import annotations
 
 import json
@@ -33,14 +10,9 @@ from typing import Any
 
 
 class SpendLedger:
-    """The job's running total against its cap."""
-
     def __init__(self, cap_usd: float | None = None) -> None:
         from mechbench_compute.providers import Budget
 
-        # No declared cap is not "no limit" in spirit — every remote
-        # node still carries its own — so the job budget is unbounded
-        # only in the sense that the nodes are what bind it.
         self.cap_usd = float(cap_usd) if cap_usd else None
         self.budget = Budget(cap_usd=self.cap_usd if self.cap_usd else float("inf"))
         self._reported = -1.0
@@ -54,9 +26,6 @@ class SpendLedger:
         return self.budget.calls
 
     def changed(self, *, epsilon: float = 1e-6) -> bool:
-        """Has spend moved enough to be worth another report? A job
-        that has bought nothing reports nothing — most jobs are local,
-        and a stream of `spentUsd: 0` would be noise."""
         return self.spent_usd > 0 and self.spent_usd > self._reported + epsilon
 
     def mark_reported(self) -> None:
@@ -75,15 +44,6 @@ class SpendLedger:
 
 
 class SharedLimiter:
-    """The machine's rate limiter, persisted across restarts.
-
-    Wraps compute's `TokenBucketLimiter` (the bucket math and the
-    header learning live there, task 000344) and adds two things a
-    long-lived process needs: one instance for every job in this
-    process, and state that survives a restart — a runner that
-    restarts into a 429 window must not walk straight back into it.
-    """
-
     def __init__(self, path: Path | None = None, *, save_every: float = 5.0) -> None:
         from mechbench_compute.providers.registry import TokenBucketLimiter
 
@@ -93,8 +53,6 @@ class SharedLimiter:
         self._save_every = save_every
         self._last_save = 0.0
         self.load()
-
-    # --- the Limiter interface (delegated, then persisted) -----------------
 
     def acquire(self, provider: str, model: str, scope: str, currency: str,
                 amount: float) -> float:
@@ -110,17 +68,13 @@ class SharedLimiter:
     def penalize(self, provider: str, model: str, scope: str,
                  retry_after: float) -> None:
         self._inner.penalize(provider, model, scope, retry_after)
-        # A hold is exactly the state worth surviving a restart.
         self.save()
 
     def release(self, provider: str, model: str, scope: str, currency: str,
                 amount: float) -> None:
         self._inner.release(provider, model, scope, currency, amount)
 
-    # --- what `mechbench status` shows -------------------------------------
-
     def snapshot(self) -> dict[str, Any]:
-        """Buckets and holds, as numbers a person can read."""
         with self._lock:
             now = time.monotonic()
             buckets = []
@@ -139,8 +93,6 @@ class SharedLimiter:
             ]
             return {"buckets": buckets, "holds": holds,
                     "waited_seconds": round(self._inner.waited_seconds, 2)}
-
-    # --- persistence ---------------------------------------------------------
 
     def _maybe_save(self) -> None:
         now = time.monotonic()
@@ -161,9 +113,6 @@ class SharedLimiter:
                      "capacity": b.capacity, "per_second": b.per_second}
                     for key, b in self._inner._buckets.items()
                 ],
-                # Holds are stored as WALL-clock deadlines: monotonic
-                # time restarts with the process, and "held for another
-                # nine seconds" has to mean nine more seconds.
                 "holds": [
                     {"key": list(key), "until": wall + (until - now)}
                     for key, until in self._inner._holds.items() if until > now
@@ -178,8 +127,6 @@ class SharedLimiter:
                     json.dump(state, fh)
                 os.replace(tmp, self.path)
             except OSError:
-                # Persistence is an optimization; losing it costs one
-                # window of over-eagerness, never the job.
                 pass
 
     def load(self) -> None:

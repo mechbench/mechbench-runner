@@ -1,8 +1,3 @@
-"""A result whose generated items did not all end naturally says so,
-in words, wherever it is read: `mechbench result`, and the registry's
-`run result` and `object read`, which serve the CLI and MCP alike. A
-header without `ended` says nothing."""
-
 from __future__ import annotations
 
 import json
@@ -33,9 +28,9 @@ def test_every_unnatural_ending_is_named():
 
 
 @pytest.mark.parametrize("payload", [
-    {"ended": {**ZERO, "end": 5, "stop": 2}},        # all natural
-    {"kind": "collection", "items": []},             # stored before the count
-    {"kind": "metric_table", "rows": []},            # not a generation
+    {"ended": {**ZERO, "end": 5, "stop": 2}},
+    {"kind": "collection", "items": []},
+    {"kind": "metric_table", "rows": []},
     None,
 ])
 def test_nothing_to_say_says_nothing(payload):
@@ -62,7 +57,7 @@ class TestTheCommand:
         patched(CUT)
         assert b.result(object(), "j/stories", "auto", None) == 0
         out = capsys.readouterr()
-        assert json.loads(out.out) == CUT            # stdout stays parseable
+        assert json.loads(out.out) == CUT
         assert "!! stories: of 100 items, 79 cut off at max_tokens" in out.err
 
     def test_it_is_said_when_the_output_goes_to_a_file(self, patched, capsys, tmp_path):

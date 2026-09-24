@@ -1,37 +1,3 @@
-"""The runner's local control surface (task 000283).
-
-A running runner can otherwise be asked nothing: whether it is polling or
-wedged, what it is executing, how far in. This serves that over a Unix domain
-socket at `~/.mechbench/runner.sock`, speaking newline-delimited JSON, and it
-is the one contract both `mechbench status` and mechbench-app-mac are
-built on.
-
-Why a socket rather than a file the runner writes and readers poll: a file
-cannot carry commands, cannot push, and leaves every consumer to invent its
-own staleness rule. A held-open connection lets the runner announce a state
-change rather than have it discovered a poll later.
-
-Why a Unix socket rather than HTTP on loopback: no port to collide with, be
-firewalled, or be reachable by anything else on the machine, and the socket's
-own file permissions are the authentication — there is no token to mint,
-store, or leak.
-
-    request   {"v": 1, "op": "status"}
-    response  {"v": 1, "ok": true, "data": {...}}
-    error     {"v": 1, "ok": false, "error": {"code": ..., "message": ...}}
-    event     {"v": 1, "event": "job.claimed", "data": {...}}
-
-Every message carries `v`. The app and the runner are updated separately and
-will disagree in the field; a version both sides check turns that into a
-sentence rather than a mystery.
-
-THREADING. The job loop is synchronous and spends minutes inside model loads
-and forward passes, so the server runs its own asyncio loop on a daemon
-thread. `RunnerState` is the boundary: the job loop mutates it under a lock,
-the server reads snapshots, and events cross to the loop via
-`call_soon_threadsafe`.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -51,15 +17,11 @@ from .paths import mechbench_dir
 PROTOCOL_VERSION = 1
 SOCKET_NAME = "runner.sock"
 
-# A client that asks for nothing and holds the connection open forever is a
-# leak; a subscriber that stops reading must not grow the runner's memory
-# without bound. Both are bounded here rather than trusted.
 MAX_LINE_BYTES = 64 * 1024
 EVENT_QUEUE_LIMIT = 256
 
 
 def control_dir() -> Path:
-    """`~/.mechbench`, created 0700 — the socket's permissions are the auth."""
     return mechbench_dir()
 
 
@@ -67,24 +29,15 @@ def socket_path() -> Path:
     return control_dir() / SOCKET_NAME
 
 
-# --- state -------------------------------------------------------------------
-
-
 @dataclass
 class JobView:
-    """What is being executed, as the control surface describes it."""
-
     id: str
     protocol_kind: str
     model_id: str | None = None
     started_at: float = field(default_factory=time.time)
     done: int = 0
     total: int = 0
-    #: Structured position for pipelines (000316): {index, count, id,
-    #: done, total} — which node, and how far through it.
     node: dict | None = None
-    #: What this job has spent with external providers, and its cap
-    #: (task 000338). None until a remote node actually spends.
     spent_usd: float | None = None
     cap_usd: float | None = None
 
@@ -94,15 +47,6 @@ class JobView:
 
 
 class RunnerState:
-    """Everything the control surface can report, guarded by one lock.
-
-    Mutated from the job thread; read from the server thread. Keep the
-    critical sections trivial — no I/O, no model calls — so a `status`
-    request can never be blocked behind real work.
-    """
-
-    #: Set by the job runner to the machine's rate limiter (000338), so
-    #: `status` can show buckets without RunnerState knowing what one is.
     limits_snapshot = None
 
     def __init__(self, *, version: str, api_url: str,
@@ -120,21 +64,11 @@ class RunnerState:
         self._started_at = time.time()
         self._version = version
         self._api_url = api_url
-        # Subscribers live on the server's event loop; the job thread reaches
-        # them only through `call_soon_threadsafe`.
         self._loop: asyncio.AbstractEventLoop | None = None
         self._subscribers: list[asyncio.Queue[dict[str, Any]]] = []
-        # Plain callbacks, for consumers that live on a different loop
-        # than the control socket's — the live channel (000289) runs its
-        # own. Keeping them as calls rather than queues is what stops
-        # RunnerState from having to know about more than one loop.
         self._listeners: list[Callable[[dict[str, Any]], None]] = []
 
-    # -- reads
-
     def snapshot(self) -> dict[str, Any]:
-        # The limiter has its own lock, and a status request must never
-        # wait behind real work — so this happens outside ours.
         limits = None
         if self.limits_snapshot is not None:
             with suppress(Exception):
@@ -153,17 +87,9 @@ class RunnerState:
                 "failed": self._failed,
                 "uptime_seconds": round(time.time() - self._started_at, 3),
                 "runner_version": self._version,
-                # The compute version of the RUNNING process — the one
-                # that matters, and the one that goes stale in an editable
-                # install's dist metadata (task 000452).
                 "compute_version": self._compute_version,
                 "api_url": self._api_url,
                 "pid": os.getpid(),
-                # Whose answer is this? A `status` reply carries no
-                # authority on its own: an ORPHANED runner answers just as
-                # readily, with its own stale version, and reads as the
-                # live one (task 000462). `supervised` false is normal for
-                # a runner started by hand; `orphaned` true never is.
                 "supervised": _supervisor_pid() is not None,
                 "orphaned": _orphaned(),
             }
@@ -173,16 +99,11 @@ class RunnerState:
         with self._lock:
             return self._paused
 
-    # -- mutations, from the job thread
-
     def set_phase(self, phase: str) -> None:
         with self._lock:
             self._phase = phase
 
     def model_downloading(self, model_id: str) -> None:
-        """Weights are being fetched. Distinct from loading: one is minutes of
-        network, the other is seconds of disk, and a watcher should be able to
-        tell a slow download from a wedged runner."""
         with self._lock:
             self._phase = "downloading-model"
         self.emit("model.downloading", {"model_id": model_id})
@@ -221,8 +142,6 @@ class RunnerState:
         self.emit("job.progress", data)
 
     def job_spend(self, spent_usd: float, cap_usd: float | None = None) -> None:
-        """A metered job's running total. Cosmetic like progress, and
-        reported the same way — the authority is the job row."""
         with self._lock:
             if self._job is None:
                 return
@@ -247,41 +166,18 @@ class RunnerState:
         self.emit("job.failed", {"id": job_id, "message": message})
 
     def job_interrupted(self, job_id: str, message: str) -> None:
-        """The job stopped without being wrong (000464): the API was
-        unreachable while storing a result. Deliberately NOT counted in
-        `_failed` — `mechbench status` reporting a failure for a job that
-        is about to resume and finish is a lie the operator then has to
-        un-learn."""
         with self._lock:
             self._job = None
             self._phase = "idle"
         self.emit("job.interrupted", {"id": job_id, "message": message})
 
     def signed_out(self, message: str) -> None:
-        """The API rejected this machine's credential (task 000284).
-
-        Terminal, unlike every other failure in the poll loop: a revoked
-        key does not start working again, and retrying it forever turns
-        "you were signed out" into "the runner seems stuck". Anything
-        watching the socket learns the reason at the same moment.
-        """
         with self._lock:
             self._phase = "signed-out"
             self._job = None
         self.emit("runner.signed_out", {"message": message})
 
     def request_exit(self, code: int, reason: str) -> None:
-        """Ask the poll loop to stop, with a specific exit code.
-
-        The channel runs on its own thread and cannot exit the process
-        itself — a thread that calls sys.exit only ends the thread, and
-        killing the process outright would abandon whatever the job
-        thread is doing. So it asks, and the loop decides when.
-
-        The code is the point: 75 tells the supervisor to bring us
-        straight back (task 000294), which is how an approved update
-        gets a fresh process to install into.
-        """
         with self._lock:
             self._exit_code = code
             self._exit_reason = reason
@@ -295,9 +191,6 @@ class RunnerState:
             return self._exit_code, self._exit_reason
 
     def pause(self) -> None:
-        """Stop claiming new work. Never interrupts a job in flight: a
-        half-executed protocol emits nothing and throws away the minutes
-        already spent loading a model."""
         with self._lock:
             self._paused = True
         self.emit("runner.paused", {})
@@ -306,8 +199,6 @@ class RunnerState:
         with self._lock:
             self._paused = False
         self.emit("runner.resumed", {})
-
-    # -- events
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         with self._lock:
@@ -320,12 +211,6 @@ class RunnerState:
         return q
 
     def add_listener(self, fn: Callable[[dict[str, Any]], None]) -> None:
-        """Call `fn` with every event, from whichever thread emitted it.
-
-        The callback is responsible for its own thread-hopping and must
-        not block: it runs on the job thread, between a model load and
-        the next forward pass.
-        """
         with self._lock:
             self._listeners.append(fn)
 
@@ -340,25 +225,20 @@ class RunnerState:
                 self._subscribers.remove(q)
 
     def emit(self, event: str, data: dict[str, Any]) -> None:
-        """Fan an event out to subscribers. Called from the job thread."""
         with self._lock:
             loop, subs = self._loop, list(self._subscribers)
             listeners = list(self._listeners)
         message = {"v": PROTOCOL_VERSION, "event": event, "data": data}
         if loop is not None and subs:
             for q in subs:
-                with suppress(RuntimeError):  # loop closed during shutdown
+                with suppress(RuntimeError):
                     loop.call_soon_threadsafe(_offer, q, message)
         for fn in listeners:
-            # A broken listener is a broken listener; it does not get to
-            # take down the job that was only reporting its progress.
             with suppress(Exception):
                 fn(message)
 
 
 def _offer(q: asyncio.Queue[dict[str, Any]], message: dict[str, Any]) -> None:
-    """Never block the job thread's loop on a subscriber that stopped reading;
-    drop the oldest event instead, and keep the newest."""
     if q.full():
         with suppress(asyncio.QueueEmpty):
             q.get_nowait()
@@ -366,12 +246,7 @@ def _offer(q: asyncio.Queue[dict[str, Any]], message: dict[str, Any]) -> None:
         q.put_nowait(message)
 
 
-# --- server ------------------------------------------------------------------
-
-
 class ControlServer:
-    """Serves `RunnerState` on the control socket from a daemon thread."""
-
     def __init__(self, state: RunnerState, path: Path | None = None) -> None:
         self._state = state
         self._path = path or socket_path()
@@ -386,10 +261,6 @@ class ControlServer:
         return self._path
 
     def start(self) -> None:
-        # A Unix socket path is capped by the kernel — 104 bytes on macOS —
-        # and the failure from inside asyncio names neither the limit nor the
-        # path. `~/.mechbench/runner.sock` is nowhere near it, but a deep
-        # temporary directory or an unusual home is, so say it plainly.
         encoded = len(str(self._path).encode())
         if encoded > 100:
             raise RuntimeError(
@@ -398,8 +269,6 @@ class ControlServer:
             )
         self._thread = threading.Thread(target=self._run, name="control", daemon=True)
         self._thread.start()
-        # Surface a bind failure to the caller rather than losing it in a
-        # thread: without this, `run` would poll happily with no socket.
         if not self._ready.wait(timeout=5.0):
             if self._error is not None:
                 raise RuntimeError(
@@ -412,12 +281,6 @@ class ControlServer:
             ) from self._error
 
     def stop(self) -> None:
-        """Close the socket and let in-flight handlers finish.
-
-        Stopping the loop out from under a connection leaves a pending task
-        that asyncio complains about at close; a subscriber attached at
-        shutdown would produce that every time.
-        """
         loop = self._loop
         if loop is not None:
             with suppress(RuntimeError):
@@ -450,7 +313,7 @@ class ControlServer:
         try:
             loop.run_until_complete(self._listen())
             loop.run_forever()
-        except BaseException as exc:  # noqa: BLE001 — handed to start()
+        except BaseException as exc:  # noqa: BLE001
             self._error = exc
             self._ready.set()
         finally:
@@ -541,9 +404,6 @@ def _error(code: str, message: str) -> dict[str, Any]:
             "error": {"code": code, "message": message}}
 
 
-# --- client ------------------------------------------------------------------
-
-
 def _supervisor_pid() -> int | None:
     from .supervisor import supervisor_pid
 
@@ -561,11 +421,6 @@ class ControlError(RuntimeError):
 
 
 def request(op: str, *, path: Path | None = None, timeout: float = 5.0) -> dict[str, Any]:
-    """Send one request to a running runner and return its `data`.
-
-    Used by `mechbench status` and friends; the Mac app speaks the same
-    protocol over the same socket.
-    """
     p = path or socket_path()
     if not p.exists():
         raise ControlError(f"no runner is listening at {p} — start one with "
@@ -600,12 +455,6 @@ def request(op: str, *, path: Path | None = None, timeout: float = 5.0) -> dict[
 
 
 def probe(path: Path | None = None) -> dict[str, Any] | None:
-    """Is a runner already listening here?
-
-    Returns its status if one answers, None if nothing does — which also
-    covers the socket file a crashed runner left behind, and is what lets a
-    new runner claim the path instead of refusing to start.
-    """
     p = path or socket_path()
     if not p.exists():
         return None

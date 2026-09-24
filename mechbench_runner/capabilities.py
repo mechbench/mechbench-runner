@@ -1,21 +1,7 @@
-"""What is on one surface and not the others, and why (task 000661).
-
-The nouns' verbs (`verbs/`) are on the command line and MCP alike by
-construction, and each names its API route. Everything else a surface
-has is listed here with its reason, and `tests/test_parity.py` fails on
-a command, a tool or a lifecycle gap that is in neither place.
-
-`table()` renders the matrix `docs/CAPABILITIES.md` carries between its
-markers, and `docs_page()` the docs site's page; `scripts/capabilities.py`
-writes both, and the parity check fails when either is stale.
-"""
-
 from __future__ import annotations
 
 from .verbs import LIFECYCLE, NOUNS
 
-#: Bare commands that are a noun's verb under a shorter name: the
-#: commonest, kept from before the nouns, with the arguments they had.
 ALIASES: dict[str, str] = {
     "run": "run launch (`mechbench run PROTOCOL`); with no PROTOCOL, the runner loop",
     "runs": "run list",
@@ -27,8 +13,6 @@ ALIASES: dict[str, str] = {
     "history": "`<noun> history`, by kind and id",
 }
 
-#: What this machine's runner does for itself: the command line only,
-#: because MCP and the API are the platform's and these are the machine's.
 MACHINE = (
     "this machine's runner, not the platform: an agent reaches the "
     "platform, and the person at the machine runs its service"
@@ -63,7 +47,6 @@ MCP_ONLY: dict[str, str] = {
     ),
 }
 
-#: What the API does that the command line and MCP do not, and why.
 API_ONLY: dict[str, str] = {
     "kinds (`GET/PUT /kinds/:path`)": "registered by compute releases, not by agents",
     "object lineage and inventory (`~lineage`, `~inventory`)": (
@@ -95,12 +78,10 @@ API_ONLY: dict[str, str] = {
 
 
 def surface_names(noun: str, verb: str) -> tuple[str, str]:
-    """`(cli, mcp)`: `mechbench protocol push`, `protocol(verb="push")`."""
     return f"mechbench {noun} {verb}", f'{noun}(verb="{verb}")'
 
 
 def table() -> str:
-    """Every noun's verbs on each surface, and its lifecycle gaps with why."""
     out = ["| Noun | Verb | API | MCP | CLI |", "|---|---|---|---|---|"]
     for n in NOUNS:
         for v in n.verbs:
@@ -116,7 +97,6 @@ def table() -> str:
 
 
 def one_surface() -> str:
-    """The commands, tools and routes on one surface only, with why."""
     lines = ["**Command line only.**", ""]
     by_reason: dict[str, list[str]] = {}
     for k, why in CLI_ONLY.items():
@@ -144,7 +124,6 @@ def generated() -> str:
 
 
 def splice(doc: str) -> str:
-    """`doc` with its generated part replaced by the current one."""
     head, sep, rest = doc.partition(BEGIN)
     if not sep:
         raise ValueError("no verbs:begin marker")
@@ -175,7 +154,6 @@ Every thing an agent works with is a noun, and every noun has the same
 lifecycle: **list** (with `search`, `limit` and `offset`), **read**,
 **create**, **update**, **delete** and **history**, on the API, over MCP
 and on the command line. One verb is designed once and spelled on each:
-
 - **Command line:** `mechbench <noun> <verb>`, the arguments as flags
   (`--label-contains`) or positionals.
 - **MCP:** one tool per noun, `<noun>(verb, args)`, the arguments by the

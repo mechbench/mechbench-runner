@@ -1,5 +1,3 @@
-"""The article noun."""
-
 from __future__ import annotations
 
 import json
@@ -37,8 +35,6 @@ from .core import (
 
 
 def delta_text(text: str) -> str | None:
-    """A body file's text as rich-text JSON (`{"ops": [...]}`), or None
-    when it is not one (markdown)."""
     try:
         doc = json.loads(text)
     except ValueError:
@@ -49,8 +45,6 @@ def delta_text(text: str) -> str | None:
 
 
 def article_body(a: dict) -> str | None:
-    """`body_file` for a create: rich text JSON, or markdown converted by
-    the API on the edit that follows."""
     text = text_of(a, "body_file")
     if text is None:
         return None
@@ -79,8 +73,6 @@ def article_create(ctx: Ctx, a: dict) -> Any:
 
 
 def article_update(ctx: Ctx, a: dict) -> Any:
-    """Settings and whole fields by PATCH. A markdown body is an edit at
-    the version it was read (PUT, task 000529), so it needs base_version."""
     body = given(
         a, "title", "subtitle", "slug", "status", "visibility", "tags", "base_version"
     )

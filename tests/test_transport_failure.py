@@ -1,21 +1,3 @@
-"""A job whose UPLOAD failed is interrupted, not failed (task 000464).
-
-Experiment 014's adapted run died twice at node `gen`, once with 197 of
-200 stories generated and once with 200 of 200:
-
-    PUT https://api.mechbench.ai/objects/.../gen unreachable:
-        The write operation timed out
-
-The payload was 0.9 MB and the API was healthy moments later. The old
-path called `fail_job` and then `_clear_spool`, which is right for a block
-that raised and wrong here: the compute succeeded, so the spooled items
-were the only copy of 35 minutes of generation and they were deleted.
-
-The distinction is drawn by CLASS, not by matching the message:
-`bench.BenchTransportError` is raised only after compute's bounded retry
-has exhausted itself on something that never returned a verdict.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -68,14 +50,12 @@ class TestClassification:
         assert jr.JobRunner._is_transport(BenchTransportError("unreachable"))
 
     def test_an_ordinary_bench_error_is_not(self):
-        """A 400 from the API is the job's own problem."""
         assert not jr.JobRunner._is_transport(BenchError("PUT -> 400: bad path"))
 
     def test_a_block_that_raised_is_not(self):
         assert not jr.JobRunner._is_transport(ValueError("bad layer index"))
 
     def test_it_looks_through_the_cause_chain(self):
-        """The executor wraps a node's exception with the node id."""
         try:
             try:
                 raise BenchTransportError("unreachable: write timed out")
@@ -85,8 +65,6 @@ class TestClassification:
             assert jr.JobRunner._is_transport(outer)
 
     def test_it_looks_through_implicit_context_too(self):
-        """`raise X` inside an `except` block sets __context__, not
-        __cause__, and the executor does not always use `from`."""
         try:
             try:
                 raise BenchTransportError("unreachable")
@@ -124,7 +102,6 @@ class TestReporting:
         assert not _spooled("j_2")
 
     def test_a_4xx_still_fails(self, monkeypatch):
-        """The payload was rejected; resuming would re-send the same bytes."""
         runner = _runner(monkeypatch)
         api = RecordingApi()
         runner._report_error(api, {"id": "j_3"},
@@ -149,7 +126,6 @@ class TestReporting:
         assert "hf_[redacted]" in message and "abcdefgh" not in message
 
     def test_an_unreportable_interrupt_is_not_fatal(self, monkeypatch):
-        """Reconciliation interrupts our own orphan on the next pass."""
         runner = _runner(monkeypatch)
 
         class Refusing(RecordingApi):
@@ -162,15 +138,6 @@ class TestReporting:
         assert _spooled("j_5")
 
 class TestTheResumeBoundIsNotOptional:
-    """Interrupt-and-resume assumes the failure was transient. When it is
-    deterministic — a result the server will not accept — each resume
-    re-runs the whole node to reach the same rejection (000483).
-
-    014 demonstrated it: a 35-minute generation node, an upload the API
-    stalled on every time, and a loop that would have run until the
-    battery died. The retry is only safe because it is bounded.
-    """
-
     def test_the_first_failures_interrupt(self, monkeypatch):
         runner = _runner(monkeypatch)
         api = RecordingApi()
@@ -199,8 +166,6 @@ class TestTheResumeBoundIsNotOptional:
         assert "body limit" in message, "point the reader at the real cause"
 
     def test_the_servers_resume_count_carries_the_bound(self, monkeypatch):
-        """A restart empties the in-process tally; `resumeCount` does not,
-        so the bound survives the runner dying mid-loop."""
         runner = _runner(monkeypatch)
         api = RecordingApi()
         runner._report_error(api, {"id": "j_1", "resumeCount": 9},
