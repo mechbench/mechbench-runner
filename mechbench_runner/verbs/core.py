@@ -4,6 +4,7 @@ beside this one; `__init__` gathers them."""
 
 from __future__ import annotations
 
+import json
 import pathlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -111,6 +112,20 @@ YES = Arg("yes", "Delete, not just say what deleting would do.", type="bool")
 ACK = Arg("acknowledge_citations", "Delete even though articles cite it.", type="bool")
 ORG = Arg("org", "The owner is an org.", type="bool")
 VISIBILITY = Arg("visibility", "Who can read it.", choices=("private", "org", "public"))
+FORMAT = Arg(
+    "format",
+    "Rich text as markdown (MARKDOWN.md's flavor) or as the delta itself.",
+    choices=("markdown", "delta"),
+)
+EDITED = Arg(
+    "file",
+    "What `read --format` gave, edited: a JSON file (its collabEdit is the base).",
+)
+BASE = Arg(
+    "base_version",
+    "The version it was read at (a read's collabEdit), when the file does not say.",
+    type="int",
+)
 
 
 def view(a: Mapping[str, Any]) -> str:
@@ -200,6 +215,46 @@ def text_of(a: Mapping[str, Any], name: str) -> str | None:
     """A `*_file` argument's text, when one was given."""
     f = a.get(name)
     return None if f is None else pathlib.Path(f).read_text()
+
+
+def edit(
+    ctx: Ctx, noun: str, route: str, a: Mapping[str, Any], text_arg: str, field: str
+) -> Any:
+    """An edit of a whole article or protocol at a base version (epic
+    000525, `PUT`): the object a formatted read gave (the `file`), with
+    any field given as an argument in place of the file's, sent back with
+    the version it was read at. The API diffs it against the document at
+    that version, so edits made since are kept, and answers the object as
+    it now stands."""
+    obj: dict[str, Any] = {}
+    base = a.get("base_version")
+    fmt = a.get("format")
+    f = a.get("file")
+    if f is not None:
+        data = json.loads(pathlib.Path(f).read_text())
+        if not isinstance(data, dict):
+            raise VerbError(f"{f} is not an {noun} as a read gives it")
+        inner = data.get(noun, data)
+        obj = dict(inner) if isinstance(inner, dict) else {}
+        if base is None:
+            base = data.get("collabEdit", obj.get("collabEdit", obj.get("baseVersion")))
+        fmt = fmt or data.get("format")
+    fmt = fmt or "markdown"
+    text = text_of(a, text_arg)
+    if text is not None:
+        obj[field] = json.loads(text) if fmt == "delta" else text
+    for name in ("title", "subtitle", "tags", "name"):
+        if a.get(name) is not None:
+            obj[name] = a[name]
+    if base is None:
+        raise VerbError(
+            f"an edit names the version it was read at: `{noun} read --format "
+            f"{fmt}` gives it as collabEdit; pass base_version, or edit that file"
+        )
+    obj.pop("collabEdit", None)
+    obj.pop("format", None)
+    obj["baseVersion"] = int(base)
+    return ctx.api("PUT", route, query={"format": fmt}, body=obj)[0]
 
 
 LIFECYCLE = ("list", "read", "create", "update", "delete", "history")

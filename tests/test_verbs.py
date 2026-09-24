@@ -139,7 +139,7 @@ def sample(noun: str, a: Arg, tmp) -> Any:
         f = tmp / f"{noun}.json"
         f.write_text('{"kind": "note"}')
         return str(f)
-    if a.name == "body_file":
+    if a.name in ("body_file", "description_file"):
         f = tmp / "body.json"
         f.write_text('{"ops": [{"insert": "Words.\\n"}]}')
         return str(f)
@@ -204,6 +204,8 @@ def test_each_verb_makes_the_same_calls_on_both_surfaces(
     args = {a.name: sample(noun, a, tmp_path) for a in v.args if a.type != "json"}
     if (noun, verb) == ("run", "update"):
         args.pop("clear")
+    if (noun, verb) == ("protocol", "read"):
+        args.pop("format")  # a format reads the live protocol, not a version
     tools = build_tools(CFG, executor=object())
     out = tools[noun](verb, args)
     assert not (isinstance(out, dict) and "error" in out), out
@@ -333,11 +335,90 @@ class TestShapes:
         with pytest.raises(ValueError, match="no verb 'frobnicate'"):
             tools["protocol"]("frobnicate", {})
 
-    def test_an_article_body_must_be_rich_text(self, rec, tmp_path, capsys):
+    def test_a_markdown_body_is_an_edit_at_the_version_read(
+        self, rec, tmp_path, capsys
+    ):
         f = tmp_path / "body.md"
         f.write_text("# A heading\n")
         assert cli.main(["article", "update", "art_1", "--body-file", str(f)]) == 2
-        assert "markdown writes are task 000525" in capsys.readouterr().err
+        assert "pass base_version" in capsys.readouterr().err
+        rec.clear()
+        argv = [
+            "article",
+            "update",
+            "art_1",
+            "--body-file",
+            str(f),
+            "--base-version",
+            "4",
+        ]
+        assert cli.main(argv) == 0
+        assert rec[-1][1:] == (
+            "PUT",
+            "/articles/art_1",
+            {"format": "markdown"},
+            {"body": "# A heading\n", "baseVersion": 4},
+        )
+
+    def test_a_formatted_read_edited_goes_back_at_its_version(self, rec, tmp_path):
+        tools = build_tools(CFG, executor=object())
+        tools["article"]("read", {"id": "art_1", "format": "markdown"})
+        assert rec[-1][1:4] == ("GET", "/articles/art_1", {"format": "markdown"})
+        read = {
+            "article": {"id": "art_1", "title": "T", "body": "Words.\n"},
+            "collabEdit": 7,
+            "format": "markdown",
+        }
+        f = tmp_path / "a.json"
+        f.write_text(json.dumps(read))
+        tools["article"]("edit", {"id": "art_1", "file": str(f)})
+        assert rec[-1][1:] == (
+            "PUT",
+            "/articles/art_1",
+            {"format": "markdown"},
+            {"id": "art_1", "title": "T", "body": "Words.\n", "baseVersion": 7},
+        )
+        tools["protocol"]("read", {"id": "prt_1", "format": "markdown"})
+        assert rec[-1][1:4] == ("GET", "/protocols/prt_1", {"format": "markdown"})
+        with pytest.raises(ValueError, match="base_version"):
+            tools["protocol"]("edit", {"id": "prt_1", "name": "n"})
+
+    def test_markdown_refusals_print_where_they_stand(
+        self, rec, monkeypatch, tmp_path, capsys
+    ):
+        def refuse(self, method, route, *, query=None, body=None):
+            raise ApiError(
+                422,
+                {
+                    "code": "MARKDOWN_UNSUPPORTED",
+                    "error": "1 construct rich text cannot hold",
+                    "refusals": [
+                        {
+                            "field": "body",
+                            "line": 12,
+                            "column": 3,
+                            "construct": "html",
+                            "message": "HTML other than an embed tag",
+                        }
+                    ],
+                },
+            )
+
+        monkeypatch.setattr(Ctx, "api", refuse)
+        f = tmp_path / "b.md"
+        f.write_text("x\n")
+        argv = [
+            "article",
+            "edit",
+            "art_1",
+            "--body-file",
+            str(f),
+            "--base-version",
+            "1",
+        ]
+        assert cli.main(argv) == 1
+        err = capsys.readouterr().err
+        assert f"{f}:body:12:3: html — HTML other than an embed tag" in err
 
     def test_run_launches_bare_and_as_a_verb(self, rec, capsys):
         assert cli.main(["run", "prt_1", "--label", "P0"]) == 0

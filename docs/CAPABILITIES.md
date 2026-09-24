@@ -106,11 +106,12 @@ per-tool overhead at the cost of a single description too long to scan.
 | object | **history**(path) | `GET /history/object/~at` | `object(verb="history")` | `mechbench object history` |
 | object | create | — | — | — (write is its create: a path is written, not minted) |
 | protocol | **list**(owner?, project?, search?, limit?, offset?, full?) | `GET /protocols` | `protocol(verb="list")` | `mechbench protocol list` |
-| protocol | **read**(id, version?, full?) | `GET /protocols/:id` | `protocol(verb="read")` | `mechbench protocol read` |
+| protocol | **read**(id, version?, full?, format?) | `GET /protocols/:id` | `protocol(verb="read")` | `mechbench protocol read` |
 | protocol | **versions**(id, limit?, offset?) | `GET /protocols/:id/versions` | `protocol(verb="versions")` | `mechbench protocol versions` |
 | protocol | **push**(file, into, org?) | `POST /protocols/push` | `protocol(verb="push")` | `mechbench protocol push` |
 | protocol | **export**(id, version?, path?) | `GET /protocols/:id/export` | `protocol(verb="export")` | `mechbench protocol export` |
 | protocol | **update**(id, name?, description?, visibility?, project?) | `PATCH /protocols/:id` | `protocol(verb="update")` | `mechbench protocol update` |
+| protocol | **edit**(id, file?, description_file?, name?, base_version?, format?) | `PUT /protocols/:id` | `protocol(verb="edit")` | `mechbench protocol edit` |
 | protocol | **publish**(id, version?) | `POST /protocols/:id/versions/:n/publish` | `protocol(verb="publish")` | `mechbench protocol publish` |
 | protocol | **unpublish**(id, version) | `POST /protocols/:id/versions/:n/unpublish` | `protocol(verb="unpublish")` | `mechbench protocol unpublish` |
 | protocol | **restore**(id, version) | `POST /protocols/:id/versions/:n/restore` | `protocol(verb="restore")` | `mechbench protocol restore` |
@@ -130,9 +131,10 @@ per-tool overhead at the cost of a single description too long to scan.
 | run | **history**(id) | `GET /history/:kind/:id` | `run(verb="history")` | `mechbench run history` |
 | run | create | — | — | — (launch is its create: a run is a protocol launched) |
 | article | **list**(owner?, status?, mine?, search?, limit?, offset?, full?) | `GET /articles` | `article(verb="list")` | `mechbench article list` |
-| article | **read**(id, full?) | `GET /articles/:id` | `article(verb="read")` | `mechbench article read` |
+| article | **read**(id, full?, format?) | `GET /articles/:id` | `article(verb="read")` | `mechbench article read` |
 | article | **create**(slug, title, owner?, org?, subtitle?, body_file?, visibility?, tags?) | `POST /articles` | `article(verb="create")` | `mechbench article create` |
 | article | **update**(id, title?, subtitle?, slug?, status?, visibility?, tags?, body_file?, base_version?) | `PATCH /articles/:id` | `article(verb="update")` | `mechbench article update` |
+| article | **edit**(id, file?, body_file?, title?, subtitle?, tags?, base_version?, format?) | `PUT /articles/:id` | `article(verb="edit")` | `mechbench article edit` |
 | article | **versions**(id) | `GET /articles/:id/versions` | `article(verb="versions")` | `mechbench article versions` |
 | article | **restore**(id, version) | `POST /articles/:id/versions/:n/restore` | `article(verb="restore")` | `mechbench article restore` |
 | article | **delete**(id, yes?) | `DELETE /articles/:id` | `article(verb="delete")` | `mechbench article delete` |
@@ -176,7 +178,7 @@ per-tool overhead at the cost of a single description too long to scan.
 - object lineage and inventory (`~lineage`, `~inventory`): read through `bench.lineage` and the UI; `object list` and `object read` are the agent's discovery.
 - checkpoint files (`PUT /objects/:path` bytes): written and read by the runner's own jobs.
 - a protocol's changelog, dependencies and citations: the composer's publish review; `protocol versions` and `protocol history` are the agent's record.
-- article delta, media, comments: the collaborative editor's; markdown writes for agents are epic 000525.
+- article delta, media, comments: the collaborative editor's; agents edit a whole article with `article edit`, markdown or delta, at the version they read.
 - dataset upload (`POST /datasets`, multipart): `object write` then `dataset create` names the stored object as one.
 - project transfer, members and audit: an owner's administration, in the UI.
 - runners (`GET /runners`, `PATCH`, `DELETE`, commands): the machines page; this machine's own are its command-line-only commands.

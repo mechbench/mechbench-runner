@@ -6,6 +6,9 @@ from typing import Any
 
 from .core import (
     ACK,
+    BASE,
+    EDITED,
+    FORMAT,
     FULL,
     ID,
     LIMIT,
@@ -21,6 +24,7 @@ from .core import (
     Verb,
     VerbError,
     delete,
+    edit,
     given,
     history,
     listing,
@@ -33,11 +37,21 @@ from .core import (
 
 
 def protocol_read(ctx: Ctx, a: dict) -> Any:
+    if a.get("format"):
+        if a.get("version") is not None:
+            raise VerbError("a format reads the live protocol to edit, not a version")
+        return ctx.get(f"/protocols/{a['id']}", format=a["format"])
     if a.get("version") is not None:
         return ctx.get(
             f"/protocols/{a['id']}/versions/{int(a['version'])}", view=view(a)
         )
     return unwrap(ctx.get(f"/protocols/{a['id']}", view=view(a)), "protocol")
+
+
+def protocol_edit(ctx: Ctx, a: dict) -> Any:
+    return edit(
+        ctx, "protocol", f"/protocols/{a['id']}", a, "description_file", "description"
+    )
 
 
 def protocol_update(ctx: Ctx, a: dict) -> Any:
@@ -138,9 +152,11 @@ PROTOCOL = Noun(
         Verb(
             "protocol",
             "read",
-            "Its summary (signature by name, node count); full has the graph.",
+            "Its summary (signature by name, node count); full has the graph; "
+            "a format gives the live protocol with its description as markdown "
+            "or a delta, and the version to edit from.",
             "GET /protocols/:id",
-            (ID, VERSION, FULL),
+            (ID, VERSION, FULL, FORMAT),
             protocol_read,
             "read",
         ),
@@ -194,6 +210,25 @@ PROTOCOL = Noun(
                 Arg("project", "Move it to this project (a slug)."),
             ),
             protocol_update,
+        ),
+        Verb(
+            "protocol",
+            "edit",
+            "Write back a protocol read with a format, edited, at the version "
+            "it was read; a changed graph is sealed as the next version.",
+            "PUT /protocols/:id",
+            (
+                ID,
+                EDITED,
+                Arg(
+                    "description_file",
+                    "Its description from a file, in the edit's format.",
+                ),
+                Arg("name", "Its name."),
+                BASE,
+                FORMAT,
+            ),
+            protocol_edit,
         ),
         Verb(
             "protocol",

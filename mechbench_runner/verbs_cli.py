@@ -296,6 +296,16 @@ def main(config: Config, ns: argparse.Namespace, ctx: Ctx | None = None) -> int:
             f"{body.get('error') or ''}",
             file=sys.stderr,
         )
+        # Markdown the API could not take (epic 000525): each refusal where
+        # it stands, `file:field:line:column: construct — message`, the
+        # shape editors and agents already parse.
+        source = a.get("body_file") or a.get("description_file") or a.get("file") or "-"
+        for r in body.get("refusals") or []:
+            print(
+                f"{source}:{r.get('field')}:{r.get('line')}:{r.get('column')}: "
+                f"{r.get('construct')} — {r.get('message')}",
+                file=sys.stderr,
+            )
         return 1
     if v.shape == "list":
         print_list(v, out, bool(getattr(ns, "as_json", False)))

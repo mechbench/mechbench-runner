@@ -6,6 +6,9 @@ import json
 from typing import Any
 
 from .core import (
+    BASE,
+    EDITED,
+    FORMAT,
     FULL,
     ID,
     LIMIT,
@@ -21,6 +24,7 @@ from .core import (
     Verb,
     VerbError,
     delete,
+    edit,
     given,
     history,
     listing,
@@ -32,20 +36,31 @@ from .core import (
 )
 
 
-def article_body(a: dict) -> str | None:
-    text = text_of(a, "body_file")
-    if text is None:
-        return None
+def delta_text(text: str) -> str | None:
+    """A body file's text as rich-text JSON (`{"ops": [...]}`), or None
+    when it is not one (markdown)."""
     try:
         doc = json.loads(text)
     except ValueError:
-        doc = None
-    if not isinstance(doc, dict) or not isinstance(doc.get("ops"), list):
+        return None
+    if isinstance(doc, dict) and isinstance(doc.get("ops"), list):
+        return json.dumps(doc)
+    return None
+
+
+def article_body(a: dict) -> str | None:
+    """`body_file` for a create: rich text JSON, or markdown converted by
+    the API on the edit that follows."""
+    text = text_of(a, "body_file")
+    if text is None:
+        return None
+    doc = delta_text(text)
+    if doc is None:
         raise VerbError(
-            'body_file is rich text JSON ({"ops": [...]}); markdown writes '
-            "are task 000525"
+            "create takes body_file as rich text JSON; create it, then "
+            "`article edit --body-file` with markdown"
         )
-    return json.dumps(doc)
+    return doc
 
 
 def article_create(ctx: Ctx, a: dict) -> Any:
@@ -64,15 +79,45 @@ def article_create(ctx: Ctx, a: dict) -> Any:
 
 
 def article_update(ctx: Ctx, a: dict) -> Any:
+    """Settings and whole fields by PATCH. A markdown body is an edit at
+    the version it was read (PUT, task 000529), so it needs base_version."""
     body = given(
         a, "title", "subtitle", "slug", "status", "visibility", "tags", "base_version"
     )
-    text = article_body(a)
+    text = text_of(a, "body_file")
+    if text is not None and delta_text(text) is None:
+        if a.get("base_version") is None:
+            raise VerbError(
+                "a markdown body is an edit at the version you read: pass "
+                "base_version (the collabEdit of `article read --format markdown`), "
+                "or use `article edit`"
+            )
+        content = {k: body.pop(k) for k in ("title", "subtitle", "tags") if k in body}
+        base = body.pop("baseVersion")
+        out = ctx.api(
+            "PUT",
+            f"/articles/{a['id']}",
+            query={"format": "markdown"},
+            body={**content, "body": text, "baseVersion": base},
+        )[0]
+        if not body:
+            return out
+        return unwrap(ctx.api("PATCH", f"/articles/{a['id']}", body=body)[0], "article")
     if text is not None:
-        body["body"] = text
+        body["body"] = delta_text(text)
     if not body:
         raise VerbError("update needs something to change")
     return unwrap(ctx.api("PATCH", f"/articles/{a['id']}", body=body)[0], "article")
+
+
+def article_read(ctx: Ctx, a: dict) -> Any:
+    if a.get("format"):
+        return ctx.get(f"/articles/{a['id']}", format=a["format"])
+    return ctx.get(f"/articles/{a['id']}", view=view(a))
+
+
+def article_edit(ctx: Ctx, a: dict) -> Any:
+    return edit(ctx, "article", f"/articles/{a['id']}", a, "body_file", "body")
 
 
 def article_restore(ctx: Ctx, a: dict) -> Any:
@@ -80,7 +125,7 @@ def article_restore(ctx: Ctx, a: dict) -> Any:
     return unwrap(ctx.api("POST", route)[0], "article")
 
 
-BODY = Arg("body_file", "A file of its body, as rich text JSON.")
+BODY = Arg("body_file", "A file of its body: rich text JSON, or markdown.")
 TAGS = Arg("tags", "A tag.", type="strs", flag="--tag")
 
 ARTICLE = Noun(
@@ -122,10 +167,11 @@ ARTICLE = Noun(
         Verb(
             "article",
             "read",
-            "Its summary; full has the body and the live version to edit from.",
+            "Its summary; full has the body; a format gives the body as "
+            "markdown or a delta, with the version to edit from.",
             "GET /articles/:id",
-            (ID, FULL),
-            lambda ctx, a: ctx.get(f"/articles/{a['id']}", view=view(a)),
+            (ID, FULL, FORMAT),
+            article_read,
             "read",
         ),
         Verb(
@@ -168,6 +214,24 @@ ARTICLE = Noun(
                 ),
             ),
             article_update,
+        ),
+        Verb(
+            "article",
+            "edit",
+            "Write back an article read with a format, edited, at the version "
+            "it was read; edits made since are kept.",
+            "PUT /articles/:id",
+            (
+                ID,
+                EDITED,
+                Arg("body_file", "Its body from a file, in the edit's format."),
+                Arg("title", "Its title."),
+                Arg("subtitle", "Its subtitle."),
+                TAGS,
+                BASE,
+                FORMAT,
+            ),
+            article_edit,
         ),
         Verb(
             "article",
