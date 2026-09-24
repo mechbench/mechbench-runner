@@ -3,7 +3,8 @@
 Each verb's arguments become its flags: an argument's name with dashes
 for underscores (`--label-contains`), or a positional where the verb
 declares one. A listing prints one line per item under its columns and
-the next page's offset; `--json` prints `{items, next}`. A read prints
+the next page's offset; `--json` prints `{items, next}`. A collection's
+items print as JSON lines, or a table with `--table`. A read prints
 JSON, the summary unless `--full`. The verbs that had their own command
 before this registry (push, export, publish, unpublish, copy, launch,
 relabel, watch, result, cancel, delete, history) keep the printing they
@@ -77,6 +78,12 @@ def add_nouns(sub: argparse._SubParsersAction) -> None:
                     action="store_true",
                     help="Print {items, next} as JSON.",
                 )
+            if v.shape == "items":
+                vp.add_argument(
+                    "--table",
+                    action="store_true",
+                    help="Print the items as a table, not JSON lines.",
+                )
         p.set_defaults(noun=n.name)
 
 
@@ -148,6 +155,33 @@ def print_list(v: Verb, out: dict[str, Any], as_json: bool) -> None:
         print("  ".join(x.ljust(widths[k]) for k, x in enumerate(r)).rstrip())
     if out.get("next") is not None:
         print(f"(more: --offset {out['next']})", file=sys.stderr)
+
+
+def print_items(out: Any, table: bool) -> None:
+    """A collection's items (000660): one JSON line each, or a table under
+    the fields; how many passed and where the next page starts on stderr,
+    so the lines alone can be piped. A count or header prints as JSON."""
+    if not isinstance(out, dict) or "items" not in out:
+        print(json.dumps(out, indent=1, default=str))
+        return
+    items = out.get("items") or []
+    if table:
+        cols: list[str] = []
+        for i in items:
+            cols += [k for k in i if k not in cols]
+        rows = [[cell(i.get(c)).replace("\n", " ") for c in cols] for i in items]
+        widths = [max([len(c)] + [len(r[k]) for r in rows]) for k, c in enumerate(cols)]
+        for r in [cols, *rows] if rows else []:
+            print("  ".join(x.ljust(widths[k]) for k, x in enumerate(r)).rstrip())
+    else:
+        for i in items:
+            print(json.dumps(i, ensure_ascii=False, separators=(",", ":"), default=str))
+    offset = int(out.get("offset") or 0)
+    matched = out.get("matched", out.get("total"))
+    note = f"({len(items)} of {matched} matched, {out.get('total')} in all"
+    if matched is not None and offset + len(items) < matched:
+        note += f"; more: --offset {offset + len(items)}"
+    print(note + ")", file=sys.stderr)
 
 
 def resolve(ctx: Ctx, n: Noun, target: str) -> str:
@@ -309,6 +343,8 @@ def main(config: Config, ns: argparse.Namespace, ctx: Ctx | None = None) -> int:
         return 1
     if v.shape == "list":
         print_list(v, out, bool(getattr(ns, "as_json", False)))
+    elif v.shape == "items":
+        print_items(out, bool(getattr(ns, "table", False)))
     else:
         print(json.dumps(out, indent=1, default=str))
     return 0

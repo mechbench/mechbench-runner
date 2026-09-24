@@ -405,8 +405,11 @@ class ApiClient:
         """Any route, for the noun verbs (`mechbench_runner/verbs/`):
         the decoded answer (JSON, or the bytes) and its headers, which
         carry a listing's `X-Next-Offset`. A value of None in `query` is
-        left out, so a verb passes its arguments through unfiltered."""
-        params = {k: ("1" if v is True else str(v)) for k, v in (query or {}).items()
+        left out, so a verb passes its arguments through unfiltered; a
+        list is the parameter repeated (`where=…&where=…`)."""
+        params = {k: ([str(x) for x in v] if isinstance(v, (list, tuple))
+                      else "1" if v is True else str(v))
+                  for k, v in (query or {}).items()
                   if v is not None and v is not False}
         res = self._client.request(method, route, params=params,
                                    json=body if body is not None else None)

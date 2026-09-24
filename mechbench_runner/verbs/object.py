@@ -46,13 +46,29 @@ def object_read(ctx: Ctx, a: dict) -> Any:
 
 
 def object_items(ctx: Ctx, a: dict) -> Any:
+    """A collection's items, read on the server (task 000660): only the
+    fields asked for, of the items that pass every `where`, a page at a
+    time; or how many there are (`count`), or the object without its
+    items (`header`)."""
+    fields = a.get("fields")
+    if isinstance(fields, (list, tuple)):
+        fields = ",".join(fields)
+    where = a.get("where")
+    if isinstance(where, str):
+        where = [where]
     return ctx.get(
         "/objects/~items",
         path=a["path"],
-        offset=a.get("offset"),
-        limit=a.get("limit"),
+        fields=fields,
+        where=list(where) if where else None,
         sort=a.get("sort"),
         order=a.get("order"),
+        offset=a.get("offset"),
+        limit=a.get("limit"),
+        lines=a.get("lines"),
+        chars=a.get("chars"),
+        count=1 if a.get("count") else None,
+        header=1 if a.get("header") else None,
     )
 
 
@@ -109,17 +125,35 @@ OBJECT = Noun(
         Verb(
             "object",
             "items",
-            "A page of a collection's items.",
+            "A page of a collection's items, read on the server: fields (dot "
+            "paths, comma-separated; items come back flat) of those passing "
+            "every where (PATH OP VALUE, OP = != < <= > >= ~); lines/chars cut "
+            "strings; count or header alone.",
             "GET /objects/~items",
             (
                 PATH,
-                OFFSET,
-                LIMIT,
+                Arg(
+                    "fields",
+                    "Dot paths to answer, comma-separated (id,coords.prompt,text); "
+                    "each item comes back flat, keyed by them.",
+                ),
+                Arg(
+                    "where",
+                    "PATH OP VALUE, OP one of = != < <= > >= ~ (contains); "
+                    "repeat for AND (coords.prompt=flash).",
+                    type="strs",
+                ),
                 Arg("sort", "A dot path to sort by."),
                 Arg("order", "asc or desc.", choices=("asc", "desc")),
+                OFFSET,
+                LIMIT,
+                Arg("lines", "Cut strings to their first N lines.", type="int"),
+                Arg("chars", "Cut every string to N characters.", type="int"),
+                Arg("count", "Only how many there are and how many pass.", type="bool"),
+                Arg("header", "Only the object without its items.", type="bool"),
             ),
             object_items,
-            "read",
+            "items",
         ),
         Verb(
             "object",

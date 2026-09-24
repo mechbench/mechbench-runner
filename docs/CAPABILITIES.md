@@ -55,8 +55,17 @@ the resource's own (`displayName`, `labelContains`, `view`).
   error and missing nodes but not its job's spec; an article without its
   body; an object as its header (`GET /objects/~meta`: kind, size, hash,
   item count). The API's default stays `full`, which is what the UI has
-  always read. Task 000660 (result projection) adds fields and filters to
-  an object's items; `object items` is the verb it extends.
+  always read.
+- **Items are read on the server.** `object items` (task 000660) answers
+  a collection's items without the collection leaving the store: `fields`
+  (dot paths, comma-separated; each item comes back flat, keyed by them),
+  `where` (`PATH OP VALUE`, repeated for AND; OP is `=` `!=` `<` `<=` `>`
+  `>=` or `~`, text contains or list has), `sort`/`order`, `offset`/
+  `limit`, `lines`/`chars` to cut every string (a story's title is
+  `--fields id,text --lines 1`), and `count` or `header` alone. The API
+  answers `matched` beside `total` and `X-Next-Offset` while more pass.
+  The command line prints JSON lines, or a table with `--table`;
+  `bench.items` is the same call from Python.
 - **Deletion is permanent.** Nothing restores what is deleted. `delete`
   is a dry run unless `yes` is given, and answers the API's plan
   (`deletes`, `keeps`, `refusal`, `citedBy`); the refusals the API makes
@@ -99,7 +108,7 @@ per-tool overhead at the cost of a single description too long to scan.
 |---|---|---|---|---|
 | object | **list**(prefix?, kind?, search?, limit?, offset?) | `GET /objects` | `object(verb="list")` | `mechbench object list` |
 | object | **read**(path, full?) | `GET /objects/~meta` | `object(verb="read")` | `mechbench object read` |
-| object | **items**(path, offset?, limit?, sort?, order?) | `GET /objects/~items` | `object(verb="items")` | `mechbench object items` |
+| object | **items**(path, fields?, where?, sort?, order?, offset?, limit?, lines?, chars?, count?, header?) | `GET /objects/~items` | `object(verb="items")` | `mechbench object items` |
 | object | **write**(path, file?, payload?, inputs?) | `PUT /objects/:path` | `object(verb="write")` | `mechbench object write` |
 | object | **update**(path, visibility, prefix?) | `PATCH /objects/:path` | `object(verb="update")` | `mechbench object update` |
 | object | **delete**(path, prefix?, yes?, acknowledge_citations?) | `DELETE /objects/:path` | `object(verb="delete")` | `mechbench object delete` |
