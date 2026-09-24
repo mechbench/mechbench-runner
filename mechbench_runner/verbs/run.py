@@ -130,6 +130,42 @@ RUN = Noun(
         ),
         Verb(
             "run",
+            "jobs",
+            "Jobs newest first (oldest first to walk them while jobs queue), "
+            "by status, protocol or search.",
+            "GET /jobs",
+            (
+                Arg("status", "queued, preparing, running, done, failed, …"),
+                Arg("protocol", "One protocol's jobs (prt_…)."),
+                Arg(
+                    "order",
+                    "newest (default) or oldest first.",
+                    choices=("newest", "oldest"),
+                ),
+                OWNER,
+                Arg(
+                    "search",
+                    "Only those whose run's label or protocol's name contains this.",
+                ),
+                LIMIT,
+                OFFSET,
+            ),
+            lambda ctx, a: listing(
+                ctx,
+                "/jobs",
+                {
+                    "status": a.get("status"),
+                    "protocol": a.get("protocol"),
+                    "order": a.get("order"),
+                    "owner": a.get("owner"),
+                    **page(a),
+                },
+            ),
+            "list",
+            ("status", "protocolName", "label", "createdAt"),
+        ),
+        Verb(
+            "run",
             "read",
             "Its status, progress, error and missing nodes; full has the job.",
             "GET /runs/:id",

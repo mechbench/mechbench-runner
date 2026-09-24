@@ -85,6 +85,15 @@ def test_every_noun_has_its_whole_lifecycle_or_says_why(noun):
     assert not (set(noun.absent) & have), "a reason given for a verb it has"
 
 
+@pytest.mark.parametrize(
+    "verb",
+    [v for n in NOUNS for v in n.verbs if v.shape == "list"],
+    ids=lambda v: f"{v.noun}-{v.name}",
+)
+def test_every_listing_pages_and_searches(verb):
+    assert {"search", "limit", "offset"} <= {a.name for a in verb.args}
+
+
 def api_source() -> Path | None:
     src = Path(
         os.environ.get("MECHBENCH_API_SRC") or ROOT.parent / "mechbench-api" / "src"

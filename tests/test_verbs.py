@@ -235,6 +235,33 @@ class TestShapes:
         objs = tools["object"]("list", {"prefix": "benji/lab"})
         assert objs["items"] == [{"path": "benji/lab/x"}]
 
+    def test_the_jobs_board_pages_and_filters(self, rec):
+        tools = build_tools(CFG, executor=object())
+        out = tools["run"](
+            "jobs",
+            {
+                "status": "failed",
+                "protocol": "prt_1",
+                "search": "sweep",
+                "order": "oldest",
+                "limit": 50,
+                "offset": 100,
+            },
+        )
+        assert out == {"items": [{"id": "row_1"}], "next": 3}
+        assert rec[-1][1:4] == (
+            "GET",
+            "/jobs",
+            {
+                "status": "failed",
+                "protocol": "prt_1",
+                "order": "oldest",
+                "search": "sweep",
+                "limit": 50,
+                "offset": 100,
+            },
+        )
+
     def test_delete_is_a_dry_run_unless_yes(self, rec):
         tools = build_tools(CFG, executor=object())
         out = tools["dataset"]("delete", {"id": "ds_1"})

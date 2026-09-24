@@ -23,6 +23,28 @@ with both headings.
 
 ---
 
+## Unreleased
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
+- `run jobs` (CLI `mechbench run jobs`, MCP `run(verb="jobs")`) lists jobs
+  from `GET /jobs`, newest first, paged by `limit` and `offset` with the
+  next offset in `next`, and narrowed by `status`, `protocol`, `search`
+  (the run's label or the protocol's name) and `owner`. `order=oldest`
+  walks them oldest first, which stays exact while new jobs are queued.
+  Needs an API that pages `GET /jobs`; an older one ignores the query
+  and answers its newest 100 with no `next`.
+- The parity gate requires every listing verb to take `search`, `limit`
+  and `offset`.
+
 ## 0.35.0 — 2026-09-24
 
 Needs mechbench-compute 0.135.0 and mechbench-schema 0.17.0.
