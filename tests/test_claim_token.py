@@ -74,6 +74,24 @@ class TestTheClientCarriesTheToken:
         assert len(writes) == 7
         assert all(t == "tok-first" for _, _, t in writes), writes
 
+    def test_an_interrupt_takes_the_rotated_token_the_server_hands_back(self):
+        calls: list[tuple[str, str | None]] = []
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            calls.append((req.url.path, req.headers.get("x-claim-token")))
+            if req.url.path == "/jobs/next":
+                return httpx.Response(200, json={"id": "j_1", "claimToken": "tok-first"})
+            if req.url.path == "/jobs/j_1/interrupt":
+                return httpx.Response(200, json={"claimToken": "tok-rotated"})
+            return httpx.Response(200, json={"ok": True})
+
+        api = _client(handler)
+        api.claim_next_job()
+        api.interrupt_job("j_1", "restart")
+        assert api.claim_tokens["j_1"] == "tok-rotated"
+        api.complete_job_cbor("j_1", b"\xa0", "sha256:00")
+        assert calls[-1] == ("/jobs/j_1/complete", "tok-rotated")
+
     def test_a_job_it_never_claimed_sends_no_header(self):
         rec = Recorder()
         api = _client(rec)
