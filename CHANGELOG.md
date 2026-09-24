@@ -23,10 +23,9 @@ with both headings.
 
 ---
 
-## Unreleased — `run diff` (000658)
+## 0.34.0 — 2026-09-23
 
-Needs the mechbench-compute release that carries `records/diff`; raise
-the `mechbench-compute` floor to it when this is released.
+Needs mechbench-compute 0.133.0 and the mechbench-api deployed with it.
 
 ### Changes that raise
 
@@ -47,6 +46,12 @@ _None._
   `--full` are the operation's parameters and the answer's size. Both
   results are read where the command runs, with their provenance, which
   is compared too; nothing is computed in the API.
+- **`object items` reads projected items (000660):** `--fields`
+  (dot paths), `--where PATH OP VALUE` (repeated for AND), `--sort`,
+  `--order`, `--lines` and `--chars` (trim every string), `--count` and
+  `--header`, as JSON lines or `--table`; the same over MCP as
+  `object(verb="items", args={…})`. The server does the work, so reading
+  200 story titles costs about 3k tokens, not 99k.
 
 ## 0.33.0 — 2026-09-23
 
