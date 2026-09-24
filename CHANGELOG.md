@@ -23,13 +23,14 @@ with both headings.
 
 ---
 
-## Unreleased
+## 0.33.0 — 2026-09-23
 
-Needs mechbench-compute with `bench.push_protocol`, `export_protocol`,
-`runs` and `label_run` (branch `plumbing-files-labels`), and
-mechbench-api with `POST /protocols/push`, `/runs`, and the discovery
-routes of 3e9c360 (`view=summary`, `search`, paging, reads by id,
-`/protocols/:id/versions`, `/objects/~meta`).
+Needs mechbench-compute 0.132.0 (`bench.push_protocol`,
+`export_protocol`, `runs`, `label_run`) and the mechbench-api deployed
+with it: `POST /protocols/push`, `/runs`, the discovery routes (`view=
+summary`, `search`, paging, reads by id, `/protocols/:id/versions`,
+`/objects/~meta`), version restore, and `?format=markdown` reads with
+`PUT` writes at a base version.
 
 ### Changes that raise
 
@@ -77,6 +78,18 @@ routes of 3e9c360 (`view=summary`, `search`, paging, reads by id,
 - A claim sends `X-Compute-Version`, so a runs listing says which compute
   version ran each job.
 - docs/CAPABILITIES.md: the capability matrix, generated (task 000661).
+- `mechbench protocol restore ID --version N` and `mechbench article
+  versions` / `article restore`, and the same over MCP: an earlier
+  version becomes the head again as a new version; nothing is restored
+  after a delete (task 000663).
+- Articles and protocols read and write as markdown: `article read
+  --format markdown`, `protocol read --format markdown`, `article edit`,
+  `protocol edit`, and `article update --body-file x.md --base-version N`.
+  A write is diffed at its base version and stored as a minimal op, so a
+  collaborator's edits since are kept (tasks 000528, 000529).
+- A result whose generated items did not all end naturally says so:
+  `mechbench result` on stderr, and `run result` and `object read` put an
+  `ended_notice` list first (task 000657).
 
 ## 0.32.0 — 2026-09-18
 
