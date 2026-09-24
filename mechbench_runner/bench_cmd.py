@@ -25,6 +25,7 @@ from typing import Any
 from mechbench_compute import bench
 
 from .config import Config
+from .endings import ended_notes
 
 TERMINAL = ("done", "done_with_missing", "failed", "cancelled", "interrupted")
 
@@ -287,6 +288,14 @@ def result(config: Config, spec: str, fmt: str, out_path: str | None,
         print(f"result failed: {e}", file=sys.stderr)
         return 1
 
+    code = _print_result(payload, fmt, out_path)
+    # Last, on stderr, where the eye lands after the output scrolls by.
+    for note in ended_notes(payload, node):
+        print(f"!! {note}", file=sys.stderr)
+    return code
+
+
+def _print_result(payload: Any, fmt: str, out_path: str | None) -> int:
     if out_path:
         pathlib.Path(out_path).write_text(json.dumps(payload, indent=1, default=str))
         print(f"wrote {out_path}", file=sys.stderr)

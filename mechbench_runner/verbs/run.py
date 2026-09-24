@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from ..endings import with_notice
 from .core import (
     ACK,
     FULL,
@@ -81,7 +82,7 @@ def finished(ctx: Ctx, run: str) -> dict:
 
 
 def run_result(ctx: Ctx, a: dict) -> Any:
-    return ctx.bench().result(finished(ctx, a["id"]), a["node"])
+    return with_notice(ctx.bench().result(finished(ctx, a["id"]), a["node"]), a["node"])
 
 
 def run_cancel(ctx: Ctx, a: dict) -> Any:

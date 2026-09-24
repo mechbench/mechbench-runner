@@ -6,6 +6,7 @@ import json
 import pathlib
 from typing import Any
 
+from ..endings import with_notice
 from .core import (
     ACK,
     FULL,
@@ -40,8 +41,8 @@ def object_list(ctx: Ctx, a: dict) -> Any:
 
 def object_read(ctx: Ctx, a: dict) -> Any:
     if a.get("full"):
-        return ctx.bench().fetch(a["path"])
-    return ctx.get("/objects/~meta", path=a["path"])
+        return with_notice(ctx.bench().fetch(a["path"]))
+    return with_notice(ctx.get("/objects/~meta", path=a["path"]))
 
 
 def object_items(ctx: Ctx, a: dict) -> Any:
