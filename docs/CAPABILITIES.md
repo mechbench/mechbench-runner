@@ -1,6 +1,6 @@
 # The capability matrix
 
-Task 000661, epic 000654. Every noun an agent works with, and its verbs,
+Every noun an agent works with, and its verbs,
 on the three surfaces an agent reaches the platform through:
 
 - **API**: mechbench-api, `src/routes/`.
@@ -56,7 +56,7 @@ the resource's own (`displayName`, `labelContains`, `view`).
   body; an object as its header (`GET /objects/~meta`: kind, size, hash,
   item count). The API's default stays `full`, which is what the UI has
   always read.
-- **Items are read on the server.** `object items` (task 000660) answers
+- **Items are read on the server.** `object items` answers
   a collection's items without the collection leaving the store: `fields`
   (dot paths, comma-separated; each item comes back flat, keyed by them),
   `where` (`PATH OP VALUE`, repeated for AND; OP is `=` `!=` `<` `<=` `>`
@@ -97,8 +97,8 @@ compact JSON; `~tokens` is bytes / 4):
 
 | Tool set | Tools | Verbs | Bytes | ~Tokens |
 |---|---|---|---|---|
-| released (`run_protocol`, `get_result`, `list_jobs`) | 3 | 2 | 1,072 | 268 |
-| this branch before 000661 (those and `run`, `runs`, `label`, `protocol_push`, `protocol_export`) | 8 | 7 | 4,570 | 1,142 |
+| a tool per verb, three verbs (`run_protocol`, `get_result`, `list_jobs`) | 3 | 2 | 1,072 | 268 |
+| a tool per verb, eight verbs (those and `run`, `runs`, `label`, `protocol_push`, `protocol_export`) | 8 | 7 | 4,570 | 1,142 |
 | **a tool per noun, the verb an argument (chosen)** | 7 | 46 | 7,785 | 1,946 |
 | the same 46 verbs as a tool each, typed parameters | 46 | 46 | 27,828 | 6,957 |
 
@@ -204,26 +204,3 @@ per-tool overhead at the cost of a single description too long to scan.
 - spend total: no total exists on any surface yet; spend is per run (`run list`, `run read`).
 
 <!-- verbs:end -->
-
-## How the gaps closed
-
-Surveyed 2026-09-23 before 000655 and 000656; closed by 000661.
-
-1. **MCP was almost empty**: three tools, then eight. Now every verb of
-   every noun, as six noun tools.
-2. **Protocols had no file form**: closed by 000655 (`push`, `export`).
-3. **Runs could not be named or found by name**: closed by 000656.
-4. **The CLI stopped at one protocol**: protocol list, read, versions,
-   update; run read, rerun and the rest of the run noun; `run` launches
-   again (its keyword-only `bench.launch` call was fixed on this branch).
-5. **Articles, datasets and projects were API-only**: each has list,
-   read, create, update, delete and history on all three. The API gained
-   reads by id (`GET /articles/:id`, `/datasets/:id`, `/projects/:id`),
-   an owner's kind read from the handle, and an owner's own projects by
-   default.
-6. **Discovery had no search or paging** on most listings: `search`,
-   `limit`, `offset` and `X-Next-Offset` on objects, protocols, runs,
-   articles, datasets and projects; `kind` on objects; `status` on runs;
-   `project` on protocols; `GET /protocols/:id/versions`.
-7. **Spend** has no total anywhere yet; it is per run. Listed above as
-   API-only with its reason, and not built here.

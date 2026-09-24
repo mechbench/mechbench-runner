@@ -2,7 +2,7 @@
 
 The `mechbench` command: what you install on a machine to connect it to
 [mechbench.ai](https://mechbench.ai). The repository keeps its old name
-— the PyPI package and the command are `mechbench` (task 000307), and
+— the PyPI package and the command are `mechbench`, and
 the distribution ships two modules: `mechbench`, the bare front door,
 and `mechbench_runner`, the engine it dispatches into.
 
@@ -19,9 +19,9 @@ Two adjacent surfaces for different callers:
 
 Both modes share one binary (`mechbench`) with subcommands; they share the loaded model, API client, and protocol executor. Splitting into separate processes is a later operational decision — see "Open design questions" below.
 
-## Architectural decisions (task 000185)
+## Architectural decisions
 
-- **Python.** `mechbench-compute` is Python; delegating to Python via RPC or subprocess-shell from a TS runner adds a layer that pays no dividends in v0. The MCP Python SDK is mature.
+- **Python.** `mechbench-compute` is Python; delegating to Python via RPC or subprocess-shell from a TS runner adds a layer that pays no dividends. The MCP Python SDK is mature.
 - **One binary, two subcommands.** `mechbench mcp` launches the MCP server over stdio; `mechbench run` starts the job-runner loop. They share `ExperimentRunner` (owns the loaded Gemma model) and `ApiClient`.
 - **Agent authenticates to `mechbench-api` with a dedicated API key**, not a user's personal session. Export `MECHBENCH_API_KEY` (mint one at `/settings/api-keys`, or via `POST /auth/api-keys`). Matches the pattern from the e2e trace.
 - **MCP `run_protocol` runs in-process**, not queued through `mechbench-api`. The MCP caller wants the answer; we are the compute target. Job-queue round-tripping exists for the *UI-triggered* path (job-runner subcommand).
@@ -84,8 +84,10 @@ mechbench service-status
 ```
 
 The service is supervised by launchd or systemd rather than by anything
-we wrote — see `mechbench_runner/exits.py` for the contract that makes
-that work.
+we wrote, through the exit code (`mechbench_runner/exits.py`): 0 is a
+deliberate stop (signed out, SIGTERM) and stays stopped, 1 is a crash or
+a wedge and is restarted with a throttle, and 75 asks to be restarted,
+which is how an approved update gets a fresh process to install into.
 
 **On macOS you will be told that software from "Ned Deily" can run in
 the background.** That is this runner. macOS attributes a background
