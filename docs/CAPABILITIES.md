@@ -67,6 +67,15 @@ the resource's own (`displayName`, `labelContains`, `view`).
 - **History.** `history` is the lifetime's audit log, readable after
   deletion. A run's is its job's; an object's is by path (every lifetime
   that held the path) or by id.
+- **Comparing two runs runs where the command runs.** `run diff` reads
+  both results (`GET /objects/:path`, as `run result` does) and compares
+  them with mechbench-compute's `records/diff`, the operation a protocol
+  node runs, so the verb and a stored comparison cannot disagree. It is
+  not an API route because the API is one small instance and a
+  comparison holds two whole collections at once; it is not a queued job
+  because a question asked at the command line is not a result to keep.
+  A comparison that should be kept, citing both runs, is a
+  `records/diff` node whose ports reference the two results.
 - **Refusals are data on MCP.** An API refusal comes back as
   `{"error": {status, code, error, …}}`; an argument the verb does not
   take is refused with the verb's own list.
@@ -125,6 +134,7 @@ per-tool overhead at the cost of a single description too long to scan.
 | run | **update**(id, label?, clear?) | `PATCH /runs/:id` | `run(verb="update")` | `mechbench run update` |
 | run | **watch**(id, timeout?) | `GET /runs/:id` | `run(verb="watch")` | `mechbench run watch` |
 | run | **result**(id, node) | `GET /objects/:path` | `run(verb="result")` | `mechbench run result` |
+| run | **diff**(a, b, node?, node_b?, key?, fields?, exclude?, include_moving?, allow?, by?, limit?, full?) | `GET /objects/:path` | `run(verb="diff")` | `mechbench run diff` |
 | run | **cancel**(id, reason?) | `POST /jobs/:id/cancel` | `run(verb="cancel")` | `mechbench run cancel` |
 | run | **rerun**(id) | `POST /jobs/:id/rerun` | `run(verb="rerun")` | `mechbench run rerun` |
 | run | **delete**(id, yes?, acknowledge_citations?) | `DELETE /jobs/:id` | `run(verb="delete")` | `mechbench run delete` |

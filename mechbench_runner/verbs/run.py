@@ -25,6 +25,7 @@ from .core import (
     page,
     view,
 )
+from .run_diff import run_diff
 
 # --- run ----------------------------------------------------------------------
 
@@ -193,6 +194,52 @@ RUN = Noun(
             "GET /objects/:path",
             (RUN_ID, Arg("node", "The node's id.", required=True, positional=True)),
             run_result,
+            "read",
+        ),
+        Verb(
+            "run",
+            "diff",
+            "Compare two runs' node (or two objects) record by record, by key.",
+            "GET /objects/:path",
+            (
+                Arg(
+                    "a",
+                    "The earlier run (its id or its job's), or an object path.",
+                    required=True,
+                    positional=True,
+                ),
+                Arg(
+                    "b",
+                    "The later run, or an object path.",
+                    required=True,
+                    positional=True,
+                ),
+                Arg("node", "The node compared on both sides (gen)."),
+                Arg("node_b", "The second side's node, when it differs."),
+                Arg(
+                    "key",
+                    "Match records by these coordinates, comma-separated "
+                    "(prompt,sample); default id.",
+                ),
+                Arg("fields", "Compare only these fields, comma-separated (text)."),
+                Arg("exclude", "Leave out these fields too, comma-separated."),
+                Arg(
+                    "include_moving",
+                    "Compare timestamps, ids, latencies and the compute version too.",
+                    type="bool",
+                ),
+                Arg(
+                    "allow",
+                    "Expected differences: [{field, relation, when?}] (records/diff).",
+                    type="json",
+                ),
+                Arg("by", "Summarise numeric fields per these coordinates."),
+                Arg(
+                    "limit", "Differing records shown (default 20; -1 all).", type="int"
+                ),
+                FULL,
+            ),
+            run_diff,
             "read",
         ),
         Verb(
