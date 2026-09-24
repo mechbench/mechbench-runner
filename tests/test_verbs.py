@@ -73,6 +73,7 @@ BENCH_VERBS = (
     "result",
     "emit",
     "fetch",
+    "fetch_envelope",
     "watch",
     "runs",
 )
@@ -112,6 +113,10 @@ def rec(monkeypatch, tmp_path):
                 return iter(())
             if _name == "runs":
                 return []
+            if _name == "fetch_envelope":
+                return {"payload": {"kind": "collection", "items": [
+                            {"id": "s0", "coords": {"key-v": 0}, "text": "x"}]},
+                        "provenance": {"produced_by": {"version": "0.1"}}}
             return dict(ANSWER)
 
         monkeypatch.setattr(bench, name, fake)

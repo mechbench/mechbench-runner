@@ -23,6 +23,31 @@ with both headings.
 
 ---
 
+## Unreleased — `run diff` (000658)
+
+Needs the mechbench-compute release that carries `records/diff`; raise
+the `mechbench-compute` floor to it when this is released.
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
+- **`run diff A B --node gen`**, on the command line and as
+  `run(verb="diff")` over MCP: two runs' node, or two object paths,
+  compared record by record by mechbench-compute's `records/diff`, the
+  function a protocol node runs. `--key prompt,sample` matches records
+  by coordinates; `--fields`, `--exclude`, `--include-moving`,
+  `--allow` (the expected differences, JSON), `--by`, `--limit` and
+  `--full` are the operation's parameters and the answer's size. Both
+  results are read where the command runs, with their provenance, which
+  is compared too; nothing is computed in the API.
+
 ## 0.33.0 — 2026-09-23
 
 Needs mechbench-compute 0.132.0 (`bench.push_protocol`,
