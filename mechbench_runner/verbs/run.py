@@ -24,6 +24,7 @@ from .core import (
     view,
 )
 from .run_diff import run_diff
+from .sweep import run_sweep
 
 
 def job_of(ctx: Ctx, run: str) -> str:
@@ -98,6 +99,9 @@ RUN = Noun(
                 Arg("status", "Its job's status: queued, running, done, failed, …"),
                 Arg("protocol", "One protocol's runs (prt_…)."),
                 Arg("project", "owner/project."),
+                Arg(
+                    "sweep", "One sweep's runs (swp_…), in the order it launched them."
+                ),
                 OWNER,
                 SEARCH,
                 LIMIT,
@@ -113,6 +117,7 @@ RUN = Noun(
                     "status": a.get("status"),
                     "protocol": a.get("protocol"),
                     "project": a.get("project"),
+                    "sweep": a.get("sweep"),
                     "owner": a.get("owner"),
                     **page(a),
                     "view": view(a),
@@ -137,6 +142,7 @@ RUN = Noun(
             (
                 Arg("status", "queued, preparing, running, done, failed, …"),
                 Arg("protocol", "One protocol's jobs (prt_…)."),
+                Arg("sweep", "One sweep's jobs (swp_…)."),
                 Arg(
                     "order",
                     "newest (default) or oldest first.",
@@ -156,6 +162,7 @@ RUN = Noun(
                 {
                     "status": a.get("status"),
                     "protocol": a.get("protocol"),
+                    "sweep": a.get("sweep"),
                     "order": a.get("order"),
                     "owner": a.get("owner"),
                     **page(a),
@@ -192,6 +199,62 @@ RUN = Noun(
                 Arg("label", "What the run is for, one line."),
             ),
             run_launch,
+        ),
+        Verb(
+            "run",
+            "sweep",
+            "Run a protocol once per binding, all queued at once and tied by a "
+            "sweep id: members listed, or a grid of values crossed (the first "
+            "name varying slowest). One bad member refuses the whole sweep; at "
+            "most 200 runs.",
+            "POST /protocols/:id/sweeps",
+            (
+                Arg("protocol", "The protocol's id.", required=True, positional=True),
+                Arg(
+                    "file",
+                    "A JSON or YAML file: a list of members ({params, inputs}), or "
+                    "a sweep ({members | grid, params, inputs, label, keep}).",
+                ),
+                Arg(
+                    "members",
+                    "The members as JSON: [{params, inputs}, …].",
+                    type="json",
+                ),
+                Arg(
+                    "grid",
+                    "A param and its values, NAME=V1,V2 (or a JSON list); "
+                    "every combination runs.",
+                    type="pairs",
+                ),
+                Arg(
+                    "grid_inputs",
+                    "An input and its paths, NAME=PATH1,PATH2; crossed with the rest.",
+                    type="pairs",
+                    flag="--grid-input",
+                ),
+                Arg(
+                    "params",
+                    "A param every member binds, NAME=VALUE (JSON values parse).",
+                    type="pairs",
+                    flag="--param",
+                ),
+                Arg(
+                    "inputs",
+                    "An input every member binds, NAME=PATH.",
+                    type="pairs",
+                    flag="--input",
+                ),
+                Arg("keep", "all, or outputs alone.", choices=("all", "outputs")),
+                Arg("budget", "Each run's spend cap, USD.", type="float"),
+                Arg("label", "What the runs are for, one line; every run carries it."),
+                Arg(
+                    "wait",
+                    "Wait until every run finishes, then their summaries.",
+                    type="bool",
+                ),
+                Arg("timeout", "Seconds to wait (default 3600).", type="float"),
+            ),
+            run_sweep,
         ),
         Verb(
             "run",

@@ -137,10 +137,11 @@ per-tool overhead at the cost of a single description too long to scan.
 | protocol | **delete**(id, yes?, acknowledge_citations?) | `DELETE /protocols/:id` | `protocol(verb="delete")` | `mechbench protocol delete` |
 | protocol | **history**(id) | `GET /history/:kind/:id` | `protocol(verb="history")` | `mechbench protocol history` |
 | protocol | create | — | — | — (push is its create: a file is pushed, by its name) |
-| run | **list**(label?, label_contains?, status?, protocol?, project?, owner?, search?, limit?, offset?, full?) | `GET /runs` | `run(verb="list")` | `mechbench run list` |
-| run | **jobs**(status?, protocol?, order?, owner?, search?, limit?, offset?) | `GET /jobs` | `run(verb="jobs")` | `mechbench run jobs` |
+| run | **list**(label?, label_contains?, status?, protocol?, project?, sweep?, owner?, search?, limit?, offset?, full?) | `GET /runs` | `run(verb="list")` | `mechbench run list` |
+| run | **jobs**(status?, protocol?, sweep?, order?, owner?, search?, limit?, offset?) | `GET /jobs` | `run(verb="jobs")` | `mechbench run jobs` |
 | run | **read**(id, full?) | `GET /runs/:id` | `run(verb="read")` | `mechbench run read` |
 | run | **launch**(protocol, params?, inputs?, keep?, budget?, label?) | `POST /protocols/:id/runs` | `run(verb="launch")` | `mechbench run launch` |
+| run | **sweep**(protocol, file?, members?, grid?, grid_inputs?, params?, inputs?, keep?, budget?, label?, wait?, timeout?) | `POST /protocols/:id/sweeps` | `run(verb="sweep")` | `mechbench run sweep` |
 | run | **update**(id, label?, clear?) | `PATCH /runs/:id` | `run(verb="update")` | `mechbench run update` |
 | run | **watch**(id, timeout?) | `GET /runs/:id` | `run(verb="watch")` | `mechbench run watch` |
 | run | **result**(id, node) | `GET /objects/:path` | `run(verb="result")` | `mechbench run result` |

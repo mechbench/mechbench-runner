@@ -124,6 +124,10 @@ def sample(noun: str, a: Arg, tmp) -> Any:
         return IDS[noun]
     if a.name == "into":
         return "benji/lab"
+    if a.name == "file" and noun == "run":
+        f = tmp / "sweep.json"
+        f.write_text('{"label": "from a file"}')
+        return str(f)
     if a.name == "file":
         f = tmp / f"{noun}.json"
         f.write_text('{"kind": "note"}')

@@ -23,6 +23,32 @@ with both headings.
 
 ---
 
+## Unreleased
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
+- `run sweep` (CLI `mechbench run sweep PROTOCOL`, MCP `run(verb="sweep")`)
+  launches one run per binding in one call, `POST /protocols/:id/sweeps`:
+  members from a JSON or YAML `--file` (a list of `{params, inputs}`, or a
+  whole sweep) or `--members` JSON, or a grid of values with
+  `--grid NAME=V1,V2` and `--grid-input NAME=PATH1,PATH2`, every
+  combination run with the first name varying slowest. `--param`,
+  `--input`, `--label`, `--keep` and `--budget` apply to every run.
+  `--wait` polls the sweep until every run has finished (or `--timeout`,
+  default an hour) and answers their summaries with `finished`. The API
+  refuses the whole sweep when one member cannot run, naming it, and
+  refuses more than 200 runs.
+- `run list` and `run jobs` take `--sweep` (MCP `sweep`): one sweep's runs,
+  in the order it launched them, and its jobs.
+
 ## 0.36.0 — 2026-09-24
 
 ### Changes that raise
