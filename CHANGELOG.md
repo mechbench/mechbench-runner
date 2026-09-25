@@ -23,6 +23,46 @@ with both headings.
 
 ---
 
+## Unreleased
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
+- Every verb says what it does to the platform, its `effect`: `read`,
+  `draft` (the caller's own things, reversibly), `spend` (compute or
+  provider money), `delete` or `outward` (publishes, or widens who
+  reads). The last three need the person's consent, on every call or
+  only for some arguments (`consent_when`): a delete only with `yes`,
+  an update only when it widens visibility, an article update also
+  when it publishes. `run launch`, `run sweep`, `run rerun`,
+  `protocol publish` and `protocol unpublish` always do. MCP marks
+  those verbs `[consent: …]` in each tool's description, and
+  docs/CAPABILITIES.md has an Effect column and a legend. The
+  platform's own agent proposes such a call as a card the person
+  clicks and never makes it.
+- An argument naming a file on the caller's machine is marked `local`;
+  a caller without a disk (the platform's agent) gives the thing
+  itself: `protocol push` takes `protocol` (its JSON) as well as a file,
+  `protocol edit` takes `description`, and `article create`, `update`
+  and `edit` take `body`. `run diff` is marked as computing on the
+  caller's machine.
+- A new noun, `thread` (CLI `mechbench thread`, MCP `thread(verb, args)`):
+  `list`, `read`, `create`, `update`, `fork`, `delete` (a dry run
+  unless `yes`) and `history`, over `GET/POST /threads`,
+  `PATCH/DELETE /threads/:id` and `POST /threads/:id/fork`.
+- `scripts/dump_verbs_ts.py` writes the registry (nouns, verbs, their
+  arguments, routes and effects) as
+  `mechbench-models/src/verbs.generated.ts`, which the platform's agent
+  reads its tools from; `tests/test_verbs_ts.py` fails when that copy
+  is stale.
+
 ## 0.37.0 — 2026-09-25
 
 ### Changes that raise

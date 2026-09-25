@@ -7,10 +7,12 @@ from typing import Any
 from ..endings import with_notice
 from .core import (
     ACK,
+    CONFIRMED,
     FULL,
     LIMIT,
     OFFSET,
     SEARCH,
+    WIDER,
     YES,
     Arg,
     Ctx,
@@ -104,6 +106,7 @@ OBJECT = Noun(
             object_list,
             "list",
             ("path", "kind", "sizeBytes", "createdAt"),
+            effect="read",
         ),
         Verb(
             "object",
@@ -113,6 +116,7 @@ OBJECT = Noun(
             (PATH, FULL),
             object_read,
             "read",
+            effect="read",
         ),
         Verb(
             "object",
@@ -146,6 +150,7 @@ OBJECT = Noun(
             ),
             object_items,
             "items",
+            effect="read",
         ),
         Verb(
             "object",
@@ -154,7 +159,12 @@ OBJECT = Noun(
             "PUT /objects/:path",
             (
                 PATH,
-                Arg("file", "A JSON file holding the payload.", positional=True),
+                Arg(
+                    "file",
+                    "A JSON file holding the payload.",
+                    positional=True,
+                    local=True,
+                ),
                 Arg("payload", "The payload itself (MCP).", type="json"),
                 Arg(
                     "inputs",
@@ -164,6 +174,7 @@ OBJECT = Noun(
                 ),
             ),
             object_write,
+            effect="draft",
         ),
         Verb(
             "object",
@@ -181,6 +192,8 @@ OBJECT = Noun(
                 Arg("prefix", "Everything under the path.", type="bool"),
             ),
             object_update,
+            effect="outward",
+            consent_when=WIDER,
         ),
         Verb(
             "object",
@@ -189,6 +202,8 @@ OBJECT = Noun(
             "DELETE /objects/:path",
             (PATH, Arg("prefix", "Everything under the path.", type="bool"), YES, ACK),
             lambda ctx, a: delete(ctx, a["path"], a, prefix=bool(a.get("prefix"))),
+            effect="delete",
+            consent_when=CONFIRMED,
         ),
         Verb(
             "object",
@@ -198,6 +213,7 @@ OBJECT = Noun(
             (PATH,),
             object_history,
             "read",
+            effect="read",
         ),
     ),
     absent={"create": "write is its create: a path is written, not minted"},

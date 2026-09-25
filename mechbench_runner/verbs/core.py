@@ -20,6 +20,7 @@ class Arg:
     many: bool = False
     choices: tuple[str, ...] = ()
     flag: str | None = None
+    local: bool = False
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,27 @@ class Verb:
     do: Callable[[Ctx, dict[str, Any]], Any]
     shape: str = "act"
     columns: tuple[str, ...] = ()
+    effect: str = ""
+    consent_when: Mapping[str, tuple[Any, ...]] = field(default_factory=dict)
+    local: bool = False
+
+    def needs_consent(self, args: Mapping[str, Any]) -> bool:
+        if self.effect not in CONSENT:
+            return False
+        if not self.consent_when:
+            return True
+        return any(
+            args.get(name) in values for name, values in self.consent_when.items()
+        )
+
+    def effect_label(self) -> str:
+        if not self.consent_when:
+            return self.effect
+        when = " or ".join(
+            f"{name}={'|'.join(str(x).lower() for x in values)}"
+            for name, values in self.consent_when.items()
+        )
+        return f"{self.effect} when {when}"
 
 
 @dataclass(frozen=True)
@@ -78,6 +100,23 @@ class Ctx:
         return bench
 
 
+EFFECTS: dict[str, str] = {
+    "read": "reads; changes nothing",
+    "draft": (
+        "creates or edits the caller's own things, reversibly: a draft protocol, "
+        "object, article, dataset, project or thread (their versions and history "
+        "keep what was), a run's label, a queued run cancelled"
+    ),
+    "spend": "spends compute or provider money: launches a run or a turn",
+    "delete": "deletes, permanently",
+    "outward": "shows something to more people: publishes, or widens visibility",
+}
+CONSENT = ("spend", "delete", "outward")
+
+WIDER = {"visibility": ("org", "public")}
+CONFIRMED = {"yes": (True,)}
+
+
 class VerbError(RuntimeError):
     pass
 
@@ -100,6 +139,7 @@ FORMAT = Arg(
 EDITED = Arg(
     "file",
     "What `read --format` gave, edited: a JSON file (its collabEdit is the base).",
+    local=True,
 )
 BASE = Arg(
     "base_version",
@@ -187,7 +227,9 @@ def history(ctx: Ctx, kind: str, entity_id: str) -> Any:
     return ctx.bench().history(kind, entity_id)
 
 
-def text_of(a: Mapping[str, Any], name: str) -> str | None:
+def text_of(a: Mapping[str, Any], name: str, inline: str | None = None) -> str | None:
+    if inline is not None and a.get(inline) is not None:
+        return str(a[inline])
     f = a.get(name)
     return None if f is None else pathlib.Path(f).read_text()
 
@@ -209,7 +251,7 @@ def edit(
             base = data.get("collabEdit", obj.get("collabEdit", obj.get("baseVersion")))
         fmt = fmt or data.get("format")
     fmt = fmt or "markdown"
-    text = text_of(a, text_arg)
+    text = text_of(a, text_arg, field)
     if text is not None:
         obj[field] = json.loads(text) if fmt == "delta" else text
     for name in ("title", "subtitle", "tags", "name"):

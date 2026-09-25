@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from .core import (
     ACK,
     BASE,
+    CONFIRMED,
     EDITED,
     FORMAT,
     FULL,
@@ -15,6 +17,7 @@ from .core import (
     OWNER,
     SEARCH,
     VISIBILITY,
+    WIDER,
     YES,
     Arg,
     Ctx,
@@ -69,10 +72,20 @@ def protocol_update(ctx: Ctx, a: dict) -> Any:
 
 
 def protocol_push(ctx: Ctx, a: dict) -> Any:
+    content = a.get("protocol")
+    if isinstance(content, str):
+        try:
+            content = json.loads(content)
+        except ValueError as e:
+            raise VerbError(f"protocol is not JSON: {e}") from None
+    if content is None and not a.get("file"):
+        raise VerbError("push needs a file, or the protocol itself")
     bench = ctx.bench()
     try:
         return bench.push_protocol(
-            a["file"], a["into"], owner_kind="org" if a.get("org") else "user"
+            content if content is not None else a["file"],
+            a["into"],
+            owner_kind="org" if a.get("org") else "user",
         )
     except bench.BenchError as e:
         if e.status is None or not isinstance(e.body, dict):
@@ -143,6 +156,7 @@ PROTOCOL = Noun(
             ),
             "list",
             ("id", "name", "version", "projectSlug", "updatedAt"),
+            effect="read",
         ),
         Verb(
             "protocol",
@@ -154,6 +168,7 @@ PROTOCOL = Noun(
             (ID, VERSION, FULL, FORMAT),
             protocol_read,
             "read",
+            effect="read",
         ),
         Verb(
             "protocol",
@@ -167,6 +182,7 @@ PROTOCOL = Noun(
                 offset=a.get("offset"),
             ),
             "read",
+            effect="read",
         ),
         Verb(
             "protocol",
@@ -174,23 +190,29 @@ PROTOCOL = Noun(
             "Create or version it from a file, by its name in the project.",
             "POST /protocols/push",
             (
+                Arg("file", "The protocol file (JSON).", positional=True, local=True),
                 Arg(
-                    "file", "The protocol file (JSON).", required=True, positional=True
+                    "protocol",
+                    "The protocol itself, as its file holds it: name, description, "
+                    "params, inputs, outputs, graph.",
+                    type="json",
                 ),
                 INTO,
                 ORG,
             ),
             protocol_push,
+            effect="draft",
         ),
         Verb(
             "protocol",
             "export",
             "A version (the head by default) as its canonical file.",
             "GET /protocols/:id/export",
-            (ID, VERSION, Arg("path", "Write the file here.", flag="-o")),
+            (ID, VERSION, Arg("path", "Write the file here.", flag="-o", local=True)),
             lambda ctx, a: ctx.bench().export_protocol(
                 a["id"], version=a.get("version"), path=a.get("path")
             ),
+            effect="read",
         ),
         Verb(
             "protocol",
@@ -205,6 +227,8 @@ PROTOCOL = Noun(
                 Arg("project", "Move it to this project (a slug)."),
             ),
             protocol_update,
+            effect="outward",
+            consent_when=WIDER,
         ),
         Verb(
             "protocol",
@@ -218,12 +242,15 @@ PROTOCOL = Noun(
                 Arg(
                     "description_file",
                     "Its description from a file, in the edit's format.",
+                    local=True,
                 ),
+                Arg("description", "Its description itself, in the edit's format."),
                 Arg("name", "Its name."),
                 BASE,
                 FORMAT,
             ),
             protocol_edit,
+            effect="draft",
         ),
         Verb(
             "protocol",
@@ -232,6 +259,7 @@ PROTOCOL = Noun(
             "POST /protocols/:id/versions/:n/publish",
             (ID, VERSION),
             protocol_publish,
+            effect="outward",
         ),
         Verb(
             "protocol",
@@ -242,6 +270,7 @@ PROTOCOL = Noun(
             lambda ctx, a: ctx.bench().unpublish_protocol_version(
                 a["id"], int(a["version"])
             ),
+            effect="outward",
         ),
         Verb(
             "protocol",
@@ -250,6 +279,7 @@ PROTOCOL = Noun(
             "POST /protocols/:id/versions/:n/restore",
             (ID, RESTORED),
             protocol_restore,
+            effect="draft",
         ),
         Verb(
             "protocol",
@@ -265,6 +295,7 @@ PROTOCOL = Noun(
                 Arg("dry_run", "Say what it would create.", type="bool"),
             ),
             protocol_copy,
+            effect="draft",
         ),
         Verb(
             "protocol",
@@ -273,6 +304,8 @@ PROTOCOL = Noun(
             "DELETE /protocols/:id",
             (ID, YES, ACK),
             lambda ctx, a: delete(ctx, a["id"], a),
+            effect="delete",
+            consent_when=CONFIRMED,
         ),
         Verb(
             "protocol",
@@ -282,6 +315,7 @@ PROTOCOL = Noun(
             (ID,),
             lambda ctx, a: history(ctx, "protocol", a["id"]),
             "read",
+            effect="read",
         ),
     ),
     absent={"create": "push is its create: a file is pushed, by its name"},

@@ -6,6 +6,7 @@ from typing import Any
 from ..endings import with_notice
 from .core import (
     ACK,
+    CONFIRMED,
     FULL,
     LIMIT,
     OFFSET,
@@ -132,6 +133,7 @@ RUN = Noun(
                 "spentUsd",
                 "label",
             ),
+            effect="read",
         ),
         Verb(
             "run",
@@ -170,6 +172,7 @@ RUN = Noun(
             ),
             "list",
             ("status", "protocolName", "label", "createdAt"),
+            effect="read",
         ),
         Verb(
             "run",
@@ -179,6 +182,7 @@ RUN = Noun(
             (RUN_ID, FULL),
             lambda ctx, a: ctx.get(f"/runs/{a['id']}", view=view(a)),
             "read",
+            effect="read",
         ),
         Verb(
             "run",
@@ -199,6 +203,7 @@ RUN = Noun(
                 Arg("label", "What the run is for, one line."),
             ),
             run_launch,
+            effect="spend",
         ),
         Verb(
             "run",
@@ -214,6 +219,7 @@ RUN = Noun(
                     "file",
                     "A JSON or YAML file: a list of members ({params, inputs}), or "
                     "a sweep ({members | grid, params, inputs, label, keep}).",
+                    local=True,
                 ),
                 Arg(
                     "members",
@@ -255,6 +261,7 @@ RUN = Noun(
                 Arg("timeout", "Seconds to wait (default 3600).", type="float"),
             ),
             run_sweep,
+            effect="spend",
         ),
         Verb(
             "run",
@@ -267,6 +274,7 @@ RUN = Noun(
                 Arg("clear", "Remove the label.", type="bool"),
             ),
             run_update,
+            effect="draft",
         ),
         Verb(
             "run",
@@ -276,6 +284,7 @@ RUN = Noun(
             (RUN_ID, Arg("timeout", "Seconds to wait (default 120).", type="float")),
             run_watch,
             "read",
+            effect="read",
         ),
         Verb(
             "run",
@@ -285,6 +294,7 @@ RUN = Noun(
             (RUN_ID, Arg("node", "The node's id.", required=True, positional=True)),
             run_result,
             "read",
+            effect="read",
         ),
         Verb(
             "run",
@@ -331,6 +341,8 @@ RUN = Noun(
             ),
             run_diff,
             "read",
+            effect="read",
+            local=True,
         ),
         Verb(
             "run",
@@ -339,6 +351,7 @@ RUN = Noun(
             "POST /jobs/:id/cancel",
             (RUN_ID, Arg("reason", "Why, for the audit log.")),
             run_cancel,
+            effect="draft",
         ),
         Verb(
             "run",
@@ -347,6 +360,7 @@ RUN = Noun(
             "POST /jobs/:id/rerun",
             (RUN_ID,),
             lambda ctx, a: ctx.api("POST", f"/jobs/{job_of(ctx, a['id'])}/rerun")[0],
+            effect="spend",
         ),
         Verb(
             "run",
@@ -355,6 +369,8 @@ RUN = Noun(
             "DELETE /jobs/:id",
             (RUN_ID, YES, ACK),
             lambda ctx, a: delete(ctx, job_of(ctx, a["id"]), a),
+            effect="delete",
+            consent_when=CONFIRMED,
         ),
         Verb(
             "run",
@@ -364,6 +380,7 @@ RUN = Noun(
             (RUN_ID,),
             lambda ctx, a: history(ctx, "job", job_of(ctx, a["id"])),
             "read",
+            effect="read",
         ),
     ),
     absent={"create": "launch is its create: a run is a protocol launched"},

@@ -174,6 +174,7 @@ HISTORY_KIND = {
     "article": "article",
     "dataset": "dataset",
     "project": "project",
+    "thread": "thread",
 }
 
 Render = Callable[[Config, Ctx, dict[str, Any]], int]
@@ -275,7 +276,7 @@ RENDER: dict[tuple[str, str], Render] = {
     ("run", "cancel"): lambda c, _x, a: bench_cmd.cancel(
         c, [a["id"]], a.get("reason") or ""
     ),
-    **{(n.name, "delete"): render_delete(n) for n in NOUNS},
+    **{(n.name, "delete"): render_delete(n) for n in NOUNS if n.name != "thread"},
     **{(n.name, "history"): render_history(n) for n in NOUNS},
 }
 

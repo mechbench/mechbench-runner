@@ -5,6 +5,7 @@ from typing import Any
 
 from .core import (
     BASE,
+    CONFIRMED,
     EDITED,
     FORMAT,
     FULL,
@@ -15,6 +16,7 @@ from .core import (
     OWNER,
     SEARCH,
     VISIBILITY,
+    WIDER,
     YES,
     Arg,
     Ctx,
@@ -45,14 +47,14 @@ def delta_text(text: str) -> str | None:
 
 
 def article_body(a: dict) -> str | None:
-    text = text_of(a, "body_file")
+    text = text_of(a, "body_file", "body")
     if text is None:
         return None
     doc = delta_text(text)
     if doc is None:
         raise VerbError(
-            "create takes body_file as rich text JSON; create it, then "
-            "`article edit --body-file` with markdown"
+            "create takes its body as rich text JSON; create it, then "
+            "`article edit` with a markdown body"
         )
     return doc
 
@@ -76,7 +78,7 @@ def article_update(ctx: Ctx, a: dict) -> Any:
     body = given(
         a, "title", "subtitle", "slug", "status", "visibility", "tags", "base_version"
     )
-    text = text_of(a, "body_file")
+    text = text_of(a, "body_file", "body")
     if text is not None and delta_text(text) is None:
         if a.get("base_version") is None:
             raise VerbError(
@@ -117,7 +119,9 @@ def article_restore(ctx: Ctx, a: dict) -> Any:
     return unwrap(ctx.api("POST", route)[0], "article")
 
 
-BODY = Arg("body_file", "A file of its body: rich text JSON, or markdown.")
+BODY = Arg("body_file", "A file of its body: rich text JSON, or markdown.", local=True)
+INLINE_BODY = Arg("body", "Its body itself, as body_file would hold it.")
+PUBLISHED = {**WIDER, "status": ("published",)}
 TAGS = Arg("tags", "A tag.", type="strs", flag="--tag")
 
 ARTICLE = Noun(
@@ -155,6 +159,7 @@ ARTICLE = Noun(
             ),
             "list",
             ("id", "ownerHandle", "slug", "status", "title"),
+            effect="read",
         ),
         Verb(
             "article",
@@ -165,6 +170,7 @@ ARTICLE = Noun(
             (ID, FULL, FORMAT),
             article_read,
             "read",
+            effect="read",
         ),
         Verb(
             "article",
@@ -178,10 +184,13 @@ ARTICLE = Noun(
                 ORG,
                 Arg("subtitle", "Its subtitle."),
                 BODY,
+                INLINE_BODY,
                 VISIBILITY,
                 TAGS,
             ),
             article_create,
+            effect="outward",
+            consent_when=WIDER,
         ),
         Verb(
             "article",
@@ -201,11 +210,14 @@ ARTICLE = Noun(
                 VISIBILITY,
                 TAGS,
                 BODY,
+                INLINE_BODY,
                 Arg(
                     "base_version", "The live version the body was read at.", type="int"
                 ),
             ),
             article_update,
+            effect="outward",
+            consent_when=PUBLISHED,
         ),
         Verb(
             "article",
@@ -216,7 +228,12 @@ ARTICLE = Noun(
             (
                 ID,
                 EDITED,
-                Arg("body_file", "Its body from a file, in the edit's format."),
+                Arg(
+                    "body_file",
+                    "Its body from a file, in the edit's format.",
+                    local=True,
+                ),
+                Arg("body", "Its body itself, in the edit's format."),
                 Arg("title", "Its title."),
                 Arg("subtitle", "Its subtitle."),
                 TAGS,
@@ -224,6 +241,7 @@ ARTICLE = Noun(
                 FORMAT,
             ),
             article_edit,
+            effect="draft",
         ),
         Verb(
             "article",
@@ -233,6 +251,7 @@ ARTICLE = Noun(
             (ID,),
             lambda ctx, a: ctx.get(f"/articles/{a['id']}/versions"),
             "read",
+            effect="read",
         ),
         Verb(
             "article",
@@ -241,6 +260,7 @@ ARTICLE = Noun(
             "POST /articles/:id/versions/:n/restore",
             (ID, Arg("version", "The version to restore.", type="int", required=True)),
             article_restore,
+            effect="draft",
         ),
         Verb(
             "article",
@@ -249,6 +269,8 @@ ARTICLE = Noun(
             "DELETE /articles/:id",
             (ID, YES),
             lambda ctx, a: delete(ctx, a["id"], a),
+            effect="delete",
+            consent_when=CONFIRMED,
         ),
         Verb(
             "article",
@@ -258,6 +280,7 @@ ARTICLE = Noun(
             (ID,),
             lambda ctx, a: history(ctx, "article", a["id"]),
             "read",
+            effect="read",
         ),
     ),
 )

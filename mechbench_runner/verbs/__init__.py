@@ -5,6 +5,8 @@ from typing import Any
 
 from .article import ARTICLE
 from .core import (
+    CONSENT,
+    EFFECTS,
     LIFECYCLE,
     Arg,
     Ctx,
@@ -19,8 +21,9 @@ from .object import OBJECT
 from .project import PROJECT, project_id
 from .protocol import PROTOCOL, split_version
 from .run import RUN, job_of
+from .thread import THREAD
 
-NOUNS: tuple[Noun, ...] = (OBJECT, PROTOCOL, RUN, ARTICLE, DATASET, PROJECT)
+NOUNS: tuple[Noun, ...] = (OBJECT, PROTOCOL, RUN, ARTICLE, DATASET, PROJECT, THREAD)
 
 
 def noun(name: str) -> Noun:
@@ -37,6 +40,8 @@ def invoke(
 
 
 __all__ = [
+    "CONSENT",
+    "EFFECTS",
     "LIFECYCLE",
     "NOUNS",
     "Arg",

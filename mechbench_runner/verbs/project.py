@@ -5,6 +5,7 @@ from urllib.parse import quote
 
 from .core import (
     ACK,
+    CONFIRMED,
     FULL,
     LIMIT,
     OFFSET,
@@ -78,6 +79,7 @@ PROJECT = Noun(
             ),
             "list",
             ("id", "ownerHandle", "slug", "displayName", "lastActivityAt"),
+            effect="read",
         ),
         Verb(
             "project",
@@ -87,6 +89,7 @@ PROJECT = Noun(
             (PROJECT_ID, FULL),
             project_read,
             "read",
+            effect="read",
         ),
         Verb(
             "project",
@@ -101,6 +104,7 @@ PROJECT = Noun(
                 Arg("description", "What it is for."),
             ),
             project_create,
+            effect="draft",
         ),
         Verb(
             "project",
@@ -114,6 +118,7 @@ PROJECT = Noun(
                 Arg("slug", "Its address."),
             ),
             project_update,
+            effect="draft",
         ),
         Verb(
             "project",
@@ -122,6 +127,8 @@ PROJECT = Noun(
             "DELETE /projects/:id",
             (PROJECT_ID, YES, ACK),
             lambda ctx, a: delete(ctx, project_id(ctx, a["id"]), a),
+            effect="delete",
+            consent_when=CONFIRMED,
         ),
         Verb(
             "project",
@@ -131,6 +138,7 @@ PROJECT = Noun(
             (PROJECT_ID,),
             lambda ctx, a: history(ctx, "project", project_id(ctx, a["id"])),
             "read",
+            effect="read",
         ),
     ),
 )

@@ -113,65 +113,82 @@ per-tool overhead at the cost of a single description too long to scan.
 
 <!-- verbs:begin (scripts/capabilities.py writes this) -->
 
-| Noun | Verb | API | MCP | CLI |
-|---|---|---|---|---|
-| object | **list**(prefix?, kind?, search?, limit?, offset?) | `GET /objects` | `object(verb="list")` | `mechbench object list` |
-| object | **read**(path, full?) | `GET /objects/~meta` | `object(verb="read")` | `mechbench object read` |
-| object | **items**(path, fields?, where?, sort?, order?, offset?, limit?, lines?, chars?, count?, header?) | `GET /objects/~items` | `object(verb="items")` | `mechbench object items` |
-| object | **write**(path, file?, payload?, inputs?) | `PUT /objects/:path` | `object(verb="write")` | `mechbench object write` |
-| object | **update**(path, visibility, prefix?) | `PATCH /objects/:path` | `object(verb="update")` | `mechbench object update` |
-| object | **delete**(path, prefix?, yes?, acknowledge_citations?) | `DELETE /objects/:path` | `object(verb="delete")` | `mechbench object delete` |
-| object | **history**(path) | `GET /history/object/~at` | `object(verb="history")` | `mechbench object history` |
-| object | create | — | — | — (write is its create: a path is written, not minted) |
-| protocol | **list**(owner?, project?, search?, limit?, offset?, full?) | `GET /protocols` | `protocol(verb="list")` | `mechbench protocol list` |
-| protocol | **read**(id, version?, full?, format?) | `GET /protocols/:id` | `protocol(verb="read")` | `mechbench protocol read` |
-| protocol | **versions**(id, limit?, offset?) | `GET /protocols/:id/versions` | `protocol(verb="versions")` | `mechbench protocol versions` |
-| protocol | **push**(file, into, org?) | `POST /protocols/push` | `protocol(verb="push")` | `mechbench protocol push` |
-| protocol | **export**(id, version?, path?) | `GET /protocols/:id/export` | `protocol(verb="export")` | `mechbench protocol export` |
-| protocol | **update**(id, name?, description?, visibility?, project?) | `PATCH /protocols/:id` | `protocol(verb="update")` | `mechbench protocol update` |
-| protocol | **edit**(id, file?, description_file?, name?, base_version?, format?) | `PUT /protocols/:id` | `protocol(verb="edit")` | `mechbench protocol edit` |
-| protocol | **publish**(id, version?) | `POST /protocols/:id/versions/:n/publish` | `protocol(verb="publish")` | `mechbench protocol publish` |
-| protocol | **unpublish**(id, version) | `POST /protocols/:id/versions/:n/unpublish` | `protocol(verb="unpublish")` | `mechbench protocol unpublish` |
-| protocol | **restore**(id, version) | `POST /protocols/:id/versions/:n/restore` | `protocol(verb="restore")` | `mechbench protocol restore` |
-| protocol | **copy**(id, version?, into, name?, org?, dry_run?) | `POST /protocols/:id/versions/:n/copy` | `protocol(verb="copy")` | `mechbench protocol copy` |
-| protocol | **delete**(id, yes?, acknowledge_citations?) | `DELETE /protocols/:id` | `protocol(verb="delete")` | `mechbench protocol delete` |
-| protocol | **history**(id) | `GET /history/:kind/:id` | `protocol(verb="history")` | `mechbench protocol history` |
-| protocol | create | — | — | — (push is its create: a file is pushed, by its name) |
-| run | **list**(label?, label_contains?, status?, protocol?, project?, sweep?, owner?, search?, limit?, offset?, full?) | `GET /runs` | `run(verb="list")` | `mechbench run list` |
-| run | **jobs**(status?, protocol?, sweep?, order?, owner?, search?, limit?, offset?) | `GET /jobs` | `run(verb="jobs")` | `mechbench run jobs` |
-| run | **read**(id, full?) | `GET /runs/:id` | `run(verb="read")` | `mechbench run read` |
-| run | **launch**(protocol, params?, inputs?, keep?, budget?, label?) | `POST /protocols/:id/runs` | `run(verb="launch")` | `mechbench run launch` |
-| run | **sweep**(protocol, file?, members?, grid?, grid_inputs?, params?, inputs?, keep?, budget?, label?, wait?, timeout?) | `POST /protocols/:id/sweeps` | `run(verb="sweep")` | `mechbench run sweep` |
-| run | **update**(id, label?, clear?) | `PATCH /runs/:id` | `run(verb="update")` | `mechbench run update` |
-| run | **watch**(id, timeout?) | `GET /runs/:id` | `run(verb="watch")` | `mechbench run watch` |
-| run | **result**(id, node) | `GET /objects/:path` | `run(verb="result")` | `mechbench run result` |
-| run | **diff**(a, b, node?, node_b?, key?, fields?, exclude?, include_moving?, allow?, by?, limit?, full?) | `GET /objects/:path` | `run(verb="diff")` | `mechbench run diff` |
-| run | **cancel**(id, reason?) | `POST /jobs/:id/cancel` | `run(verb="cancel")` | `mechbench run cancel` |
-| run | **rerun**(id) | `POST /jobs/:id/rerun` | `run(verb="rerun")` | `mechbench run rerun` |
-| run | **delete**(id, yes?, acknowledge_citations?) | `DELETE /jobs/:id` | `run(verb="delete")` | `mechbench run delete` |
-| run | **history**(id) | `GET /history/:kind/:id` | `run(verb="history")` | `mechbench run history` |
-| run | create | — | — | — (launch is its create: a run is a protocol launched) |
-| article | **list**(owner?, status?, mine?, search?, limit?, offset?, full?) | `GET /articles` | `article(verb="list")` | `mechbench article list` |
-| article | **read**(id, full?, format?) | `GET /articles/:id` | `article(verb="read")` | `mechbench article read` |
-| article | **create**(slug, title, owner?, org?, subtitle?, body_file?, visibility?, tags?) | `POST /articles` | `article(verb="create")` | `mechbench article create` |
-| article | **update**(id, title?, subtitle?, slug?, status?, visibility?, tags?, body_file?, base_version?) | `PATCH /articles/:id` | `article(verb="update")` | `mechbench article update` |
-| article | **edit**(id, file?, body_file?, title?, subtitle?, tags?, base_version?, format?) | `PUT /articles/:id` | `article(verb="edit")` | `mechbench article edit` |
-| article | **versions**(id) | `GET /articles/:id/versions` | `article(verb="versions")` | `mechbench article versions` |
-| article | **restore**(id, version) | `POST /articles/:id/versions/:n/restore` | `article(verb="restore")` | `mechbench article restore` |
-| article | **delete**(id, yes?) | `DELETE /articles/:id` | `article(verb="delete")` | `mechbench article delete` |
-| article | **history**(id) | `GET /history/:kind/:id` | `article(verb="history")` | `mechbench article history` |
-| dataset | **list**(owner?, search?, limit?, offset?, full?) | `GET /datasets` | `dataset(verb="list")` | `mechbench dataset list` |
-| dataset | **read**(id, full?) | `GET /datasets/:id` | `dataset(verb="read")` | `mechbench dataset read` |
-| dataset | **create**(object, slug, title, owner?, org?, description?, visibility?) | `POST /datasets/register` | `dataset(verb="create")` | `mechbench dataset create` |
-| dataset | **update**(id, title?, description?, visibility?, slug?) | `PATCH /datasets/:id` | `dataset(verb="update")` | `mechbench dataset update` |
-| dataset | **delete**(id, yes?) | `DELETE /datasets/:id` | `dataset(verb="delete")` | `mechbench dataset delete` |
-| dataset | **history**(id) | `GET /history/:kind/:id` | `dataset(verb="history")` | `mechbench dataset history` |
-| project | **list**(owner?, search?, limit?, offset?, full?) | `GET /projects` | `project(verb="list")` | `mechbench project list` |
-| project | **read**(id, full?) | `GET /projects/:id` | `project(verb="read")` | `mechbench project read` |
-| project | **create**(slug, owner?, org?, name?, description?) | `POST /projects` | `project(verb="create")` | `mechbench project create` |
-| project | **update**(id, name?, description?, slug?) | `PATCH /projects/:id` | `project(verb="update")` | `mechbench project update` |
-| project | **delete**(id, yes?, acknowledge_citations?) | `DELETE /projects/:id` | `project(verb="delete")` | `mechbench project delete` |
-| project | **history**(id) | `GET /history/:kind/:id` | `project(verb="history")` | `mechbench project history` |
+| Noun | Verb | Effect | API | MCP | CLI |
+|---|---|---|---|---|---|
+| object | **list**(prefix?, kind?, search?, limit?, offset?) | read | `GET /objects` | `object(verb="list")` | `mechbench object list` |
+| object | **read**(path, full?) | read | `GET /objects/~meta` | `object(verb="read")` | `mechbench object read` |
+| object | **items**(path, fields?, where?, sort?, order?, offset?, limit?, lines?, chars?, count?, header?) | read | `GET /objects/~items` | `object(verb="items")` | `mechbench object items` |
+| object | **write**(path, file?, payload?, inputs?) | draft | `PUT /objects/:path` | `object(verb="write")` | `mechbench object write` |
+| object | **update**(path, visibility, prefix?) | outward when visibility=org|public * | `PATCH /objects/:path` | `object(verb="update")` | `mechbench object update` |
+| object | **delete**(path, prefix?, yes?, acknowledge_citations?) | delete when yes=true * | `DELETE /objects/:path` | `object(verb="delete")` | `mechbench object delete` |
+| object | **history**(path) | read | `GET /history/object/~at` | `object(verb="history")` | `mechbench object history` |
+| object | create | — | — | — | — (write is its create: a path is written, not minted) |
+| protocol | **list**(owner?, project?, search?, limit?, offset?, full?) | read | `GET /protocols` | `protocol(verb="list")` | `mechbench protocol list` |
+| protocol | **read**(id, version?, full?, format?) | read | `GET /protocols/:id` | `protocol(verb="read")` | `mechbench protocol read` |
+| protocol | **versions**(id, limit?, offset?) | read | `GET /protocols/:id/versions` | `protocol(verb="versions")` | `mechbench protocol versions` |
+| protocol | **push**(file?, protocol?, into, org?) | draft | `POST /protocols/push` | `protocol(verb="push")` | `mechbench protocol push` |
+| protocol | **export**(id, version?, path?) | read | `GET /protocols/:id/export` | `protocol(verb="export")` | `mechbench protocol export` |
+| protocol | **update**(id, name?, description?, visibility?, project?) | outward when visibility=org|public * | `PATCH /protocols/:id` | `protocol(verb="update")` | `mechbench protocol update` |
+| protocol | **edit**(id, file?, description_file?, description?, name?, base_version?, format?) | draft | `PUT /protocols/:id` | `protocol(verb="edit")` | `mechbench protocol edit` |
+| protocol | **publish**(id, version?) | outward * | `POST /protocols/:id/versions/:n/publish` | `protocol(verb="publish")` | `mechbench protocol publish` |
+| protocol | **unpublish**(id, version) | outward * | `POST /protocols/:id/versions/:n/unpublish` | `protocol(verb="unpublish")` | `mechbench protocol unpublish` |
+| protocol | **restore**(id, version) | draft | `POST /protocols/:id/versions/:n/restore` | `protocol(verb="restore")` | `mechbench protocol restore` |
+| protocol | **copy**(id, version?, into, name?, org?, dry_run?) | draft | `POST /protocols/:id/versions/:n/copy` | `protocol(verb="copy")` | `mechbench protocol copy` |
+| protocol | **delete**(id, yes?, acknowledge_citations?) | delete when yes=true * | `DELETE /protocols/:id` | `protocol(verb="delete")` | `mechbench protocol delete` |
+| protocol | **history**(id) | read | `GET /history/:kind/:id` | `protocol(verb="history")` | `mechbench protocol history` |
+| protocol | create | — | — | — | — (push is its create: a file is pushed, by its name) |
+| run | **list**(label?, label_contains?, status?, protocol?, project?, sweep?, owner?, search?, limit?, offset?, full?) | read | `GET /runs` | `run(verb="list")` | `mechbench run list` |
+| run | **jobs**(status?, protocol?, sweep?, order?, owner?, search?, limit?, offset?) | read | `GET /jobs` | `run(verb="jobs")` | `mechbench run jobs` |
+| run | **read**(id, full?) | read | `GET /runs/:id` | `run(verb="read")` | `mechbench run read` |
+| run | **launch**(protocol, params?, inputs?, keep?, budget?, label?) | spend * | `POST /protocols/:id/runs` | `run(verb="launch")` | `mechbench run launch` |
+| run | **sweep**(protocol, file?, members?, grid?, grid_inputs?, params?, inputs?, keep?, budget?, label?, wait?, timeout?) | spend * | `POST /protocols/:id/sweeps` | `run(verb="sweep")` | `mechbench run sweep` |
+| run | **update**(id, label?, clear?) | draft | `PATCH /runs/:id` | `run(verb="update")` | `mechbench run update` |
+| run | **watch**(id, timeout?) | read | `GET /runs/:id` | `run(verb="watch")` | `mechbench run watch` |
+| run | **result**(id, node) | read | `GET /objects/:path` | `run(verb="result")` | `mechbench run result` |
+| run | **diff**(a, b, node?, node_b?, key?, fields?, exclude?, include_moving?, allow?, by?, limit?, full?) | read | `GET /objects/:path` | `run(verb="diff")` | `mechbench run diff` |
+| run | **cancel**(id, reason?) | draft | `POST /jobs/:id/cancel` | `run(verb="cancel")` | `mechbench run cancel` |
+| run | **rerun**(id) | spend * | `POST /jobs/:id/rerun` | `run(verb="rerun")` | `mechbench run rerun` |
+| run | **delete**(id, yes?, acknowledge_citations?) | delete when yes=true * | `DELETE /jobs/:id` | `run(verb="delete")` | `mechbench run delete` |
+| run | **history**(id) | read | `GET /history/:kind/:id` | `run(verb="history")` | `mechbench run history` |
+| run | create | — | — | — | — (launch is its create: a run is a protocol launched) |
+| article | **list**(owner?, status?, mine?, search?, limit?, offset?, full?) | read | `GET /articles` | `article(verb="list")` | `mechbench article list` |
+| article | **read**(id, full?, format?) | read | `GET /articles/:id` | `article(verb="read")` | `mechbench article read` |
+| article | **create**(slug, title, owner?, org?, subtitle?, body_file?, body?, visibility?, tags?) | outward when visibility=org|public * | `POST /articles` | `article(verb="create")` | `mechbench article create` |
+| article | **update**(id, title?, subtitle?, slug?, status?, visibility?, tags?, body_file?, body?, base_version?) | outward when visibility=org|public or status=published * | `PATCH /articles/:id` | `article(verb="update")` | `mechbench article update` |
+| article | **edit**(id, file?, body_file?, body?, title?, subtitle?, tags?, base_version?, format?) | draft | `PUT /articles/:id` | `article(verb="edit")` | `mechbench article edit` |
+| article | **versions**(id) | read | `GET /articles/:id/versions` | `article(verb="versions")` | `mechbench article versions` |
+| article | **restore**(id, version) | draft | `POST /articles/:id/versions/:n/restore` | `article(verb="restore")` | `mechbench article restore` |
+| article | **delete**(id, yes?) | delete when yes=true * | `DELETE /articles/:id` | `article(verb="delete")` | `mechbench article delete` |
+| article | **history**(id) | read | `GET /history/:kind/:id` | `article(verb="history")` | `mechbench article history` |
+| dataset | **list**(owner?, search?, limit?, offset?, full?) | read | `GET /datasets` | `dataset(verb="list")` | `mechbench dataset list` |
+| dataset | **read**(id, full?) | read | `GET /datasets/:id` | `dataset(verb="read")` | `mechbench dataset read` |
+| dataset | **create**(object, slug, title, owner?, org?, description?, visibility?) | outward when visibility=org|public * | `POST /datasets/register` | `dataset(verb="create")` | `mechbench dataset create` |
+| dataset | **update**(id, title?, description?, visibility?, slug?) | outward when visibility=org|public * | `PATCH /datasets/:id` | `dataset(verb="update")` | `mechbench dataset update` |
+| dataset | **delete**(id, yes?) | delete when yes=true * | `DELETE /datasets/:id` | `dataset(verb="delete")` | `mechbench dataset delete` |
+| dataset | **history**(id) | read | `GET /history/:kind/:id` | `dataset(verb="history")` | `mechbench dataset history` |
+| project | **list**(owner?, search?, limit?, offset?, full?) | read | `GET /projects` | `project(verb="list")` | `mechbench project list` |
+| project | **read**(id, full?) | read | `GET /projects/:id` | `project(verb="read")` | `mechbench project read` |
+| project | **create**(slug, owner?, org?, name?, description?) | draft | `POST /projects` | `project(verb="create")` | `mechbench project create` |
+| project | **update**(id, name?, description?, slug?) | draft | `PATCH /projects/:id` | `project(verb="update")` | `mechbench project update` |
+| project | **delete**(id, yes?, acknowledge_citations?) | delete when yes=true * | `DELETE /projects/:id` | `project(verb="delete")` | `mechbench project delete` |
+| project | **history**(id) | read | `GET /history/:kind/:id` | `project(verb="history")` | `mechbench project history` |
+| thread | **list**(project?, search?, limit?, offset?) | read | `GET /threads` | `thread(verb="list")` | `mechbench thread list` |
+| thread | **read**(id, full?) | read | `GET /threads/:id` | `thread(verb="read")` | `mechbench thread read` |
+| thread | **create**(project, title?, visibility?, model?, key?) | outward when visibility=shared * | `POST /threads` | `thread(verb="create")` | `mechbench thread create` |
+| thread | **update**(id, title?, visibility?, model?, key?) | outward when visibility=shared * | `PATCH /threads/:id` | `thread(verb="update")` | `mechbench thread update` |
+| thread | **fork**(id, message, project?, title?) | draft | `POST /threads/:id/fork` | `thread(verb="fork")` | `mechbench thread fork` |
+| thread | **delete**(id, yes?) | delete when yes=true * | `DELETE /threads/:id` | `thread(verb="delete")` | `mechbench thread delete` |
+| thread | **history**(id) | read | `GET /history/:kind/:id` | `thread(verb="history")` | `mechbench thread history` |
+
+**Effects.** What a verb does to the platform, recorded on each verb:
+
+- **read**: reads; changes nothing.
+- **draft**: creates or edits the caller's own things, reversibly: a draft protocol, object, article, dataset, project or thread (their versions and history keep what was), a run's label, a queued run cancelled.
+- **spend**: spends compute or provider money: launches a run or a turn.
+- **delete**: deletes, permanently.
+- **outward**: shows something to more people: publishes, or widens visibility.
+
+A verb marked * needs the person's consent: the platform's own agent proposes it as a card the person clicks, and never makes the call itself; MCP marks it `[consent]` in the tool's description, for a client to confirm its own way. "when" names the arguments that make a call need it (a delete's dry run does not).
 
 **Command line only.**
 

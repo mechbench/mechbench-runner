@@ -6,7 +6,7 @@ from mcp.server import MCPServer
 from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 
 from .config import Config
-from .verbs import NOUNS, Ctx, Noun, VerbError, invoke, refusal
+from .verbs import CONSENT, NOUNS, Ctx, Noun, Verb, VerbError, invoke, refusal
 
 
 def build_tools(
@@ -44,10 +44,18 @@ def describe(noun: Noun) -> str:
     lines = [noun.help, "verb and its args:"]
     for v in noun.verbs:
         sig = ", ".join(a.name + ("" if a.required else "?") for a in v.args)
-        lines.append(f"{v.name}({sig}): {v.help}")
-    lines.append("Reads are summaries unless full; lists answer {items, next}; "
-                 "delete is a dry run unless yes.")
+        lines.append(f"{v.name}({sig}): {v.help}{consent(v)}")
+    lines.append(
+        "Reads are summaries unless full; lists answer {items, next}; "
+        "delete is a dry run unless yes. [consent] marks a call to confirm "
+        "with the person first: it spends, deletes or shows something "
+        "to more people."
+    )
     return "\n".join(lines)
+
+
+def consent(v: Verb) -> str:
+    return f" [consent: {v.effect_label()}]" if v.effect in CONSENT else ""
 
 
 def noun_tool(ctx: Ctx, noun: Noun) -> Any:
@@ -66,8 +74,11 @@ def noun_tool(ctx: Ctx, noun: Noun) -> Any:
     tool.__qualname__ = noun.name
     tool.__doc__ = describe(noun)
     verbs = tuple(v.name for v in noun.verbs)
-    tool.__annotations__ = {"verb": Literal[verbs], "args": dict[str, Any] | None,
-                            "return": Any}
+    tool.__annotations__ = {
+        "verb": Literal[verbs],
+        "args": dict[str, Any] | None,
+        "return": Any,
+    }
     return tool
 
 

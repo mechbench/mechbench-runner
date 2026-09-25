@@ -116,6 +116,7 @@ IDS = {
     "article": "art_1",
     "dataset": "ds_1",
     "project": "proj_1",
+    "thread": "thr_1",
 }
 
 
@@ -132,6 +133,8 @@ def sample(noun: str, a: Arg, tmp) -> Any:
         f = tmp / f"{noun}.json"
         f.write_text('{"kind": "note"}')
         return str(f)
+    if a.name in ("body", "description"):
+        return '{"ops": [{"insert": "Words.\\n"}]}'
     if a.name in ("body_file", "description_file"):
         f = tmp / "body.json"
         f.write_text('{"ops": [{"insert": "Words.\\n"}]}')

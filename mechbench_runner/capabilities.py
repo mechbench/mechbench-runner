@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .verbs import LIFECYCLE, NOUNS
+from .verbs import CONSENT, EFFECTS, LIFECYCLE, NOUNS
 
 ALIASES: dict[str, str] = {
     "run": "run launch (`mechbench run PROTOCOL`); with no PROTOCOL, the runner loop",
@@ -82,18 +82,40 @@ def surface_names(noun: str, verb: str) -> tuple[str, str]:
 
 
 def table() -> str:
-    out = ["| Noun | Verb | API | MCP | CLI |", "|---|---|---|---|---|"]
+    out = [
+        "| Noun | Verb | Effect | API | MCP | CLI |",
+        "|---|---|---|---|---|---|",
+    ]
     for n in NOUNS:
         for v in n.verbs:
             cli, mcp = surface_names(n.name, v.name)
             args = ", ".join(a.name + ("" if a.required else "?") for a in v.args)
+            effect = v.effect_label() + (" *" if v.effect in CONSENT else "")
             out.append(
-                f"| {n.name} | **{v.name}**({args}) | `{v.api}` | `{mcp}` | `{cli}` |"
+                f"| {n.name} | **{v.name}**({args}) | {effect} | `{v.api}` | `{mcp}` "
+                f"| `{cli}` |"
             )
         for verb in LIFECYCLE:
             if verb in n.absent:
-                out.append(f"| {n.name} | {verb} | — | — | — ({n.absent[verb]}) |")
+                out.append(f"| {n.name} | {verb} | — | — | — | — ({n.absent[verb]}) |")
     return "\n".join(out)
+
+
+def effects() -> str:
+    lines = [
+        "**Effects.** What a verb does to the platform, recorded on each verb:",
+        "",
+    ]
+    lines += [f"- **{k}**: {v}." for k, v in EFFECTS.items()]
+    lines += [
+        "",
+        "A verb marked * needs the person's consent: the platform's own agent "
+        "proposes it as a card the person clicks, and never makes the call "
+        "itself; MCP marks it `[consent]` in the tool's description, for a "
+        'client to confirm its own way. "when" names the arguments that make '
+        "a call need it (a delete's dry run does not).",
+    ]
+    return "\n".join(lines)
 
 
 def one_surface() -> str:
@@ -120,7 +142,7 @@ END = "<!-- verbs:end -->"
 
 
 def generated() -> str:
-    return "\n\n".join([BEGIN, table(), one_surface(), END])
+    return "\n\n".join([BEGIN, table(), effects(), one_surface(), END])
 
 
 def splice(doc: str) -> str:
@@ -135,7 +157,7 @@ def splice(doc: str) -> str:
 
 SUMMARY = (
     "Every noun an agent works with (objects, protocols, runs, articles, "
-    "datasets, projects) and its verbs, spelled on the command line, over MCP "
+    "datasets, projects, threads) and its verbs, spelled on the command line, over MCP "
     "and on the API, with what each surface leaves out and why."
 )
 
@@ -175,9 +197,9 @@ take, are on [Deleting](/deleting/). What was deleted keeps its
 history.
 
 MCP has a tool per noun rather than one per verb because every tool's
-schema sits in an agent's context on every turn: these six, and the
-in-process `run_protocol`, cost about 7.8 KB; the same verbs as a tool
-each, with typed parameters, about 27.8 KB.
+schema sits in an agent's context on every turn: these seven, and the
+in-process `run_protocol`, cost about 12.7 KB as MCP lists them; a tool
+per verb, with typed parameters, costs several times that.
 
 """
 )
@@ -188,6 +210,8 @@ def docs_page() -> str:
         PAGE_HEAD
         + "## The verbs\n\n"
         + table()
+        + "\n\n"
+        + effects()
         + "\n\n## On one surface only\n\n"
         + one_surface()
         + "\n"

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .core import (
+    CONFIRMED,
     FULL,
     ID,
     LIMIT,
@@ -11,6 +12,7 @@ from .core import (
     OWNER,
     SEARCH,
     VISIBILITY,
+    WIDER,
     YES,
     Arg,
     Ctx,
@@ -69,6 +71,7 @@ DATASET = Noun(
             ),
             "list",
             ("id", "ownerHandle", "slug", "dataPath", "title"),
+            effect="read",
         ),
         Verb(
             "dataset",
@@ -80,6 +83,7 @@ DATASET = Noun(
                 ctx.get(f"/datasets/{a['id']}", view=view(a)), "dataset"
             ),
             "read",
+            effect="read",
         ),
         Verb(
             "dataset",
@@ -96,6 +100,8 @@ DATASET = Noun(
                 VISIBILITY,
             ),
             dataset_create,
+            effect="outward",
+            consent_when=WIDER,
         ),
         Verb(
             "dataset",
@@ -110,6 +116,8 @@ DATASET = Noun(
                 Arg("slug", "Its address."),
             ),
             dataset_update,
+            effect="outward",
+            consent_when=WIDER,
         ),
         Verb(
             "dataset",
@@ -118,6 +126,8 @@ DATASET = Noun(
             "DELETE /datasets/:id",
             (ID, YES),
             lambda ctx, a: delete(ctx, a["id"], a),
+            effect="delete",
+            consent_when=CONFIRMED,
         ),
         Verb(
             "dataset",
@@ -127,6 +137,7 @@ DATASET = Noun(
             (ID,),
             lambda ctx, a: history(ctx, "dataset", a["id"]),
             "read",
+            effect="read",
         ),
     ),
 )
