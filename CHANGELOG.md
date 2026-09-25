@@ -23,7 +23,7 @@ with both headings.
 
 ---
 
-## Unreleased
+## 0.38.0 — 2026-09-25
 
 ### Changes that raise
 
