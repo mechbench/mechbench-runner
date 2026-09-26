@@ -33,6 +33,7 @@ from .core import (
     unwrap,
     view,
 )
+from .shorten import summarize_push
 
 
 def protocol_read(ctx: Ctx, a: dict) -> Any:
@@ -82,11 +83,12 @@ def protocol_push(ctx: Ctx, a: dict) -> Any:
         raise VerbError("push needs a file, or the protocol itself")
     bench = ctx.bench()
     try:
-        return bench.push_protocol(
+        answer = bench.push_protocol(
             content if content is not None else a["file"],
             a["into"],
             owner_kind="org" if a.get("org") else "user",
         )
+        return answer if a.get("full") else summarize_push(answer)
     except bench.BenchError as e:
         if e.status is None or not isinstance(e.body, dict):
             raise
@@ -187,7 +189,8 @@ PROTOCOL = Noun(
         Verb(
             "protocol",
             "push",
-            "Create or version it from a file, by its name in the project.",
+            "Create or version it from a file, by its name in the project. Answers "
+            "the protocol's id, version and interface, its graph as counts, unless full.",
             "POST /protocols/push",
             (
                 Arg("file", "The protocol file (JSON).", positional=True, local=True),
@@ -199,6 +202,7 @@ PROTOCOL = Noun(
                 ),
                 INTO,
                 ORG,
+                Arg("full", "The whole protocol, graph and all.", type="bool"),
             ),
             protocol_push,
             effect="draft",

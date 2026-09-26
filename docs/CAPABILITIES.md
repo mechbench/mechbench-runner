@@ -126,7 +126,7 @@ per-tool overhead at the cost of a single description too long to scan.
 | protocol | **list**(owner?, project?, search?, limit?, offset?, full?) | read | `GET /protocols` | `protocol(verb="list")` | `mechbench protocol list` |
 | protocol | **read**(id, version?, full?, format?) | read | `GET /protocols/:id` | `protocol(verb="read")` | `mechbench protocol read` |
 | protocol | **versions**(id, limit?, offset?) | read | `GET /protocols/:id/versions` | `protocol(verb="versions")` | `mechbench protocol versions` |
-| protocol | **push**(file?, protocol?, into, org?) | draft | `POST /protocols/push` | `protocol(verb="push")` | `mechbench protocol push` |
+| protocol | **push**(file?, protocol?, into, org?, full?) | draft | `POST /protocols/push` | `protocol(verb="push")` | `mechbench protocol push` |
 | protocol | **export**(id, version?, path?) | read | `GET /protocols/:id/export` | `protocol(verb="export")` | `mechbench protocol export` |
 | protocol | **update**(id, name?, description?, visibility?, project?) | outward when visibility=org|public * | `PATCH /protocols/:id` | `protocol(verb="update")` | `mechbench protocol update` |
 | protocol | **edit**(id, file?, description_file?, description?, name?, base_version?, format?) | draft | `PUT /protocols/:id` | `protocol(verb="edit")` | `mechbench protocol edit` |
@@ -141,16 +141,24 @@ per-tool overhead at the cost of a single description too long to scan.
 | run | **jobs**(status?, protocol?, sweep?, order?, owner?, search?, limit?, offset?) | read | `GET /jobs` | `run(verb="jobs")` | `mechbench run jobs` |
 | run | **read**(id, full?) | read | `GET /runs/:id` | `run(verb="read")` | `mechbench run read` |
 | run | **launch**(protocol, params?, inputs?, keep?, budget?, label?) | spend * | `POST /protocols/:id/runs` | `run(verb="launch")` | `mechbench run launch` |
+| run | **check**(protocol, params?, inputs?, keep?, budget?) | read | `POST /protocols/:id/check` | `run(verb="check")` | `mechbench run check` |
 | run | **sweep**(protocol, file?, members?, grid?, grid_inputs?, params?, inputs?, keep?, budget?, label?, wait?, timeout?) | spend * | `POST /protocols/:id/sweeps` | `run(verb="sweep")` | `mechbench run sweep` |
 | run | **update**(id, label?, clear?) | draft | `PATCH /runs/:id` | `run(verb="update")` | `mechbench run update` |
 | run | **watch**(id, timeout?) | read | `GET /runs/:id` | `run(verb="watch")` | `mechbench run watch` |
-| run | **result**(id, node) | read | `GET /objects/:path` | `run(verb="result")` | `mechbench run result` |
+| run | **result**(id, node, full?) | read | `GET /objects/:path` | `run(verb="result")` | `mechbench run result` |
 | run | **diff**(a, b, node?, node_b?, key?, fields?, exclude?, include_moving?, allow?, by?, limit?, full?) | read | `GET /objects/:path` | `run(verb="diff")` | `mechbench run diff` |
 | run | **cancel**(id, reason?) | draft | `POST /jobs/:id/cancel` | `run(verb="cancel")` | `mechbench run cancel` |
 | run | **rerun**(id) | spend * | `POST /jobs/:id/rerun` | `run(verb="rerun")` | `mechbench run rerun` |
 | run | **delete**(id, yes?, acknowledge_citations?) | delete when yes=true * | `DELETE /jobs/:id` | `run(verb="delete")` | `mechbench run delete` |
 | run | **history**(id) | read | `GET /history/:kind/:id` | `run(verb="history")` | `mechbench run history` |
 | run | create | — | — | — | — (launch is its create: a run is a protocol launched) |
+| model | **check**(repo) | read | `GET /models/check` | `model(verb="check")` | `mechbench model check` |
+| model | list | — | — | — | — (a model is Hugging Face's, not the platform's; the catalog of the ones verified here is GET /models/catalog) |
+| model | read | — | — | — | — (check reads it, by its repo) |
+| model | create | — | — | — | — (a model is published to Hugging Face, not made here) |
+| model | update | — | — | — | — (a model is Hugging Face's, not the platform's) |
+| model | delete | — | — | — | — (a model is Hugging Face's, not the platform's) |
+| model | history | — | — | — | — (a model is Hugging Face's; its revisions are its repo's commits) |
 | article | **list**(owner?, status?, mine?, search?, limit?, offset?, full?) | read | `GET /articles` | `article(verb="list")` | `mechbench article list` |
 | article | **read**(id, full?, format?) | read | `GET /articles/:id` | `article(verb="read")` | `mechbench article read` |
 | article | **create**(slug, title, owner?, org?, subtitle?, body_file?, body?, visibility?, tags?) | outward when visibility=org|public * | `POST /articles` | `article(verb="create")` | `mechbench article create` |

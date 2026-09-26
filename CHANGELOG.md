@@ -23,6 +23,34 @@ with both headings.
 
 ---
 
+## 0.39.0 — 2026-09-26
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+- **`run result` shortens a long list of numbers**: a list of 32 numbers
+  or more comes back as `{first, count, shortened}`, its first 8 and its
+  length, wherever it sits in the answer. `--full` answers every value,
+  as before. A script that reads a direction's or vector's values from
+  `run result` needs `--full`.
+- **`protocol push` answers a summary**: the protocol's own fields, its
+  graph as `{nodes, edges}` counts and its signature as names. `--full`
+  answers the whole protocol, as before.
+
+Also:
+
+- **`run check`** (`POST /protocols/:id/check`): the checks a launch
+  makes, and whether each input is stored and of its port's kind, each
+  local model is one compute loads, and each activation capture fits
+  under compute's cap. Takes launch's arguments; queues and spends
+  nothing.
+- **`model check`** (`GET /models/check`), a new noun: whether compute
+  loads a Hugging Face repo, its size, and its shape (layers, width,
+  heads, key/value heads, global layers), read before anything runs.
+
 ## 0.38.0 — 2026-09-25
 
 ### Changes that raise

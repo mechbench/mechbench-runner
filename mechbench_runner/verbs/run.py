@@ -24,6 +24,7 @@ from .core import (
     page,
     view,
 )
+from .shorten import shorten_numbers
 from .run_diff import run_diff
 from .sweep import run_sweep
 
@@ -76,7 +77,20 @@ def finished(ctx: Ctx, run: str) -> dict:
 
 
 def run_result(ctx: Ctx, a: dict) -> Any:
-    return with_notice(ctx.bench().result(finished(ctx, a["id"]), a["node"]), a["node"])
+    value = with_notice(ctx.bench().result(finished(ctx, a["id"]), a["node"]), a["node"])
+    return value if a.get("full") else shorten_numbers(value)
+
+
+def run_check(ctx: Ctx, a: dict) -> Any:
+    body: dict[str, Any] = {"params": dict(a.get("params") or {})}
+    if a.get("inputs") is not None:
+        body["inputs"] = {name: ({"$ref": {"bench": v}} if isinstance(v, str) else v)
+                          for name, v in a["inputs"].items()}
+    if a.get("keep") is not None:
+        body["keep"] = a["keep"]
+    if a.get("budget") is not None:
+        body["budgetUsd"] = a["budget"]
+    return ctx.api("POST", f"/protocols/{a['protocol']}/check", body=body)[0]
 
 
 def run_cancel(ctx: Ctx, a: dict) -> Any:
@@ -207,6 +221,29 @@ RUN = Noun(
         ),
         Verb(
             "run",
+            "check",
+            "Check a run before launching it: launch's own checks, and whether each "
+            "input is stored and of its port's kind, each local model is one compute "
+            "loads, and each activation capture fits under compute's cap. Nothing is "
+            "queued or spent.",
+            "POST /protocols/:id/check",
+            (
+                Arg("protocol", "The protocol's id.", required=True, positional=True),
+                Arg(
+                    "params",
+                    "A param, NAME=VALUE (JSON values parse).",
+                    type="pairs",
+                    flag="--param",
+                ),
+                Arg("inputs", "An input, NAME=PATH.", type="pairs", flag="--input"),
+                Arg("keep", "all, or outputs alone.", choices=("all", "outputs")),
+                Arg("budget", "Spend cap, USD.", type="float"),
+            ),
+            run_check,
+            effect="read",
+        ),
+        Verb(
+            "run",
             "sweep",
             "Run a protocol once per binding, all queued at once and tied by a "
             "sweep id: members listed, or a grid of values crossed (the first "
@@ -289,9 +326,14 @@ RUN = Noun(
         Verb(
             "run",
             "result",
-            "One node's output, the envelope stripped.",
+            "One node's output, the envelope stripped. A list of 32 numbers or more "
+            "comes back as its first 8 and its count, unless full.",
             "GET /objects/:path",
-            (RUN_ID, Arg("node", "The node's id.", required=True, positional=True)),
+            (
+                RUN_ID,
+                Arg("node", "The node's id.", required=True, positional=True),
+                Arg("full", "Every value, long numeric lists too.", type="bool"),
+            ),
             run_result,
             "read",
             effect="read",
