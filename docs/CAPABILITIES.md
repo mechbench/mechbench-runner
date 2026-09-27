@@ -4,17 +4,21 @@ Every noun an agent works with, and its verbs,
 on the three surfaces an agent reaches the platform through:
 
 - **API**: mechbench-api, `src/routes/`.
-- **MCP**: the tools in `mechbench_runner/mcp_server.py` (`mechbench mcp`).
+- **MCP**: the platform's server at `https://api.mechbench.ai/mcp`
+  (mechbench-api, `src/mcp/`), which a client connects to with OAuth.
 - **CLI**: the `mechbench` command (`mechbench/cli.py`).
 
-The nouns and verbs are declared once, in `mechbench_runner/verbs/` (a module per noun),
-and the command line and the MCP tools are both built from that
-declaration, so a verb is on both or on neither. Each verb names its API
-route. The matrix below is written from the declaration by
-`scripts/capabilities.py`, and `tests/test_parity.py` fails when:
+The nouns and verbs are declared once, in `mechbench_runner/verbs/` (a
+module per noun). The command line is built from that declaration;
+`scripts/dump_verbs_ts.py` writes it into mechbench-models as
+`src/verbs.generated.ts`, and the MCP server and the platform's own
+agent are built from that, so a verb is on every surface or on none.
+Each verb names its API route. The matrix below is written from the
+declaration by `scripts/capabilities.py`, and `tests/test_parity.py`
+fails when:
 
-- a command on the command line, or an MCP tool, is neither a noun's verb
-  nor listed below as on one surface with its reason;
+- a command on the command line is neither a noun's verb nor listed
+  below as on one surface with its reason;
 - a noun is missing one of list, read, create, update, delete or history
   without a reason;
 - a verb's API route is not declared in mechbench-api's routes (when a
@@ -23,8 +27,8 @@ route. The matrix below is written from the declaration by
 
 The Python `mechbench_compute.bench` module is not one of the three
 surfaces. The verbs it has (launch, push, export, publish, copy, cancel,
-delete, history, result, emit) are what the command line and MCP call
-for those verbs, so there is one client for each; the rest go straight
+delete, history, result, emit) are what the command line calls for
+those verbs, so there is one client for each; the rest go straight
 to the API through the runner's client.
 
 ## Spelling a verb on each surface
@@ -32,10 +36,11 @@ to the API through the runner's client.
 | Surface | Spelling | Example |
 |---|---|---|
 | CLI | `mechbench <noun> <verb>`, arguments as `--flags` or positionals | `mechbench protocol push draws.json --into benji/lab` |
-| MCP | one tool per noun, `<noun>(verb, args)`, the arguments by the CLI's names | `protocol(verb="push", args={"file": "draws.json", "into": "benji/lab"})` |
+| MCP | one tool per noun, `<noun>(verb, args)`, the arguments by the CLI's names | `protocol(verb="push", args={"protocol": {...}, "into": "benji/lab"})` |
 | API | the resource and an action | `POST /protocols/push` |
 
-An argument has one name on the command line and in MCP's `args`:
+An argument has one name on the command line and in MCP's `args`,
+except one that names a file on the caller's machine (below):
 `id`, `path`, `version`, `into` (`owner/project`), `owner`, `project`,
 `search`, `limit`, `offset`, `full`, `yes`, `acknowledge_citations`,
 `label`, `params`, `inputs`, `keep`, `budget`. The API's field names are
@@ -85,31 +90,32 @@ the resource's own (`displayName`, `labelContains`, `view`).
   because a question asked at the command line is not a result to keep.
   A comparison that should be kept, citing both runs, is a
   `records/diff` node whose ports reference the two results.
-- **Refusals are data on MCP.** An API refusal comes back as
-  `{"error": {status, code, error, …}}`; an argument the verb does not
-  take is refused with the verb's own list.
+- **Refusals are data.** An API refusal comes back to an MCP client as
+  `{"error": {status, code, error, …}}`, marked as an error, and on the
+  command line as exit 1 with the code on stderr; an argument the verb
+  does not take is refused with the verb's own list.
 
 ## Why MCP has a tool per noun
 
 Every MCP tool's schema sits in an agent's context on every turn.
-Measured as the server lists them (name, description and input schema,
-compact JSON; `~tokens` is bytes / 4):
+Measured as a server lists them (name, description and input schema,
+compact JSON; `~tokens` is bytes / 4), when the choice was between a
+tool per verb and a tool per noun:
 
 | Tool set | Tools | Verbs | Bytes | ~Tokens |
 |---|---|---|---|---|
-| a tool per verb, three verbs (`run_protocol`, `get_result`, `list_jobs`) | 3 | 2 | 1,072 | 268 |
-| a tool per verb, eight verbs (those and `run`, `runs`, `label`, `protocol_push`, `protocol_export`) | 8 | 7 | 4,570 | 1,142 |
 | **a tool per noun, the verb an argument (chosen)** | 7 | 46 | 7,785 | 1,946 |
 | the same 46 verbs as a tool each, typed parameters | 46 | 46 | 27,828 | 6,957 |
 
 A tool per noun keeps every verb's shape in one description line
 (`read(id, version?, full?): …`) and its arguments in one free-form
-`args` object, so the whole lifecycle of six nouns costs less than
-twice what seven verbs cost as separate tools. What it gives up, typed
-validation of `args` by the client, is done by the verb instead, which
-refuses an unknown or missing argument by name. One tool for everything
-(`mechbench(noun, verb, args)`) would save about another 1.2 KB of
-per-tool overhead at the cost of a single description too long to scan.
+`args` object. What it gives up, typed validation of `args` by the
+client, is done by the verb instead, which refuses an unknown or
+missing argument by name. One tool for everything
+(`mechbench(noun, verb, args)`) would save a little more per-tool
+overhead at the cost of a single description too long to scan. The
+platform's server lists a tool per noun and `docs`, with a line per
+argument, in about 26 KB.
 
 <!-- verbs:begin (scripts/capabilities.py writes this) -->
 
@@ -196,12 +202,11 @@ per-tool overhead at the cost of a single description too long to scan.
 - **delete**: deletes, permanently.
 - **outward**: shows something to more people: publishes, or widens visibility.
 
-A verb marked * needs the person's consent: the platform's own agent proposes it as a card the person clicks, and never makes the call itself; MCP marks it `[consent]` in the tool's description, for a client to confirm its own way. "when" names the arguments that make a call need it (a delete's dry run does not).
+A verb marked * needs the person's consent: the platform's own agent proposes it as a card the person clicks, and never makes the call itself; MCP marks it `[confirm with the user first]` in the tool's description, and a client confirms it its own way. "when" names the arguments that make a call need it (a delete's dry run does not).
 
 **Command line only.**
 
 - `mechbench login`, `mechbench logout`, `mechbench whoami`, `mechbench doctor`, `mechbench models`, `mechbench budget`, `mechbench update`, `mechbench supervise`, `mechbench install-service`, `mechbench uninstall-service`, `mechbench service-status`, `mechbench status`, `mechbench pause`, `mechbench resume`, `mechbench restart`, `mechbench smoke`: this machine's runner, not the platform: an agent reaches the platform, and the person at the machine runs its service.
-- `mechbench mcp`: starts the MCP server itself.
 
 **Shorter names for a noun's verb** (the command line keeps them):
 
@@ -214,9 +219,7 @@ A verb marked * needs the person's consent: the platform's own agent proposes it
 - `mechbench delete`: `<noun> delete`, the noun read from the id's prefix or a path.
 - `mechbench history`: `<noun> history`, by kind and id.
 
-**MCP only.**
-
-- `run_protocol`: runs a built-in kind in-process on the machine serving MCP; the queued, recorded way to run is `run launch` on every surface.
+**Files on the caller's machine** are the command line's. Over MCP an argument that names one is the thing itself: a push takes `protocol`, not `file`; an article or protocol takes `body` or `description`, not `body_file` or `description_file`; and an export answers its text rather than writing it to `path`.
 
 **API only.**
 

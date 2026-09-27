@@ -38,14 +38,6 @@ CLI_ONLY: dict[str, str] = {
         "smoke",
     )
 }
-CLI_ONLY["mcp"] = "starts the MCP server itself"
-
-MCP_ONLY: dict[str, str] = {
-    "run_protocol": (
-        "runs a built-in kind in-process on the machine serving MCP; "
-        "the queued, recorded way to run is `run launch` on every surface"
-    ),
-}
 
 API_ONLY: dict[str, str] = {
     "kinds (`GET/PUT /kinds/:path`)": "registered by compute releases, not by agents",
@@ -111,8 +103,9 @@ def effects() -> str:
         "",
         "A verb marked * needs the person's consent: the platform's own agent "
         "proposes it as a card the person clicks, and never makes the call "
-        "itself; MCP marks it `[consent]` in the tool's description, for a "
-        'client to confirm its own way. "when" names the arguments that make '
+        "itself; MCP marks it `[confirm with the user first]` in the tool's "
+        'description, and a client confirms it its own way. "when" names the '
+        "arguments that make "
         "a call need it (a delete's dry run does not).",
     ]
     return "\n".join(lines)
@@ -130,8 +123,14 @@ def one_surface() -> str:
         "",
     ]
     lines += [f"- `mechbench {k}`: {v}." for k, v in ALIASES.items()]
-    lines += ["", "**MCP only.**", ""]
-    lines += [f"- `{k}`: {why}." for k, why in MCP_ONLY.items()]
+    lines += [
+        "",
+        "**Files on the caller's machine** are the command line's. Over MCP an "
+        "argument that names one is the thing itself: a push takes `protocol`, "
+        "not `file`; an article or protocol takes `body` or `description`, not "
+        "`body_file` or `description_file`; and an export answers its text "
+        "rather than writing it to `path`.",
+    ]
     lines += ["", "**API only.**", ""]
     lines += [f"- {k}: {why}." for k, why in API_ONLY.items()]
     return "\n".join(lines)
@@ -178,9 +177,10 @@ lifecycle: **list** (with `search`, `limit` and `offset`), **read**,
 and on the command line. One verb is designed once and spelled on each:
 - **Command line:** `mechbench <noun> <verb>`, the arguments as flags
   (`--label-contains`) or positionals.
-- **MCP:** one tool per noun, `<noun>(verb, args)`, the arguments by the
-  same names: `protocol(verb="push", args={"file": "draws.json",
-  "into": "benji/lab"})`.
+- **MCP:** the platform's server at `https://api.mechbench.ai/mcp`
+  ([MCP](/mcp/)), one tool per noun, `<noun>(verb, args)`, the
+  arguments by the same names: `protocol(verb="push",
+  args={"protocol": {...}, "into": "benji/lab"})`.
 - **API:** the resource and its action, `POST /protocols/push`.
 
 **Reads are summaries** unless asked for in full (`--full`, `full: true`,
@@ -197,9 +197,9 @@ take, are on [Deleting](/deleting/). What was deleted keeps its
 history.
 
 MCP has a tool per noun rather than one per verb because every tool's
-schema sits in an agent's context on every turn: these seven, and the
-in-process `run_protocol`, cost about 12.7 KB as MCP lists them; a tool
-per verb, with typed parameters, costs several times that.
+schema sits in an agent's context on every turn: one per noun, and
+`docs`, cost about 26 KB as MCP lists them; a tool per verb, with typed
+parameters, costs several times that.
 
 """
 )

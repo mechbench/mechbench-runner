@@ -8,8 +8,7 @@ import pytest
 from mechbench import cli
 from mechbench_runner.api_client import ApiError
 from mechbench_runner.config import Config
-from mechbench_runner.mcp_server import build_tools
-from mechbench_runner.verbs import Ctx
+from mechbench_runner.verbs import Ctx, VerbError, invoke
 from mechbench_runner.verbs import sweep as sweep_mod
 
 CFG = Config(
@@ -19,6 +18,11 @@ CFG = Config(
     warm_model_id=None,
     runner_id=None,
 )
+
+
+def call(noun, verb, args):
+    return invoke(Ctx(CFG), noun, verb, args)
+
 
 LAUNCHED = [
     {"id": "run_a", "jobId": "j_a", "sweepId": "swp_1", "sweepMember": 0},
@@ -124,9 +128,8 @@ def test_a_whole_sweep_in_a_json_file_yields_to_flags(api, tmp_path):
     }
 
 
-def test_mcp_takes_members_and_a_grid_as_values():
+def test_members_and_a_grid_are_taken_as_values():
     calls: list[Any] = []
-    tools = build_tools(CFG, executor=object())
     ctx_api = Ctx.api
 
     def fake(self, method, route, *, query=None, body=None):
@@ -135,8 +138,8 @@ def test_mcp_takes_members_and_a_grid_as_values():
 
     Ctx.api = fake
     try:
-        tools["run"]("sweep", {"protocol": "prt_1", "members": [{"params": {"n": 1}}]})
-        tools["run"]("sweep", {"protocol": "prt_1", "grid": {"n": [1, 2], "t": "3,4"}})
+        call("run", "sweep", {"protocol": "prt_1", "members": [{"params": {"n": 1}}]})
+        call("run", "sweep", {"protocol": "prt_1", "grid": {"n": [1, 2], "t": "3,4"}})
     finally:
         Ctx.api = ctx_api
     assert calls[0] == {"members": [{"params": {"n": 1}}]}
@@ -153,18 +156,16 @@ def test_mcp_takes_members_and_a_grid_as_values():
 )
 def test_a_sweep_that_is_not_one_is_refused_before_anything_is_sent(api, args, why):
     calls, _ = api
-    tools = build_tools(CFG, executor=object())
-    with pytest.raises(ValueError, match=why):
-        tools["run"]("sweep", {"protocol": "prt_1", **args})
+    with pytest.raises(VerbError, match=why):
+        call("run", "sweep", {"protocol": "prt_1", **args})
     assert calls == []
 
 
 def test_a_file_with_a_field_a_sweep_lacks_is_refused(api, tmp_path):
     f = tmp_path / "sweep.json"
     f.write_text('{"members": [{}], "repeat": 3}')
-    tools = build_tools(CFG, executor=object())
-    with pytest.raises(ValueError, match="not repeat"):
-        tools["run"]("sweep", {"protocol": "prt_1", "file": str(f)})
+    with pytest.raises(VerbError, match="not repeat"):
+        call("run", "sweep", {"protocol": "prt_1", "file": str(f)})
 
 
 def test_wait_polls_the_sweep_until_every_run_has_finished(api):
@@ -173,9 +174,8 @@ def test_wait_polls_the_sweep_until_every_run_has_finished(api):
         [{"id": "run_a", "jobStatus": "done"}, {"id": "run_b", "jobStatus": "running"}],
         [{"id": "run_a", "jobStatus": "done"}, {"id": "run_b", "jobStatus": "failed"}],
     ]
-    tools = build_tools(CFG, executor=object())
-    out = tools["run"](
-        "sweep", {"protocol": "prt_1", "grid": {"n": [1, 2]}, "wait": True}
+    out = call(
+        "run", "sweep", {"protocol": "prt_1", "grid": {"n": [1, 2]}, "wait": True}
     )
     assert out["finished"] is True
     assert [r["jobStatus"] for r in out["runs"]] == ["done", "failed"]
@@ -187,8 +187,8 @@ def test_wait_polls_the_sweep_until_every_run_has_finished(api):
 def test_wait_gives_up_at_the_timeout_and_says_so(api):
     _, listings = api
     listings += [[{"id": "run_a", "jobStatus": "running"}]]
-    tools = build_tools(CFG, executor=object())
-    out = tools["run"](
+    out = call(
+        "run",
         "sweep",
         {"protocol": "prt_1", "grid": {"n": [1]}, "wait": True, "timeout": 0.0001},
     )
@@ -197,9 +197,8 @@ def test_wait_gives_up_at_the_timeout_and_says_so(api):
 
 def test_runs_and_jobs_are_found_by_sweep(api):
     calls, _ = api
-    tools = build_tools(CFG, executor=object())
-    tools["run"]("list", {"sweep": "swp_1"})
-    tools["run"]("jobs", {"sweep": "swp_1"})
+    call("run", "list", {"sweep": "swp_1"})
+    call("run", "jobs", {"sweep": "swp_1"})
     assert calls[0][1:3] == ("/runs", {"sweep": "swp_1", "view": "summary"})
     assert calls[1][1:3] == ("/jobs", {"sweep": "swp_1"})
 

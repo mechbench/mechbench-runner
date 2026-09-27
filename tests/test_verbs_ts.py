@@ -8,7 +8,6 @@ import runpy
 import pytest
 
 from mechbench_runner.config import Config
-from mechbench_runner.mcp_server import build_tools
 from mechbench_runner.verbs import CONSENT, EFFECTS, NOUNS, noun
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -100,15 +99,6 @@ def test_drafts_are_free():
         ("article", "edit"),
     ):
         assert not noun(noun_name).verb(verb_name).needs_consent({})
-
-
-def test_mcp_marks_what_needs_consent():
-    tools = build_tools(CFG, executor=object())
-    assert "launch(" in tools["run"].__doc__
-    line = next(x for x in tools["run"].__doc__.splitlines() if x.startswith("launch("))
-    assert line.endswith("[consent: spend]")
-    line = next(x for x in tools["run"].__doc__.splitlines() if x.startswith("list("))
-    assert "[consent" not in line
 
 
 def test_every_file_argument_is_local():

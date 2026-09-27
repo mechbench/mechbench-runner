@@ -23,6 +23,26 @@ with both headings.
 
 ---
 
+## 0.40.0 — 2026-09-27
+
+### Changes that raise
+
+- **`mechbench mcp` is gone**, and with it the local stdio MCP server
+  and its `run_protocol` tool. An agent connects to the platform's MCP
+  server at `https://api.mechbench.ai/mcp`, which has the same tools, a
+  noun each, plus `thread` and `docs`, and signs in with OAuth instead
+  of an API key in a config file. An agent with a shell uses
+  `mechbench <noun> <verb>`. A recorded run of a built-in kind is
+  `run launch`, as it was on every other surface. A client configured
+  with `"args": ["mcp"]` fails to start.
+- **`mechbench smoke --full` is gone**: it ran `run_protocol`.
+  `mechbench smoke` checks the key and reads runs, as before.
+- **The `mcp` package is no longer a dependency.**
+
+### Changes that alter results without raising
+
+_None._
+
 ## 0.39.0 — 2026-09-26
 
 ### Changes that raise

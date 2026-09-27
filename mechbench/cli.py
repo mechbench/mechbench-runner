@@ -90,10 +90,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser(
-        "mcp",
-        help="Run the MCP server over stdio (the agent-callable surface).",
-    )
-    sub.add_parser(
         "supervise",
         help="Run the runner as a supervised child, restarting and "
              "upgrading it as needed.",
@@ -263,12 +259,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     smoke = sub.add_parser(
         "smoke",
-        help="Run the in-process smoke test (skips model load by default).",
-    )
-    smoke.add_argument(
-        "--full",
-        action="store_true",
-        help="Include the 42-forward-pass layer-ablation run (~1-2 min).",
+        help="Check that this machine's key reaches the platform and reads its runs.",
     )
 
     return parser
@@ -416,12 +407,6 @@ def main(argv: list[str] | None = None) -> int:
             return login_mod.logout(config)
         return login_mod.whoami(config)
 
-    if args.cmd == "mcp":
-        from mechbench_runner.mcp_server import run_stdio
-
-        run_stdio(config)
-        return 0
-
     if args.cmd == "cancel":
         from mechbench_runner import bench_cmd
 
@@ -523,7 +508,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "smoke":
         from mechbench_runner._smoke import main as smoke_main
 
-        return smoke_main(full=args.full)
+        return smoke_main()
 
     parser.error(f"unknown cmd: {args.cmd}")
     return 2

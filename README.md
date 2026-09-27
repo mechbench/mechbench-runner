@@ -6,26 +6,24 @@ The `mechbench` command: what you install on a machine to connect it to
 the distribution ships two modules: `mechbench`, the bare front door,
 and `mechbench_runner`, the engine it dispatches into.
 
-The machine-side process of the [mechbench](https://mechbench.ai) family: it claims queued jobs from `mechbench-api`, executes them against `mechbench-compute`, and posts results back. It also exposes those same primitives as [Model Context Protocol](https://modelcontextprotocol.io) tools, so an LLM agent can call them directly.
+The machine-side process of the [mechbench](https://mechbench.ai) family: it claims queued jobs from `mechbench-api`, executes them against `mechbench-compute`, and posts results back. It is also the command line for the platform's verbs, `mechbench <noun> <verb>`, for a person or an agent with a shell.
 
-**Status:** in use. `login` pairs a machine with an account; the runner then claims and executes jobs, reports progress and preparing steps, holds a live WSS channel for control and telemetry, and installs as a launchd or systemd service so it survives reboots. `doctor` tells you whether a machine will work before it tries. Six MCP tools, one per noun (`object`, `protocol`, `run`, `article`, `dataset`, `project`, each taking a verb and its args), plus the in-process `run_protocol`, expose the same verbs as `mechbench <noun> <verb>`; see docs/CAPABILITIES.md.
+**Status:** in use. `login` pairs a machine with an account; the runner then claims and executes jobs, reports progress and preparing steps, holds a live WSS channel for control and telemetry, and installs as a launchd or systemd service so it survives reboots. `doctor` tells you whether a machine will work before it tries. `mechbench <noun> <verb>` reaches every verb the platform has; see docs/CAPABILITIES.md.
 
 ## What this repo is for
 
-Two adjacent surfaces for different callers:
+Two surfaces for different callers:
 
-1. **MCP server.** An LLM agent (Claude, others) connects via MCP stdio and calls mechbench primitives as structured tools. Tool bodies run in-process against `mechbench-compute`.
-2. **Job-runner.** Polls `mechbench-api`'s `/jobs/next` for UI-queued protocols, runs them, posts results back. Same compute path as the MCP `run_protocol` tool; different *trigger*.
+1. **Command line.** `mechbench <noun> <verb>` lists, reads, pushes, launches and deletes the platform's objects, protocols, runs, models, articles, datasets, projects and threads, as a person or an agent with a shell.
+2. **Job-runner.** Polls `mechbench-api`'s `/jobs/next` for queued protocols, runs them against `mechbench-compute`, posts results back.
 
-Both modes share one binary (`mechbench`) with subcommands; they share the loaded model, API client, and protocol executor. Splitting into separate processes is a later operational decision — see "Open design questions" below.
+An agent without a shell connects to the platform's MCP server at `https://api.mechbench.ai/mcp`, which has the same verbs; it is not part of this package.
 
 ## Architectural decisions
 
-- **Python.** `mechbench-compute` is Python; delegating to Python via RPC or subprocess-shell from a TS runner adds a layer that pays no dividends. The MCP Python SDK is mature.
-- **One binary, two subcommands.** `mechbench mcp` launches the MCP server over stdio; `mechbench run` starts the job-runner loop. They share `ExperimentRunner` (owns the loaded Gemma model) and `ApiClient`.
-- **Agent authenticates to `mechbench-api` with a dedicated API key**, not a user's personal session. Export `MECHBENCH_API_KEY` (mint one at `/settings/api-keys`, or via `POST /auth/api-keys`). Matches the pattern from the e2e trace.
-- **MCP `run_protocol` runs in-process**, not queued through `mechbench-api`. The MCP caller wants the answer; we are the compute target. Job-queue round-tripping exists for the *UI-triggered* path (job-runner subcommand).
-- **stdio transport only.** SSE / HTTP-SSE transports earn their seat once remote MCP deploy matters (deferred).
+- **Python.** `mechbench-compute` is Python; delegating to Python via RPC or subprocess-shell from a TS runner adds a layer that pays no dividends.
+- **One binary.** `mechbench run` starts the job-runner loop; the nouns and the machine's own commands (`login`, `doctor`, `status`, …) are its other subcommands.
+- **Agent authenticates to `mechbench-api` with a dedicated API key**, not a user's personal session. Export `MECHBENCH_API_KEY` (mint one at `/settings/api-keys`, or via `POST /auth/api-keys`).
 
 ## Install
 
@@ -108,44 +106,29 @@ pip install -e '.[dev]'
 
 ## Usage
 
-### MCP server
+### The platform's verbs
 
-Launch as a stdio MCP server — connect from Claude Desktop via `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "mechbench": {
-      "command": "/abs/path/to/mechbench/.venv/bin/mechbench",
-      "args": ["mcp"],
-      "env": {
-        "MECHBENCH_API_URL": "http://localhost:3000",
-        "MECHBENCH_API_KEY": "mbk_..."
-      }
-    }
-  }
-}
-```
-
-These tools appear in Claude: one per noun, each taking a `verb` and
-that verb's `args` by name, so `protocol(verb="push", args={"file": "draws.json",
-"into": "benji/lab"})` is `mechbench protocol push draws.json --into benji/lab`.
+One command per noun, each taking a verb and its arguments, so
+`mechbench protocol push draws.json --into benji/lab` is
+`protocol(verb="push", args={"protocol": {...}, "into": "benji/lab"})`
+on the platform's MCP server.
 [docs/CAPABILITIES.md](docs/CAPABILITIES.md) lists every verb on the API,
-MCP and the command line, and why a tool per noun rather than per verb.
+MCP and the command line.
 
-| tool | command | verbs |
-|---|---|---|
-| `object` | `mechbench object` | list, read, items, write, update, delete, history |
-| `protocol` | `mechbench protocol` | list, read, versions, push, export, update, publish, unpublish, copy, delete, history |
-| `run` | `mechbench run` | list, read, launch, update, watch, result, cancel, rerun, delete, history |
-| `article` | `mechbench article` | list, read, create, update, delete, history |
-| `dataset` | `mechbench dataset` | list, read, create, update, delete, history |
-| `project` | `mechbench project` | list, read, create, update, delete, history |
-| `run_protocol` | | Run a layer-ablation protocol in-process on a prompt; return per-layer damage. |
+| command | verbs |
+|---|---|
+| `mechbench object` | list, read, items, write, update, delete, history |
+| `mechbench protocol` | list, read, versions, push, export, update, edit, publish, unpublish, restore, copy, delete, history |
+| `mechbench run` | list, jobs, read, launch, check, sweep, update, watch, result, diff, cancel, rerun, delete, history |
+| `mechbench model` | check |
+| `mechbench article` | list, read, create, update, edit, versions, restore, delete, history |
+| `mechbench dataset` | list, read, create, update, delete, history |
+| `mechbench project` | list, read, create, update, delete, history |
+| `mechbench thread` | list, read, create, update, fork, delete, history |
 
 ### Job-runner
 
-Polls `mechbench-api` for UI-queued jobs. Same compute path as `run_protocol`; different trigger.
+Polls `mechbench-api` for queued jobs.
 
 ```bash
 export MECHBENCH_API_URL=http://localhost:3000
@@ -155,11 +138,10 @@ mechbench run
 
 Ctrl-C exits cleanly. API-unreachable is retried with exponential backoff capped at 30 s.
 
-### In-process smoke test
+### Smoke test
 
 ```bash
-mechbench smoke            # quick: list_jobs + get_result
-mechbench smoke --full     # adds run_protocol (42 forwards, ~1-2 min)
+mechbench smoke            # this machine's key reaches the platform: run list + run read
 ```
 
 ## Configuration
@@ -184,9 +166,7 @@ All via env vars:
 
 ## Open design questions (deferred)
 
-- **One binary or two processes?** Current answer: one binary, two subcommands. Revisit if MCP-caller frequency vs. job-runner throughput diverges enough to want independent scaling.
-- **Structured-summary interface.** The family's philosophy doc describes a read-side surface where agents consume JSON summaries of findings / experiments. Currently implicit in `list_jobs` + `get_result`. A richer summary layer (`GET /summary`, `POST /query`) is still on the table but unbuilt.
-- **MCP-surface observability.** Rate limits, per-tool metrics, audit trail for the tool-calling side. Deferred until a second LLM-agent consumer exists.
+- **Structured-summary interface.** The family's philosophy doc describes a read-side surface where agents consume JSON summaries of findings / experiments. Currently implicit in `run list` + `run result`. A richer summary layer (`GET /summary`, `POST /query`) is still on the table but unbuilt.
 
 ## License
 

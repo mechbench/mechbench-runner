@@ -11,8 +11,7 @@ from mechbench import cli
 from mechbench_runner import bench_cmd
 from mechbench_runner.api_client import ApiError
 from mechbench_runner.config import Config
-from mechbench_runner.mcp_server import build_tools
-from mechbench_runner.verbs import NOUNS, Arg, Ctx, Verb
+from mechbench_runner.verbs import NOUNS, Arg, Ctx, Verb, VerbError, invoke
 
 CFG = Config(
     api_base_url="http://api.test",
@@ -21,6 +20,11 @@ CFG = Config(
     warm_model_id=None,
     runner_id=None,
 )
+
+
+def call(noun, verb, args):
+    return invoke(Ctx(CFG), noun, verb, args)
+
 
 ANSWER = {
     "id": "x_1",
@@ -190,7 +194,7 @@ CASES = [(n.name, v.name) for n in NOUNS for v in n.verbs]
 
 
 @pytest.mark.parametrize("noun,verb", CASES)
-def test_each_verb_makes_the_same_calls_on_both_surfaces(
+def test_the_command_line_makes_the_calls_its_arguments_name(
     noun, verb, rec, tmp_path, capsys
 ):
     n = next(x for x in NOUNS if x.name == noun)
@@ -200,17 +204,16 @@ def test_each_verb_makes_the_same_calls_on_both_surfaces(
         args.pop("clear")
     if (noun, verb) == ("protocol", "read"):
         args.pop("format")
-    tools = build_tools(CFG, executor=object())
-    out = tools[noun](verb, args)
+    out = call(noun, verb, args)
     assert not (isinstance(out, dict) and "error" in out), out
-    mcp_calls = list(rec)
+    direct_calls = list(rec)
     rec.clear()
     assert cli.main(argv_of(noun, v, args)) in (0, 1), capsys.readouterr()
     cli_calls = list(rec)
-    assert mcp_calls, "the verb reached nothing"
+    assert direct_calls, "the verb reached nothing"
     if (noun, verb) in OWN_WAY:
         return
-    assert cli_calls == mcp_calls
+    assert cli_calls == direct_calls
 
 
 def test_every_verb_is_exercised():
@@ -219,32 +222,29 @@ def test_every_verb_is_exercised():
 
 class TestShapes:
     def test_a_read_is_a_summary_unless_full(self, rec):
-        tools = build_tools(CFG, executor=object())
-        tools["protocol"]("read", {"id": "prt_1"})
+        call("protocol", "read", {"id": "prt_1"})
         assert rec[-1][1:4] == ("GET", "/protocols/prt_1", {"view": "summary"})
-        tools["protocol"]("read", {"id": "prt_1", "full": True})
+        call("protocol", "read", {"id": "prt_1", "full": True})
         assert rec[-1][3] == {"view": "full"}
-        tools["protocol"]("read", {"id": "prt_1", "version": 2})
+        call("protocol", "read", {"id": "prt_1", "version": 2})
         assert rec[-1][2] == "/protocols/prt_1/versions/2"
 
     def test_an_object_read_is_its_header_and_full_is_its_payload(self, rec):
-        tools = build_tools(CFG, executor=object())
-        tools["object"]("read", {"path": "benji/lab/x"})
+        call("object", "read", {"path": "benji/lab/x"})
         assert rec[-1][1:4] == ("GET", "/objects/~meta", {"path": "benji/lab/x"})
-        tools["object"]("read", {"path": "benji/lab/x", "full": True})
+        call("object", "read", {"path": "benji/lab/x", "full": True})
         assert rec[-1][:3] == ("bench", "fetch", ("benji/lab/x",))
 
     def test_a_listing_answers_items_and_the_next_offset(self, rec):
-        tools = build_tools(CFG, executor=object())
-        out = tools["article"]("list", {"search": "ladder", "limit": 3})
+        out = call("article", "list", {"search": "ladder", "limit": 3})
         assert out == {"items": [{"id": "row_1"}], "next": 3}
         assert rec[-1][3] == {"search": "ladder", "limit": 3, "view": "summary"}
-        objs = tools["object"]("list", {"prefix": "benji/lab"})
+        objs = call("object", "list", {"prefix": "benji/lab"})
         assert objs["items"] == [{"path": "benji/lab/x"}]
 
     def test_the_jobs_board_pages_and_filters(self, rec):
-        tools = build_tools(CFG, executor=object())
-        out = tools["run"](
+        out = call(
+            "run",
             "jobs",
             {
                 "status": "failed",
@@ -270,8 +270,7 @@ class TestShapes:
         )
 
     def test_delete_is_a_dry_run_unless_yes(self, rec):
-        tools = build_tools(CFG, executor=object())
-        out = tools["dataset"]("delete", {"id": "ds_1"})
+        out = call("dataset", "delete", {"id": "ds_1"})
         assert out["deleted"] is False
         assert [c[1] for c in rec] == ["delete"] and rec[-1][3] == {
             "prefix": False,
@@ -279,19 +278,20 @@ class TestShapes:
         }
         rec.clear()
         assert (
-            tools["dataset"]("delete", {"id": "ds_1", "yes": True})["deleted"] is True
+            call("dataset", "delete", {"id": "ds_1", "yes": True})["deleted"] is True
         )
         assert [c[3].get("dry_run") for c in rec] == [True, None]
 
     def test_a_cited_thing_is_not_deleted_without_acknowledging(self, rec, monkeypatch):
         cited = {**ANSWER, "citedBy": [{"title": "An article"}]}
         monkeypatch.setattr(bench, "delete", lambda target, **k: rec.append(k) or cited)
-        tools = build_tools(CFG, executor=object())
-        out = tools["protocol"]("delete", {"id": "prt_1", "yes": True})
+        out = call("protocol", "delete", {"id": "prt_1", "yes": True})
         assert out["deleted"] is False and out["refusal"]["code"] == "CITED"
         assert len(rec) == 1
-        out = tools["protocol"](
-            "delete", {"id": "prt_1", "yes": True, "acknowledge_citations": True}
+        out = call(
+            "protocol",
+            "delete",
+            {"id": "prt_1", "yes": True, "acknowledge_citations": True},
         )
         assert out["deleted"] is True and rec[-1] == {
             "prefix": False,
@@ -299,20 +299,17 @@ class TestShapes:
         }
 
     def test_a_run_id_is_resolved_to_its_job(self, rec):
-        tools = build_tools(CFG, executor=object())
-        tools["run"]("rerun", {"id": "run_7"})
+        call("run", "rerun", {"id": "run_7"})
         assert [c[2] for c in rec] == ["/runs/run_7", "/jobs/j_1/rerun"]
 
     def test_a_project_by_owner_and_slug(self, rec):
-        tools = build_tools(CFG, executor=object())
-        tools["project"]("update", {"id": "benji/lab", "name": "Lab"})
+        call("project", "update", {"id": "benji/lab", "name": "Lab"})
         assert rec[0][2] == "/projects/by/benji/lab"
         assert rec[-1][1:3] == ("PATCH", "/projects/proj_1")
         assert rec[-1][4] == {"displayName": "Lab"}
 
     def test_a_create_names_its_owner_or_asks_who_you_are(self, rec):
-        tools = build_tools(CFG, executor=object())
-        tools["project"]("create", {"slug": "ladders"})
+        call("project", "create", {"slug": "ladders"})
         assert rec[0][2] == "/auth/me"
         assert rec[-1][4] == {
             "ownerKind": "user",
@@ -321,11 +318,11 @@ class TestShapes:
             "displayName": "ladders",
         }
         rec.clear()
-        tools["project"]("create", {"slug": "x", "owner": "lab-org", "org": True})
+        call("project", "create", {"slug": "x", "owner": "lab-org", "org": True})
         assert [c[2] for c in rec] == ["/projects"]
         assert rec[-1][4]["ownerKind"] == "org"
 
-    def test_an_api_refusal_is_data_on_mcp_and_exit_1_on_the_cli(
+    def test_an_api_refusal_is_exit_1_on_the_cli(
         self, monkeypatch, capsys
     ):
         def refuse(self, method, route, **_k):
@@ -335,26 +332,16 @@ class TestShapes:
 
         monkeypatch.setattr(Ctx, "api", refuse)
         monkeypatch.setattr(Config, "from_env", classmethod(lambda cls: CFG))
-        tools = build_tools(CFG, executor=object())
-        out = tools["project"]("create", {"slug": "lab", "owner": "benji"})
-        assert out == {
-            "error": {
-                "status": 409,
-                "code": "ALREADY_EXISTS",
-                "error": "slug already in use",
-            }
-        }
         assert cli.main(["project", "create", "--slug", "lab", "--owner", "benji"]) == 1
         assert "refused (ALREADY_EXISTS)" in capsys.readouterr().err
 
     def test_an_unknown_argument_is_refused_with_the_verbs_list(self, rec):
-        tools = build_tools(CFG, executor=object())
-        with pytest.raises(ValueError, match="takes .*id.*not colour"):
-            tools["protocol"]("read", {"id": "prt_1", "colour": "blue"})
-        with pytest.raises(ValueError, match="needs id"):
-            tools["protocol"]("read", {})
-        with pytest.raises(ValueError, match="no verb 'frobnicate'"):
-            tools["protocol"]("frobnicate", {})
+        with pytest.raises(VerbError, match="takes .*id.*not colour"):
+            call("protocol", "read", {"id": "prt_1", "colour": "blue"})
+        with pytest.raises(VerbError, match="needs id"):
+            call("protocol", "read", {})
+        with pytest.raises(VerbError, match="no verb 'frobnicate'"):
+            call("protocol", "frobnicate", {})
 
     def test_a_markdown_body_is_an_edit_at_the_version_read(
         self, rec, tmp_path, capsys
@@ -382,8 +369,7 @@ class TestShapes:
         )
 
     def test_a_formatted_read_edited_goes_back_at_its_version(self, rec, tmp_path):
-        tools = build_tools(CFG, executor=object())
-        tools["article"]("read", {"id": "art_1", "format": "markdown"})
+        call("article", "read", {"id": "art_1", "format": "markdown"})
         assert rec[-1][1:4] == ("GET", "/articles/art_1", {"format": "markdown"})
         read = {
             "article": {"id": "art_1", "title": "T", "body": "Words.\n"},
@@ -392,17 +378,17 @@ class TestShapes:
         }
         f = tmp_path / "a.json"
         f.write_text(json.dumps(read))
-        tools["article"]("edit", {"id": "art_1", "file": str(f)})
+        call("article", "edit", {"id": "art_1", "file": str(f)})
         assert rec[-1][1:] == (
             "PUT",
             "/articles/art_1",
             {"format": "markdown"},
             {"id": "art_1", "title": "T", "body": "Words.\n", "baseVersion": 7},
         )
-        tools["protocol"]("read", {"id": "prt_1", "format": "markdown"})
+        call("protocol", "read", {"id": "prt_1", "format": "markdown"})
         assert rec[-1][1:4] == ("GET", "/protocols/prt_1", {"format": "markdown"})
-        with pytest.raises(ValueError, match="base_version"):
-            tools["protocol"]("edit", {"id": "prt_1", "name": "n"})
+        with pytest.raises(VerbError, match="base_version"):
+            call("protocol", "edit", {"id": "prt_1", "name": "n"})
 
     def test_markdown_refusals_print_where_they_stand(
         self, rec, monkeypatch, tmp_path, capsys

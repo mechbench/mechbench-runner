@@ -7,8 +7,7 @@ from mechbench_compute import bench
 
 from mechbench import cli
 from mechbench_runner.config import Config
-from mechbench_runner.mcp_server import build_tools
-from mechbench_runner.verbs import Ctx
+from mechbench_runner.verbs import Ctx, VerbError, invoke
 
 CFG = Config(
     api_base_url="http://api.test",
@@ -17,6 +16,10 @@ CFG = Config(
     warm_model_id=None,
     runner_id=None,
 )
+
+
+def call(noun, verb, args):
+    return invoke(Ctx(CFG), noun, verb, args)
 
 
 def story(prompt, sample, text, ended=None, latency=10):
@@ -76,8 +79,8 @@ def platform(monkeypatch):
     return reads
 
 
-def mcp(args):
-    return build_tools(CFG, executor=object())["run"]("diff", args)
+def diff_of(args):
+    return call("run", "diff", args)
 
 
 RULE = [
@@ -90,7 +93,7 @@ RULE = [
 
 
 def test_the_regeneration_holds_on_both_surfaces(platform, capsys):
-    out = mcp(
+    out = diff_of(
         {
             "a": "j_old",
             "b": "j_new",
@@ -133,10 +136,10 @@ def test_the_regeneration_holds_on_both_surfaces(platform, capsys):
 
 
 def test_moving_fields_are_left_out_unless_asked(platform):
-    out = mcp({"a": "j_old", "b": "j_new", "node": "gen", "exclude": "text,ended"})
+    out = diff_of({"a": "j_old", "b": "j_new", "node": "gen", "exclude": "text,ended"})
     assert out["equivalent"] is True
     assert out["excluded_differ"]["metadata.call.latency_ms"] == 1
-    out = mcp(
+    out = diff_of(
         {
             "a": "j_old",
             "b": "j_new",
@@ -149,13 +152,13 @@ def test_moving_fields_are_left_out_unless_asked(platform):
 
 
 def test_object_paths_and_a_second_node(platform):
-    out = mcp({"a": "benji/lab/results/j_old/gen", "b": "j_new", "node_b": "stats"})
+    out = diff_of({"a": "benji/lab/results/j_old/gen", "b": "j_new", "node_b": "stats"})
     assert out["records"]["only_a"] == 1 and out["records"]["differs"] == 1
     assert out["b"]["node"] == "stats"
 
 
 def test_long_values_are_abbreviated_unless_full_and_limit_counts(platform):
-    out = mcp(
+    out = diff_of(
         {
             "a": "j_old",
             "b": "j_new",
@@ -165,12 +168,12 @@ def test_long_values_are_abbreviated_unless_full_and_limit_counts(platform):
         }
     )
     assert out["shown"] == [] and out["not_shown"] == 1
-    out = mcp({"a": "j_old", "b": "j_new", "node": "gen", "full": True})
+    out = diff_of({"a": "j_old", "b": "j_new", "node": "gen", "full": True})
     assert out["shown"][0]["fields"]["text"]["b"] == LONG + "and the end."
 
 
 def test_a_run_needs_its_node_and_a_result(platform):
-    with pytest.raises(ValueError, match="name its node"):
-        mcp({"a": "j_old", "b": "j_new"})
-    with pytest.raises(ValueError, match="queued"):
-        mcp({"a": "j_queued", "b": "j_new", "node": "gen"})
+    with pytest.raises(VerbError, match="name its node"):
+        diff_of({"a": "j_old", "b": "j_new"})
+    with pytest.raises(VerbError, match="queued"):
+        diff_of({"a": "j_queued", "b": "j_new", "node": "gen"})

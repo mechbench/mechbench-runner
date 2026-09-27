@@ -10,7 +10,6 @@ from mechbench_compute.bench import BenchError
 from mechbench import cli
 from mechbench_runner import bench_cmd as b
 from mechbench_runner.config import Config
-from mechbench_runner.mcp_server import build_tools
 
 CFG = Config(
     api_base_url="http://api.test",
@@ -132,29 +131,6 @@ class TestPush:
         )
         assert "push refused (LEGACY_DATAFLOW)" in capsys.readouterr().err
 
-    def test_mcp_pushes_the_same_way_and_answers_a_refusal_as_data(self, fake):
-        tools = build_tools(CFG, executor=object())
-        fake(push_protocol=lambda file, into, **k: PUSHED)
-        push = {"file": "x.json", "into": "benji/lab"}
-        assert tools["protocol"]("push", push)["action"] == "versioned"
-        assert fake.calls[-1] == (
-            "push_protocol",
-            ("x.json", "benji/lab"),
-            {"owner_kind": "user"},
-        )
-
-        def refuse(file, into, **k):
-            raise BenchError(
-                "400",
-                status=400,
-                body={"code": "WIRING", "findings": [{"code": "UNKNOWN_PARAM"}]},
-            )
-
-        fake(push_protocol=refuse)
-        out = tools["protocol"]("push", push)
-        assert out["action"] == "refused" and out["code"] == "WIRING"
-
-
 class TestExport:
     TEXT = '{\n  "name": "draws"\n}\n'
 
@@ -186,17 +162,6 @@ class TestExport:
         assert _cli(["protocol", "export", "prt_1", "-o", str(f)], monkeypatch) == 0
         assert f.read_text() == self.TEXT
         assert "draws v5" in capsys.readouterr().err
-
-    def test_mcp_exports_with_the_same_arguments(self, fake):
-        tools = build_tools(CFG, executor=object())
-        fake(export_protocol=lambda protocol, **k: {"text": self.TEXT})
-        assert tools["protocol"]("export", {"id": "prt_1", "version": 2})["text"] == self.TEXT
-        assert fake.calls[-1] == (
-            "export_protocol",
-            ("prt_1",),
-            {"version": 2, "path": None},
-        )
-
 
 ROWS = [
     {
@@ -283,23 +248,3 @@ class TestLabels:
         assert fake.calls[-1][1] == ("j_1", None)
         assert "unlabelled" in capsys.readouterr().out
 
-    def test_mcp_has_the_same_three_verbs(self, fake, monkeypatch):
-        tools = build_tools(CFG, executor=object())
-        fake(
-            launch=lambda protocol, **k: {"id": "run_9", "jobId": "j_9"},
-            label_run=lambda run, label, **k: {"changed": False},
-        )
-        tools["run"]("launch", {"protocol": "prt_1", "params": {"n": 3}, "label": "P0"})
-        assert fake.calls[-1] == (
-            "launch",
-            ("prt_1",),
-            {
-                "params": {"n": 3},
-                "inputs": None,
-                "keep": None,
-                "budget": None,
-                "label": "P0",
-            },
-        )
-        tools["run"]("update", {"id": "j_1", "clear": True})
-        assert fake.calls[-1][1] == ("j_1", None)

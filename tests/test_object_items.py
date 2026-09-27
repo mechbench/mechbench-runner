@@ -6,7 +6,6 @@ import pytest
 
 from mechbench import cli
 from mechbench_runner.config import Config
-from mechbench_runner.mcp_server import build_tools
 from mechbench_runner.verbs import Ctx
 
 CFG = Config(
@@ -50,22 +49,13 @@ ARGV = [
 ]
 
 
-def test_both_surfaces_ask_the_same(rec, capsys):
-    tools = build_tools(CFG, executor=object())
-    out = tools["object"]("items", {
-        "path": "benji/lab/r/gen", "fields": ["id", "text"],
-        "where": ["coords.prompt=flash", "metadata.tokens>100"],
-        "lines": 1, "limit": 2,
-    })
-    assert out == PAGE
+def test_the_command_line_asks_for_the_page(rec, capsys):
     assert cli.main(ARGV) == 0
-    assert rec[0] == rec[1] == {
+    assert rec[0] == {
         "path": "benji/lab/r/gen", "fields": "id,text",
         "where": ["coords.prompt=flash", "metadata.tokens>100"],
         "lines": 1, "limit": 2,
     }
-    tools["object"]("items", {"path": "p", "where": "coords.prompt=flash"})
-    assert rec[-1]["where"] == ["coords.prompt=flash"]
 
 
 def test_the_command_line_prints_json_lines(rec, capsys):

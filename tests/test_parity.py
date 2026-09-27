@@ -3,26 +3,16 @@ from __future__ import annotations
 import argparse
 import os
 import re
-import typing
 from pathlib import Path
 
 import pytest
 
 from mechbench.cli import build_parser
 from mechbench_runner import capabilities
-from mechbench_runner.config import Config
-from mechbench_runner.mcp_server import build_tools
 from mechbench_runner.verbs import LIFECYCLE, NOUNS
 from mechbench_runner.verbs_cli import RUN_NOUN, flag
 
 ROOT = Path(__file__).resolve().parent.parent
-CFG = Config(
-    api_base_url="http://api.test",
-    api_key="mbk_test",
-    poll_interval_seconds=0.01,
-    warm_model_id=None,
-    runner_id=None,
-)
 
 
 def subcommands(p: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
@@ -44,11 +34,6 @@ def test_every_command_is_a_noun_an_alias_or_this_machines():
     assert explained - commands == set(), "listed in capabilities.py but not a command"
 
 
-def test_every_mcp_tool_is_a_noun_or_says_why():
-    tools = set(build_tools(CFG, executor=object()))
-    assert tools == {n.name for n in NOUNS} | set(capabilities.MCP_ONLY)
-
-
 @pytest.mark.parametrize("noun", NOUNS, ids=lambda n: n.name)
 def test_the_command_line_has_each_verb_with_its_arguments(noun):
     top = subcommands(build_parser())
@@ -62,17 +47,6 @@ def test_the_command_line_has_each_verb_with_its_arguments(noun):
             assert a.name in declared, f"{noun.name} {v.name} lacks {a.name}"
             if not a.positional:
                 assert flag(a) in options
-
-
-@pytest.mark.parametrize("noun", NOUNS, ids=lambda n: n.name)
-def test_mcp_offers_each_verb(noun):
-    tool = build_tools(CFG, executor=object())[noun.name]
-    offered = typing.get_args(tool.__annotations__["verb"])
-    assert set(offered) == {v.name for v in noun.verbs}
-    for v in noun.verbs:
-        assert f"\n{v.name}(" in tool.__doc__, (
-            f"{noun.name}'s description lacks {v.name}"
-        )
 
 
 @pytest.mark.parametrize("noun", NOUNS, ids=lambda n: n.name)

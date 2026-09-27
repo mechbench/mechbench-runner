@@ -112,7 +112,7 @@ def main() -> None:
             die("mechbench --help", proc)
         proc = run([py, "-c",
                     "import mechbench.cli, mechbench_runner.job_runner, "
-                    "mechbench_runner.channel, mechbench_runner.mcp_server, "
+                    "mechbench_runner.channel, mechbench_runner.verbs, "
                     "mechbench_compute"], env=env)
         if proc.returncode != 0:
             die("module imports", proc)

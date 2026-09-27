@@ -19,10 +19,7 @@ DIRECTIVE = re.compile(
 )
 TASK_ID = re.compile(r"(?<![0-9A-Za-z_])[0-9]{6}(?![0-9])")
 
-READ_AT_RUN_TIME = {
-    ("mechbench_runner/mcp_server.py", "build_tools.run_protocol"):
-        "registered as an MCP tool; the server sends it as the description",
-}
+READ_AT_RUN_TIME: dict[tuple[str, str], str] = {}
 
 
 def _code_files() -> list[Path]:
@@ -82,16 +79,6 @@ def test_only_docstrings_read_at_run_time_exist():
             if (rel, name) not in READ_AT_RUN_TIME:
                 found.append(f"{rel}:{line}: {name}")
     assert not found, "docstrings nothing reads:\n" + "\n".join(found)
-
-
-def test_the_kept_docstrings_are_still_read():
-    from mechbench_runner.config import Config
-    from mechbench_runner.mcp_server import build_tools
-
-    cfg = Config(api_base_url="http://127.0.0.1:1", api_key="k",
-                 poll_interval_seconds=1.0, warm_model_id=None, runner_id=None)
-    tools = build_tools(cfg, executor=object())
-    assert tools["run_protocol"].__doc__
 
 
 def test_no_private_task_ids_outside_the_changelog():
