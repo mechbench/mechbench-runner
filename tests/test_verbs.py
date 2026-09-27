@@ -139,6 +139,8 @@ def sample(noun: str, a: Arg, tmp) -> Any:
         return str(f)
     if a.name in ("body", "description"):
         return '{"ops": [{"insert": "Words.\\n"}]}'
+    if a.name == "out":
+        return str(tmp / "figure.png")
     if a.name in ("body_file", "description_file"):
         f = tmp / "body.json"
         f.write_text('{"ops": [{"insert": "Words.\\n"}]}')

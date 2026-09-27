@@ -23,6 +23,27 @@ with both headings.
 
 ---
 
+## 0.41.0 — 2026-09-27
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+Also:
+
+- **`object render`** and **`protocol render`**: a chart, token strip or
+  protocol diagram as a reader sees it. `--format text` (the default)
+  prints a reading in markdown: the axes as drawn, the marks in order,
+  and the problems the renderer met (rows it could not draw, colours it
+  clipped, labels it could not place). `json` is the same reading as
+  data; `svg` and `png` draw the figure (`-o` to write it; a png needs
+  one). `--theme light|dark`, `--width`, `--step-by FIELD --step N` for
+  a chart, `--selected BLOCK` for a diagram, `--full` for every mark.
+
 ## 0.40.1 — 2026-09-27
 
 ### Changes that raise

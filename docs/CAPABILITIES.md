@@ -127,6 +127,7 @@ argument, in about 26 KB.
 | object | **write**(path, file?, payload?, inputs?) | draft | `PUT /objects/:path` | `object(verb="write")` | `mechbench object write` |
 | object | **update**(path, visibility, prefix?) | outward when visibility=org|public * | `PATCH /objects/:path` | `object(verb="update")` | `mechbench object update` |
 | object | **delete**(path, prefix?, yes?, acknowledge_citations?) | delete when yes=true * | `DELETE /objects/:path` | `object(verb="delete")` | `mechbench object delete` |
+| object | **render**(path, format?, theme?, width?, step_by?, step?, full?, out?) | read | `GET /objects/~render` | `object(verb="render")` | `mechbench object render` |
 | object | **history**(path) | read | `GET /history/object/~at` | `object(verb="history")` | `mechbench object history` |
 | object | create | — | — | — | — (write is its create: a path is written, not minted) |
 | protocol | **list**(owner?, project?, search?, limit?, offset?, full?) | read | `GET /protocols` | `protocol(verb="list")` | `mechbench protocol list` |
@@ -134,6 +135,7 @@ argument, in about 26 KB.
 | protocol | **versions**(id, limit?, offset?) | read | `GET /protocols/:id/versions` | `protocol(verb="versions")` | `mechbench protocol versions` |
 | protocol | **push**(file?, protocol?, into, org?, full?) | draft | `POST /protocols/push` | `protocol(verb="push")` | `mechbench protocol push` |
 | protocol | **export**(id, version?, path?) | read | `GET /protocols/:id/export` | `protocol(verb="export")` | `mechbench protocol export` |
+| protocol | **render**(id, version?, format?, theme?, width?, selected?, full?, out?) | read | `GET /protocols/:id/render` | `protocol(verb="render")` | `mechbench protocol render` |
 | protocol | **update**(id, name?, description?, visibility?, project?) | outward when visibility=org|public * | `PATCH /protocols/:id` | `protocol(verb="update")` | `mechbench protocol update` |
 | protocol | **edit**(id, file?, description_file?, description?, name?, base_version?, format?) | draft | `PUT /protocols/:id` | `protocol(verb="edit")` | `mechbench protocol edit` |
 | protocol | **publish**(id, version?) | outward * | `POST /protocols/:id/versions/:n/publish` | `protocol(verb="publish")` | `mechbench protocol publish` |

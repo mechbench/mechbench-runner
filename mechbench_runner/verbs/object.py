@@ -24,6 +24,7 @@ from .core import (
     listing,
     page,
 )
+from .render import FORMAT, FULL_READING, OUT, THEME, WIDTH, render_answer
 
 PATH = Arg("path", "Its path: owner/project/…", required=True, positional=True)
 
@@ -204,6 +205,22 @@ OBJECT = Noun(
             lambda ctx, a: delete(ctx, a["path"], a, prefix=bool(a.get("prefix"))),
             effect="delete",
             consent_when=CONFIRMED,
+        ),
+        Verb(
+            "object",
+            "render",
+            "A chart or token strip as a reader sees it: a reading in text, "
+            "or a picture, at a view (theme, width, step).",
+            "GET /objects/~render",
+            (PATH, FORMAT, THEME, WIDTH,
+             Arg("step_by", "Draw it as a stepper through this field's values."),
+             Arg("step", "With step_by: which step, from 0.", type="int"),
+             FULL_READING, OUT),
+            lambda ctx, a: render_answer(
+                ctx, "/objects/~render",
+                {"path": a["path"], "step_by": a.get("step_by"), "step": a.get("step")}, a),
+            "read",
+            effect="read",
         ),
         Verb(
             "object",

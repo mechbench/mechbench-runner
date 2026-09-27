@@ -33,6 +33,7 @@ from .core import (
     unwrap,
     view,
 )
+from .render import FORMAT, FULL_READING, OUT, THEME, WIDTH, render_answer
 from .shorten import summarize_push
 
 
@@ -216,6 +217,20 @@ PROTOCOL = Noun(
             lambda ctx, a: ctx.bench().export_protocol(
                 a["id"], version=a.get("version"), path=a.get("path")
             ),
+            effect="read",
+        ),
+        Verb(
+            "protocol",
+            "render",
+            "Its diagram as a reader sees it: a reading in text (the "
+            "signature, the blocks in order, the flows), or a picture.",
+            "GET /protocols/:id/render",
+            (ID, VERSION, FORMAT, THEME, WIDTH,
+             Arg("selected", "A block to show in full, by its id."), FULL_READING, OUT),
+            lambda ctx, a: render_answer(
+                ctx, f"/protocols/{a['id']}/render",
+                {"version": a.get("version"), "selected": a.get("selected")}, a),
+            "read",
             effect="read",
         ),
         Verb(

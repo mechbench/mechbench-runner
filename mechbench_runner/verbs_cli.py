@@ -253,7 +253,23 @@ def render_copy(config: Config, ctx: Ctx, a: dict[str, Any]) -> int:
     )
 
 
+def render_figure(noun_name: str) -> Render:
+    def go(_c: Config, ctx: Ctx, a: dict) -> int:
+        out = invoke(ctx, noun_name, "render", a)
+        if "written" in out:
+            print(f"wrote {out['written']} ({out['bytes']} bytes, {out['format']})",
+                  file=sys.stderr)
+        elif "text" in out:
+            sys.stdout.write(out["text"])
+        else:
+            print(json.dumps(out, indent=1, default=str))
+        return 0
+    return go
+
+
 RENDER: dict[tuple[str, str], Render] = {
+    ("object", "render"): render_figure("object"),
+    ("protocol", "render"): render_figure("protocol"),
     ("protocol", "push"): lambda c, _x, a: bench_cmd.protocol_push(
         c, a["file"], a["into"], bool(a.get("org"))
     ),
