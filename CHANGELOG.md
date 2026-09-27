@@ -23,6 +23,20 @@ with both headings.
 
 ---
 
+## 0.40.1 — 2026-09-27
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+- **Needs mechbench-compute 0.147.0 or later**, whose table operations
+  order numeric groups by value and type their columns from their
+  values, and whose tracked answers carry a `rank`.
+
+Also: the package description no longer mentions MCP tools.
+
 ## 0.40.0 — 2026-09-27
 
 ### Changes that raise
