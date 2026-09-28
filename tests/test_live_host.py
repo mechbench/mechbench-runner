@@ -82,3 +82,37 @@ def test_detaching_the_last_live_run_lets_the_runner_claim_model_work_again():
     host.offer({"op": "detach", "liveRunId": "live_1"})
     host.serve(FakeApi())
     assert not host.holding
+
+
+def test_attaching_warms_the_handler_with_a_step_it_does_not_record(monkeypatch):
+    steps = []
+    real = __import__("mechbench_compute.live.run_step", fromlist=["run_step"]).run_step
+    monkeypatch.setattr("mechbench_compute.live.run_step.run_step", lambda *a, **k: steps.append(k["event"]) or real(*a, **k))
+    host, sent = _host()
+    api = FakeApi()
+    run = {**LIVE_RUN, "spec": {**LIVE_RUN["spec"], "signature": {"events": [{"type": "message"}]}}}
+    host.offer({"op": "attach", "liveRun": run})
+    host.serve(api)
+    assert [e["id"] for e in steps] == ["e0"]
+    assert api.completed == []
+    assert [f["state"] for f in sent if f["op"] == "status"][-1] == "ready"
+
+
+def test_a_live_runs_other_inputs_are_resolved_once_for_all_its_steps(monkeypatch):
+    from mechbench_compute.protocol import resolver as resolver_mod
+
+    calls = []
+    real = resolver_mod.Resolver.resolve_value
+    monkeypatch.setattr(resolver_mod.Resolver, "resolve_value",
+                        lambda self, v, keep_reference=False: calls.append(v) or real(self, v, keep_reference))
+    host, _ = _host()
+    api = FakeApi()
+    run = {**LIVE_RUN, "spec": {**LIVE_RUN["spec"], "inputs": {"notes": [{"id": "n1", "text": "a note"}]}}}
+    host.offer({"op": "attach", "liveRun": run})
+    for seq in (1, 2):
+        host.offer({"op": "event", "liveRunId": "live_1", "seq": seq, "params": {},
+                    "event": {"id": f"e{seq}", "type": "message", "text": "hi"}})
+    host.serve(api)
+    assert [c[4] for c in api.completed] == [None, None]
+    top_level = [c for c in calls if c == [{"id": "n1", "text": "a note"}]]
+    assert len(top_level) == 1

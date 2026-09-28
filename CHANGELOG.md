@@ -23,6 +23,24 @@ with both headings.
 
 ---
 
+## 0.44.0 — 2026-09-28
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+Also:
+
+- **A live run warms up when it is leased**: the runner loads its model,
+  resolves its other inputs once (they were fetched again on every step,
+  twice for an input wired to two ports), and runs one step on a greeting
+  it throws away, so MLX has compiled what the handler generates with
+  before the first message arrives.
+
 ## 0.43.1 — 2026-09-28
 
 ### Changes that raise

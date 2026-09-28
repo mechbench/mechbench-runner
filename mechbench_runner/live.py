@@ -24,6 +24,7 @@ class Session:
     idle_seconds: float
     last: float = field(default_factory=time.monotonic)
     warm: bool = False
+    inputs: dict[str, Any] = field(default_factory=dict)
 
 
 def _plain(value: Any) -> Any:
@@ -102,6 +103,8 @@ class LiveHost:
                           state=lr.get("state"), idle_seconds=float(lr.get("idleSeconds") or 600))
         self.sessions[session.id] = session
         self._warm(session)
+        if session.warm:
+            self._warm_up(session)
 
     def _warm(self, session: Session) -> None:
         model = session.params.get("model")
@@ -115,6 +118,31 @@ class LiveHost:
             self._status(session.id, "failed", f"could not load {model}: {exc}")
             return
         session.warm = True
+        self._status(session.id, "ready")
+
+    def _resolve_inputs(self, session: Session) -> None:
+        from mechbench_compute.protocol.resolver import Resolver
+
+        resolver = Resolver(bound_params=session.params)
+        session.inputs = {k: resolver.resolve_value(v)
+                          for k, v in (session.spec.get("inputs") or {}).items()}
+
+    def _warm_up(self, session: Session) -> None:
+        from mechbench_compute.live.run_step import run_step
+
+        events = (session.spec.get("signature") or {}).get("events") or []
+        if not events:
+            return
+        self._status(session.id, "warming", "a first step, to warm what the handler runs")
+        try:
+            if not session.inputs:
+                self._resolve_inputs(session)
+            spec = session.spec
+            run_step(self.executor, graph=spec["graph"], params=session.params, outputs=spec["outputs"],
+                     event={"id": "e0", "type": events[0]["type"], "text": "Hello."},
+                     state=session.state, inputs=session.inputs)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[live] warm-up for {session.id} did not run: {type(exc).__name__}: {exc}")
         self._status(session.id, "ready")
 
     def _step(self, api: Any, live_run_id: str, frame: dict[str, Any]) -> None:
@@ -137,9 +165,11 @@ class LiveHost:
 
         spec = session.spec
         try:
+            if spec.get("inputs") and not session.inputs:
+                self._resolve_inputs(session)
             got = run_step(self.executor, graph=spec["graph"], params=session.params,
                            outputs=spec["outputs"], event=frame["event"], state=session.state,
-                           inputs=spec.get("inputs"), on_token=on_token)
+                           inputs=session.inputs, on_token=on_token)
         except Stopped:
             api.live_complete(live_run_id, seq, error="stopped")
         except Exception as exc:  # noqa: BLE001
