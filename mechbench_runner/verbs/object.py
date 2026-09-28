@@ -24,7 +24,16 @@ from .core import (
     listing,
     page,
 )
-from .render import FORMAT, FULL_READING, OUT, THEME, WIDTH, render_answer
+from .render import (
+    FORMAT,
+    FULL_READING,
+    LINK,
+    LINKED_PATH,
+    OUT,
+    THEME,
+    WIDTH,
+    render_answer,
+)
 
 PATH = Arg("path", "Its path: owner/project/…", required=True, positional=True)
 
@@ -212,13 +221,27 @@ OBJECT = Noun(
             "A chart or token strip as a reader sees it: a reading in text, "
             "or a picture, at a view (theme, width, step).",
             "GET /objects/~render",
-            (PATH, FORMAT, THEME, WIDTH,
+            (LINKED_PATH, FORMAT, THEME, WIDTH,
              Arg("step_by", "Draw it as a stepper through this field's values."),
              Arg("step", "With step_by: which step, from 0.", type="int"),
-             FULL_READING, OUT),
+             FULL_READING, LINK, OUT),
             lambda ctx, a: render_answer(
                 ctx, "/objects/~render",
                 {"path": a["path"], "step_by": a.get("step_by"), "step": a.get("step")}, a),
+            "read",
+            effect="read",
+        ),
+        Verb(
+            "object",
+            "url",
+            "A link to a picture (a PNG object) that needs no credential "
+            "until it expires, drawn at width when asked: for a report, or a "
+            "tool that fetches pictures by URL.",
+            "GET /objects/~url",
+            (PATH, Arg("width", "Draw it this many pixels wide (never wider).", type="int"),
+             Arg("expires", "Seconds the link lasts, 60 to 3600 (default 900).", type="int")),
+            lambda ctx, a: ctx.get("/objects/~url", path=a["path"],
+                                   **{k: a[k] for k in ("width", "expires") if a.get(k) is not None}),
             "read",
             effect="read",
         ),

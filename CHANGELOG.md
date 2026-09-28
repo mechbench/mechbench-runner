@@ -23,6 +23,30 @@ with both headings.
 
 ---
 
+## 0.42.0 — 2026-09-27
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+Also:
+
+- **`object url PATH`**: a link to a picture (a PNG object) that needs no
+  credential until it expires (`--expires`, 60 to 3600 seconds, default
+  900), drawn smaller with `--width`.
+- **`--link`** on `object render` and `protocol render`, with
+  `--format png`: keeps the picture in the figure's project under
+  `renders/` and answers its path and a link, instead of the bytes.
+- **A page's link in place of a path or id**: `object render` and
+  `protocol render` take the link to the figure's page on mechbench.ai,
+  and draw the view it carries (its step, selected block, theme) unless
+  the call names its own.
+- Needs mechbench-compute 0.148.0.
+
 ## 0.41.0 — 2026-09-27
 
 ### Changes that raise
