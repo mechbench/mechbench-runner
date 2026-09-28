@@ -23,6 +23,27 @@ with both headings.
 
 ---
 
+## 0.43.0 — 2026-09-28
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+Also:
+
+- **Live runs** (epic 000699): a runner holds the live runs its owner
+  starts. The API leases one to it over the channel; the runner loads its
+  model and keeps it warm, runs each event's step on the main thread,
+  streams each token (and its readout against a direction) back as it is
+  made, and records the step over HTTP. A `cancel` stops a step; an idle
+  live run lets its model go after its `idleSeconds`. While it holds one,
+  the runner claims only jobs that need no model. A runner that reconnects
+  catches up from `GET /live-runs/leased`. Needs mechbench-compute 0.162.0.
+
 ## 0.42.0 — 2026-09-27
 
 ### Changes that raise

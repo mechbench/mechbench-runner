@@ -98,11 +98,19 @@ class TestTheJobRunner:
         assert 0 < jr.PRESIGN_THRESHOLD_BYTES < API_BODY_CAP_BYTES
 
     def test_a_shutdown_ends_a_long_sleep_within_a_second_despite_pep_475(self, jr):
-        runner = SimpleNamespace(_shutdown=False)
+        runner = SimpleNamespace(_shutdown=False, _live=SimpleNamespace(wake=threading.Event()))
         threading.Timer(0.2, lambda: setattr(runner, "_shutdown", True)).start()
         started = time.monotonic()
         jr.JobRunner._sleep(runner, 30)
         assert time.monotonic() - started < 1.5
+
+    def test_a_live_event_ends_a_sleep_at_once(self, jr):
+        wake = threading.Event()
+        runner = SimpleNamespace(_shutdown=False, _live=SimpleNamespace(wake=wake))
+        threading.Timer(0.05, wake.set).start()
+        started = time.monotonic()
+        jr.JobRunner._sleep(runner, 30)
+        assert time.monotonic() - started < 0.5
 
     def test_caffeinate_is_tied_to_this_pid_so_it_cannot_outlive_the_runner(
             self, jr, monkeypatch):

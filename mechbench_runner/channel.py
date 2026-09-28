@@ -58,6 +58,7 @@ class LiveChannel:
         self._listener_registered = False
         self._stopped = False
         self._ws: Any = None
+        self.on_live: Any = None
 
     def start(self) -> None:
         if not self.config.api_key:
@@ -101,6 +102,13 @@ class LiveChannel:
     @property
     def connected(self) -> bool:
         return self._connected.is_set()
+
+    def send_live(self, frame: dict[str, Any]) -> None:
+        loop, outbox = self._loop, self._outbox
+        if loop is None or outbox is None or not self._connected.is_set():
+            return
+        with suppress(RuntimeError):
+            loop.call_soon_threadsafe(_offer, outbox, {"v": PROTOCOL_VERSION, "type": "live", **frame})
 
     def _on_event(self, message: dict[str, Any]) -> None:
         loop, outbox = self._loop, self._outbox
@@ -223,6 +231,12 @@ class LiveChannel:
             await ws.send(json.dumps({"v": PROTOCOL_VERSION, "type": "pong"}))
             return
         if kind == "welcome":
+            if self.on_live is not None:
+                self.on_live({"op": "catchup"})
+            return
+        if kind == "live":
+            if self.on_live is not None:
+                self.on_live(frame)
             return
         if kind == "error":
             print(f"[channel] {frame.get('code')}: {frame.get('message')}")

@@ -133,13 +133,13 @@ class ApiClient:
 
     CAPABILITIES = "mlx-local,pure,remote"
 
-    def claim_next_job(self) -> dict[str, Any] | None:
+    def claim_next_job(self, capabilities: str | None = None) -> dict[str, Any] | None:
         headers = {"x-claim-token-supported": "1"}
         version = _compute_version()
         if version:
             headers["x-compute-version"] = version
         res = self._client.get(
-            "/jobs/next", params={"capabilities": self.CAPABILITIES},
+            "/jobs/next", params={"capabilities": capabilities or self.CAPABILITIES},
             headers=headers)
         if res.status_code == 204:
             return None
@@ -149,6 +149,19 @@ class ApiClient:
         if tok and job.get("id"):
             self.claim_tokens[str(job["id"])] = str(tok)
         return job
+
+    def live_leased(self) -> list[dict[str, Any]]:
+        res = self._client.get("/live-runs/leased")
+        self._raise_for_status(res)
+        return list(res.json().get("leases") or [])
+
+    def live_complete(self, live_run_id: str, seq: int, *,
+                      outputs: dict[str, Any] | None = None, state: Any = None,
+                      error: str | None = None) -> None:
+        body: dict[str, Any] = ({"error": error[:20_000]} if error is not None
+                                else {"outputs": outputs or {}, "state": state})
+        res = self._client.post(f"/live-runs/{live_run_id}/events/{seq}/complete", json=body)
+        self._raise_for_status(res)
 
     def report_progress(self, job_id: str, num: int, den: int, *,
                         unit: str | None = None,

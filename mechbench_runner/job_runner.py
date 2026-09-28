@@ -22,6 +22,7 @@ from mechbench_schema import dump_canonical
 
 from . import supervisor as supervisor_mod
 from .api_client import ApiClient, ApiError
+from .live import PURE, LiveHost
 from .channel import LiveChannel
 from .config import Config
 from .control import ControlServer, RunnerState, probe, socket_path
@@ -232,6 +233,9 @@ class JobRunner:
         self.state.limits_snapshot = self._limiter.snapshot
         self._control = ControlServer(self.state)
         self._channel = LiveChannel(config, self.state)
+        self._live = LiveHost(self._executor, self._channel.send_live,
+                              lambda: self._watchdog.stamp())
+        self._channel.on_live = self._live.offer
         self._watchdog = Watchdog(
             stall_seconds=config.watchdog_seconds,
             on_stall=self._announce_stall,
@@ -253,7 +257,8 @@ class JobRunner:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return
-            time.sleep(min(1.0, remaining))
+            if self._live.wake.wait(min(1.0, remaining)):
+                return
 
     def run(self) -> int:
         self.install_signal_handlers()
@@ -306,8 +311,10 @@ class JobRunner:
                 if self.state.paused:
                     self._sleep(self.config.poll_interval_seconds)
                     continue
+                self._live.serve(api)
                 try:
-                    job = api.claim_next_job()
+                    job = (api.claim_next_job(PURE) if self._live.holding
+                           else api.claim_next_job())
                 except ApiError as e:
                     if e.status == 401:
                         self._signed_out()
