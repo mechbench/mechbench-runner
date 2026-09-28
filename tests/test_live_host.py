@@ -95,6 +95,7 @@ def test_attaching_warms_the_handler_with_a_step_it_does_not_record(monkeypatch)
     host.serve(api)
     assert [e["id"] for e in steps] == ["e0"]
     assert api.completed == []
+    assert [f["state"] for f in sent if f["op"] == "status"].count("ready") == 1
     assert [f["state"] for f in sent if f["op"] == "status"][-1] == "ready"
 
 

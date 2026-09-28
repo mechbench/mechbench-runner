@@ -23,6 +23,17 @@ with both headings.
 
 ---
 
+## 0.44.1 — 2026-09-28
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._ A live run says it is ready once, after its warm-up step, not
+also between loading the model and warming up.
+
 ## 0.44.0 — 2026-09-28
 
 ### Changes that raise

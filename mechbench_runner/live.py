@@ -102,11 +102,11 @@ class LiveHost:
         session = Session(id=lr["id"], spec=lr["spec"], params=dict(lr.get("params") or {}),
                           state=lr.get("state"), idle_seconds=float(lr.get("idleSeconds") or 600))
         self.sessions[session.id] = session
-        self._warm(session)
+        self._warm(session, announce=False)
         if session.warm:
             self._warm_up(session)
 
-    def _warm(self, session: Session) -> None:
+    def _warm(self, session: Session, *, announce: bool = True) -> None:
         model = session.params.get("model")
         if model is None or session.warm:
             session.warm = True
@@ -118,7 +118,8 @@ class LiveHost:
             self._status(session.id, "failed", f"could not load {model}: {exc}")
             return
         session.warm = True
-        self._status(session.id, "ready")
+        if announce:
+            self._status(session.id, "ready")
 
     def _resolve_inputs(self, session: Session) -> None:
         from mechbench_compute.protocol.resolver import Resolver
