@@ -673,7 +673,7 @@ wheels = [
 
 [[package]]
 name = "mechbench"
-version = "0.41.0"
+version = "0.42.0"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
@@ -694,7 +694,7 @@ dev = [
 requires-dist = [
     { name = "certifi", specifier = ">=2024.2" },
     { name = "httpx", specifier = ">=0.27,<1" },
-    { name = "mechbench-compute", specifier = ">=0.147.0" },
+    { name = "mechbench-compute", specifier = ">=0.148.0" },
     { name = "mechbench-schema", specifier = ">=0.17.0" },
     { name = "pydantic", specifier = ">=2.7,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
@@ -705,7 +705,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "mechbench-compute"
-version = "0.147.0"
+version = "0.148.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -721,9 +721,9 @@ dependencies = [
     { name = "transformers" },
     { name = "wasmtime" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a5/82/e87834f6306799464de9138819254c57ba3ba0d73cea159cacff3d823f36/mechbench_compute-0.147.0.tar.gz", hash = "sha256:34a6a344b7b9be5a3813c3a1d0403dfbff99a905179541dcb92c3503e3364b9d", size = 620832, upload-time = "2026-09-27T22:29:32.774Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0a/dc/066e80f98533052515d26083143713743e7dc9c111315ec10424fed0fdad/mechbench_compute-0.148.0.tar.gz", hash = "sha256:04e02dacdddb9e0c7e1ea0f71d81cb40620843f3dabac256dd1ef05d544e2240", size = 621542, upload-time = "2026-09-28T02:11:19.68Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fb/d2/5bb2bc794ed943c378f4f859a237f5e22093232794252158a939744b3d95/mechbench_compute-0.147.0-py3-none-any.whl", hash = "sha256:0abb751ecb9602a775abb7e05b5bdf4e50e87b224684ff67e121fa0128e6dc90", size = 549042, upload-time = "2026-09-27T22:29:31.325Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/d7/d337dbe7f7dbe88540e380b6c2b437a739798ff17ee61f620aa1791c8dfa/mechbench_compute-0.148.0-py3-none-any.whl", hash = "sha256:74e248dd7cf177c9cc9dfc15717f9894e11324eaa905add849262b6419b806f2", size = 549437, upload-time = "2026-09-28T02:11:18.36Z" },
 ]
 
 [[package]]
