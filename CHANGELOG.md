@@ -23,6 +23,18 @@ with both headings.
 
 ---
 
+## 0.43.1 — 2026-09-28
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._ Needs mechbench-compute 0.162.1, whose per-token readouts read
+bfloat16 activations; on 0.162.0 a live chat that colours its reply fails
+on most local weights.
+
 ## 0.43.0 — 2026-09-28
 
 ### Changes that raise
