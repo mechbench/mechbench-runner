@@ -57,20 +57,28 @@ class FakeApi:
         self.versions = list(versions)
         self.fetches = 0
         self.failed: list[tuple[str, str]] = []
+        self.released: list[tuple[str, str, str]] = []
         self.down = False
+        self.name: str | None = None
 
     def fetch_policy(self) -> dict:
         self.fetches += 1
         if self.down:
             raise ConnectionError("unreachable")
         pid, ver, body = self.versions[min(self.fetches, len(self.versions)) - 1]
-        return {"policyId": pid, "version": ver, "body": body}
+        got = {"policyId": pid, "version": ver, "body": body}
+        if self.name is not None:
+            got["name"] = self.name
+        return got
 
     def whoami(self) -> dict:
         return {"id": "rnr_1", "userId": "u_alice"}
 
     def fail_job(self, job_id: str, message: str) -> None:
         self.failed.append((job_id, message))
+
+    def release_job(self, job_id: str, code: str, message: str) -> None:
+        self.released.append((job_id, code, message))
 
 
 @pytest.fixture()
@@ -176,7 +184,7 @@ class TestTheDoubleCheck:
         api = FakeApi(("pol_personal", 1, PERSONAL))
         holder.start(api)
         assert check_installs(api, holder, claim(1)) == []
-        assert api.failed == []
+        assert api.released == []
         assert api.fetches == 1
 
     def test_an_older_held_version_refreshes_and_goes_on(self, holder):
@@ -185,7 +193,7 @@ class TestTheDoubleCheck:
         assert check_installs(api, holder, claim(2)) == []
         assert api.fetches == 2
         assert holder.held.version == 2
-        assert api.failed == []
+        assert api.released == []
 
     def test_a_mismatch_that_survives_the_refresh_releases_the_claim(
             self, holder, capsys):
@@ -193,19 +201,44 @@ class TestTheDoubleCheck:
         holder.start(api)
         admits = check_installs(api, holder, claim(2))
         assert [a.ok for a in admits] == [False]
-        assert api.failed == [(
+        assert api.released == [(
             "j_1",
-            f"{POLICY_MISMATCH}: The claim was made under pol_personal v2; "
+            POLICY_MISMATCH,
+            "The claim was made under pol_personal v2; "
             "this runner holds pol_personal v1.",
         )]
+        assert api.failed == []
         assert "job j_1 released: POLICY_MISMATCH" in capsys.readouterr().out
+
+    def test_the_log_names_the_policy_when_the_api_does(self, holder, capsys):
+        api = FakeApi(("pol_personal", 1, PERSONAL))
+        api.name = "personal"
+        holder.start(api)
+        assert holder.held.name == "personal"
+        assert json.loads(holder.path.read_text())["name"] == "personal"
+        assert PolicyHolder(holder.path).load().name == "personal"
+        check_installs(api, holder, claim(2))
+        out = capsys.readouterr().out
+        assert "policy personal (pol_personal) v1 applied" in out
+        assert api.released[0][2].endswith("this runner holds personal (pol_personal) v1.")
+
+    def test_an_api_without_release_is_failed_as_before(self, holder):
+        class Older(FakeApi):
+            def release_job(self, job_id, code, message):
+                raise ApiError(404, {"code": "NOT_FOUND"})
+
+        api = Older(("pol_personal", 1, LOCKED))
+        holder.start(api)
+        check_installs(api, holder, claim(1, install=[EXT]))
+        assert api.failed == [
+            ("j_1", f"{POLICY_MISMATCH}: The policy is locked: it installs nothing.")]
 
     def test_an_unreachable_policy_releases_a_mismatched_claim(self, holder):
         api = FakeApi(("pol_personal", 1, PERSONAL))
         holder.start(api)
         api.down = True
         check_installs(api, holder, claim(2))
-        assert api.failed and api.failed[0][1].startswith(POLICY_MISMATCH)
+        assert api.released and api.released[0][1] == POLICY_MISMATCH
 
     def test_a_claim_without_a_policy_is_not_compared(self, holder):
         api = FakeApi(("pol_personal", 1, PERSONAL))
@@ -219,15 +252,15 @@ class TestTheDoubleCheck:
         holder.start(api)
         admits = check_installs(api, holder, claim(1, install=[EXT]))
         assert admits == [Admit(True)]
-        assert api.failed == []
+        assert api.released == []
 
     def test_a_refused_install_releases_with_the_rule_s_words(self, holder):
         api = FakeApi(("pol_personal", 1, LOCKED))
         holder.start(api)
         admits = check_installs(api, holder, claim(1, install=[EXT]))
         assert admits == [Admit(False, "The policy is locked: it installs nothing.")]
-        assert api.failed == [
-            ("j_1", f"{POLICY_MISMATCH}: The policy is locked: it installs nothing.")]
+        assert api.released == [
+            ("j_1", POLICY_MISMATCH, "The policy is locked: it installs nothing.")]
 
     def test_the_context_is_the_runner_s_owner_and_the_job_s_creator(self, holder):
         api = FakeApi(("pol_personal", 1, PERSONAL))
@@ -244,7 +277,7 @@ class TestTheDoubleCheck:
         job["policy"] = None
         admits = check_installs(api, holder, job)
         assert [a.ok for a in admits] == [False]
-        assert len(api.failed) == 1
+        assert len(api.released) == 1
 
 
 def test_the_client_fetches_the_held_policy():
@@ -270,3 +303,26 @@ def test_the_default_mirror_lives_in_the_runner_s_state_dir():
     holder = PolicyHolder()
     assert holder.path == pol.paths.policy_path()
     assert holder.path.name == "policy.json"
+
+
+def test_the_client_releases_a_job_with_the_claim_token():
+    seen: list[httpx.Request] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        return httpx.Response(200, json={"ok": True, "status": "queued"})
+
+    api = ApiClient(Config(api_base_url="http://127.0.0.1:1", api_key="mbk_test",
+                           poll_interval_seconds=0.01, warm_model_id=None,
+                           runner_id="r_mine"))
+    api._client.close()
+    api._client = httpx.Client(base_url="http://127.0.0.1:1",
+                               transport=httpx.MockTransport(handler))
+    api.claim_tokens["j_1"] = "tok"
+    api.release_job("j_1", POLICY_MISMATCH, "The policy is locked: it installs nothing.")
+    api.close()
+    assert [r.url.path for r in seen] == ["/jobs/j_1/release"]
+    assert seen[0].headers["x-claim-token"] == "tok"
+    assert json.loads(seen[0].content) == {
+        "code": POLICY_MISMATCH, "message": "The policy is locked: it installs nothing."}
+    assert "j_1" not in api.claim_tokens

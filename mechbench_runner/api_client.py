@@ -210,6 +210,16 @@ class ApiClient:
                                 headers=self._job_headers(job_id), **kwargs)
         self._raise_for_status(res)
 
+    def release_job(self, job_id: str, code: str, message: str,
+                    timeout: float | None = None) -> None:
+        kwargs: dict = {"json": {"code": code[:40], "message": message[:500]}}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        res = self._client.post(f"/jobs/{job_id}/release",
+                                headers=self._job_headers(job_id), **kwargs)
+        self._raise_for_status(res)
+        self.claim_tokens.pop(job_id, None)
+
     def interrupt_job(self, job_id: str, message: str,
                       timeout: float | None = None) -> None:
         kwargs: dict = {"json": {"message": message[:2000]}}

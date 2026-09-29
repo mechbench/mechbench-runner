@@ -23,6 +23,7 @@ class FakeApi:
         self.served = list(served)
         self.fetches = 0
         self.failed: list[tuple[str, str]] = []
+        self.released: list[tuple[str, str, str]] = []
 
     def __enter__(self):
         return self
@@ -42,6 +43,9 @@ class FakeApi:
 
     def fail_job(self, job_id: str, message: str, timeout=None) -> None:
         self.failed.append((job_id, message))
+
+    def release_job(self, job_id: str, code: str, message: str, timeout=None) -> None:
+        self.released.append((job_id, code, message))
 
     def list_jobs(self):
         return []
@@ -87,8 +91,8 @@ def test_a_runner_holding_an_older_version_refuses_and_refreshes(runner, monkeyp
     runner.run()
     assert fake.fetches >= 2
     assert runner.handled == []
-    assert fake.failed and fake.failed[0][0] == "j_2"
-    assert fake.failed[0][1].startswith("POLICY_MISMATCH: ")
+    assert fake.failed == []
+    assert fake.released and fake.released[0][:2] == ("j_2", "POLICY_MISMATCH")
 
 
 def test_a_refresh_that_catches_up_runs_the_job(runner, monkeypatch):
@@ -96,7 +100,7 @@ def test_a_refresh_that_catches_up_runs_the_job(runner, monkeypatch):
     monkeypatch.setattr(jr, "ApiClient", lambda *_a, **_k: fake)
     runner.run()
     assert runner.handled == ["j_2"]
-    assert fake.failed == []
+    assert fake.released == []
 
 
 def test_a_matching_claim_runs_without_a_fetch(runner, monkeypatch):

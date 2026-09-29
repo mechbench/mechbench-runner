@@ -87,6 +87,13 @@ class HeldPolicy:
     id: str
     version: int
     body: dict[str, Any]
+    name: str | None = None
+
+    @property
+    def label(self) -> str:
+        if self.name and self.name != self.id:
+            return f"{self.name} ({self.id}) v{self.version}"
+        return f"{self.id} v{self.version}"
 
     def matches(self, ref: Mapping[str, Any]) -> bool:
         return ref.get("id") == self.id and ref.get("version") == self.version
@@ -114,7 +121,9 @@ class PolicyHolder:
     def load(self) -> HeldPolicy | None:
         try:
             raw = json.loads(self.path.read_text())
-            held = HeldPolicy(str(raw["id"]), int(raw["version"]), dict(raw["body"]))
+            name = raw.get("name")
+            held = HeldPolicy(str(raw["id"]), int(raw["version"]), dict(raw["body"]),
+                              name if isinstance(name, str) else None)
         except (OSError, ValueError, KeyError, TypeError):
             return None
         with self._lock:
@@ -124,8 +133,11 @@ class PolicyHolder:
     def _mirror(self, held: HeldPolicy) -> None:
         tmp = self.path.with_suffix(".json.tmp")
         try:
-            tmp.write_text(json.dumps(
-                {"id": held.id, "version": held.version, "body": held.body}, indent=2))
+            mirrored: dict[str, Any] = {"id": held.id, "version": held.version,
+                                        "body": held.body}
+            if held.name is not None:
+                mirrored["name"] = held.name
+            tmp.write_text(json.dumps(mirrored, indent=2))
             os.chmod(tmp, 0o600)
             os.replace(tmp, self.path)
         except OSError as exc:
@@ -157,7 +169,9 @@ class PolicyHolder:
 
     def refresh(self, api: Any) -> HeldPolicy:
         got = api.fetch_policy()
-        held = HeldPolicy(str(got["policyId"]), int(got["version"]), dict(got["body"]))
+        name = got.get("name")
+        held = HeldPolicy(str(got["policyId"]), int(got["version"]), dict(got["body"]),
+                          name if isinstance(name, str) else None)
         with self._lock:
             before = self.held
             self.held = held
@@ -167,7 +181,7 @@ class PolicyHolder:
         if before != held:
             self._mirror(held)
         if before is None or (before.id, before.version) != (held.id, held.version):
-            print(f"[runner] policy {held.id} v{held.version} applied", flush=True)
+            print(f"[runner] policy {held.label} applied", flush=True)
         return held
 
     def start(self, api: Any) -> HeldPolicy | None:
@@ -178,7 +192,7 @@ class PolicyHolder:
             self._retry_at = time.monotonic() + RETRY_SECONDS
             if mirrored is not None:
                 print(f"[runner] could not fetch the policy ({exc}); holding "
-                      f"{mirrored.id} v{mirrored.version} from the last run")
+                      f"{mirrored.label} from the last run")
             else:
                 print(f"[runner] could not fetch the policy ({exc}); "
                       "will retry before claiming")
@@ -219,7 +233,7 @@ def check_installs(api: Any, holder: PolicyHolder,
             print(f"[runner] could not refresh the policy ({exc})")
     held = holder.held
     if ref is not None and not holder.matches(ref):
-        have = f"{held.id} v{held.version}" if held else "no policy"
+        have = held.label if held else "no policy"
         refusal = _refuse(f"The claim was made under {ref['id']} v{ref['version']}; "
                           f"this runner holds {have}.")
         _release(api, claim, [refusal])
@@ -245,10 +259,18 @@ def check_installs(api: Any, holder: PolicyHolder,
 
 def _release(api: Any, claim: Mapping[str, Any], admits: list[Admit]) -> None:
     job_id = str(claim.get("id"))
-    text = " ".join(a.reason for a in admits if not a.ok and a.reason)
-    message = f"{POLICY_MISMATCH}: {text}"
-    print(f"[runner] job {job_id} released: {message}", flush=True)
+    text = (" ".join(a.reason for a in admits if not a.ok and a.reason)
+            or "This runner's policy refuses the job.")
+    print(f"[runner] job {job_id} released: {POLICY_MISMATCH}: {text}", flush=True)
     try:
-        api.fail_job(job_id, message)
+        api.release_job(job_id, POLICY_MISMATCH, text)
+    except ApiError as exc:
+        if exc.status != 404:
+            print(f"[runner] could not release job {job_id} ({exc})")
+            return
+        try:
+            api.fail_job(job_id, f"{POLICY_MISMATCH}: {text}")
+        except Exception as exc2:  # noqa: BLE001
+            print(f"[runner] could not release job {job_id} ({exc2})")
     except Exception as exc:  # noqa: BLE001
         print(f"[runner] could not release job {job_id} ({exc})")

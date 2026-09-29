@@ -23,6 +23,26 @@ with both headings.
 
 ---
 
+## 0.45.1 — 2026-09-29
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+- **A claim the policy refuses is released, not failed.** `check_installs`
+  now calls `POST /jobs/:id/release` with `code: "POLICY_MISMATCH"` and
+  the reason (`ApiClient.release_job`). The job goes back to `queued`
+  for another runner instead of ending, and the API keeps this runner off
+  it until its policy changes version or a day passes. Against an API
+  without the route (a 404), the runner fails the job as 0.45.0 did.
+
+Also:
+
+- The policy's `name` (from `GET /runners/me/policy`) is held, mirrored
+  and used in log lines: `policy personal (pol_personal) v1 applied`.
+
 ## 0.45.0 — 2026-09-29
 
 ### Changes that raise
