@@ -23,6 +23,35 @@ with both headings.
 
 ---
 
+## 0.46.0 — 2026-09-29
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+- **The runner advertises what it can do, and the API places jobs by
+  it.** `advertise()` (`api_client.py`) says `{classes, compute,
+  installs, installed, accelerator, memory_gb}`: the classes it claims
+  (`mlx-local`, `pure`, `remote`, as before), the compute release it
+  runs, `installs: false` (it installs no extension yet), the pin hashes
+  in `~/.mechbench/extensions/installed.json` if that file exists, the
+  accelerator (`applegpu` when MLX sees an Apple GPU, `cuda` when
+  `nvidia-smi` is on the path, else `cpu`) and its physical memory in
+  whole GB. It is sent at registration, in the channel's `hello`, and on
+  every claim as `X-Runner-Capabilities`. An API that places by it
+  (000417, 000422) hands this runner only jobs whose `min_compute`,
+  accelerator and memory it meets, and no job that needs an extension it
+  does not hold. An API that does not yet read it ignores it.
+
+Also:
+
+- The policy check reads the runner's owner from `GET /runners/me` as the
+  API serves it (`account.userId`); it read a top-level `userId`, which
+  the API does not send, and would have failed on the first claim that
+  carried an `install` list.
+
 ## 0.45.1 — 2026-09-29
 
 ### Changes that raise

@@ -218,7 +218,10 @@ class PolicyHolder:
 
     def owner(self, api: Any) -> str:
         if self.owner_id is None:
-            self.owner_id = str(api.whoami()["userId"])
+            me = api.whoami()
+            account = me.get("account") or {}
+            runner = me.get("runner") or {}
+            self.owner_id = str(account.get("userId") or runner.get("userId"))
         return self.owner_id
 
 

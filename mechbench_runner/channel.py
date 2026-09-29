@@ -187,6 +187,7 @@ class LiveChannel:
         except ImportError:
             runner_version = "unknown"
         from . import install as install_mod
+        from .api_client import advertise
 
         return {
             "v": PROTOCOL_VERSION,
@@ -197,6 +198,7 @@ class LiveChannel:
             "packages": install_mod.installed_versions(),
             "installMethod": install_mod.detect().method,
             "selfUpdatable": install_mod.detect().upgradable,
+            "capabilities": advertise(),
         }
 
     async def _send_loop(self, ws: Any) -> None:

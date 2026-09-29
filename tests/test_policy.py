@@ -72,7 +72,9 @@ class FakeApi:
         return got
 
     def whoami(self) -> dict:
-        return {"id": "rnr_1", "userId": "u_alice"}
+        return {"runner": {"id": "rnr_1", "userId": "u_alice"},
+                "account": {"userId": "u_alice", "handle": "alice", "displayName": None},
+                "scopeLabel": "alice"}
 
     def fail_job(self, job_id: str, message: str) -> None:
         self.failed.append((job_id, message))

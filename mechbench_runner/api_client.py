@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import functools
+import json
+import os
+import re
+import shutil
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 import httpx
 
+from . import paths
 from .config import Config
 
 
@@ -33,6 +40,7 @@ def register_runner(
             "hostname": hostname,
             "platform": platform,
             "runnerVersion": runner_version,
+            "capabilities": advertise(),
         },
         timeout=httpx.Timeout(timeout),
     )
@@ -92,6 +100,81 @@ def _compute_version() -> str:
     return str(__version__)
 
 
+CLASSES = ("mlx-local", "pure", "remote")
+
+INSTALLS = False
+
+_PIN = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+def installed_path() -> Path:
+    return paths.mechbench_dir() / "extensions" / "installed.json"
+
+
+def _installed_hashes(path: Path | None = None) -> list[str]:
+    try:
+        raw = json.loads((path or installed_path()).read_text())
+    except (OSError, ValueError):
+        return []
+    if isinstance(raw, Mapping):
+        raw = raw.get("installed", list(raw.keys()))
+    if not isinstance(raw, list):
+        return []
+    found: list[str] = []
+    for item in raw:
+        pin = item.get("hash") if isinstance(item, Mapping) else item
+        if isinstance(pin, str) and _PIN.match(pin) and pin not in found:
+            found.append(pin)
+    return found
+
+
+def _physical_memory_gb() -> float | None:
+    try:
+        pages = os.sysconf("SC_PHYS_PAGES")
+        size = os.sysconf("SC_PAGE_SIZE")
+    except (ValueError, OSError, AttributeError):
+        return None
+    if pages <= 0 or size <= 0:
+        return None
+    return pages * size / 2**30
+
+
+def _has_cuda() -> bool:
+    return shutil.which("nvidia-smi") is not None
+
+
+@functools.lru_cache(maxsize=1)
+def _hardware() -> tuple[str, int]:
+    info: dict[str, Any] = {}
+    try:
+        from mechbench_compute.seeds import hardware_class
+        info = hardware_class()
+    except Exception:  # noqa: BLE001
+        info = {}
+    if info.get("mlx") and info.get("chip"):
+        accelerator = "applegpu"
+    elif _has_cuda():
+        accelerator = "cuda"
+    else:
+        accelerator = "cpu"
+    memory = _physical_memory_gb()
+    if memory is None:
+        memory = float(info.get("memory_gb") or 0)
+    return accelerator, int(round(memory))
+
+
+def advertise(installed: Path | None = None) -> dict[str, Any]:
+    accelerator, memory_gb = _hardware()
+    return {
+        "classes": list(CLASSES),
+        "compute": _compute_version() or "unknown",
+        "installs": INSTALLS,
+        "installed": _installed_hashes(installed),
+        "accelerator": accelerator,
+        "memory_gb": memory_gb,
+    }
+
+
 def _body_of(res: httpx.Response) -> Any:
     try:
         return res.json()
@@ -136,10 +219,11 @@ class ApiClient:
     def revoke_runner(self, runner_id: str) -> None:
         self._raise_for_status(self._client.delete(f"/runners/{runner_id}"))
 
-    CAPABILITIES = "mlx-local,pure,remote"
+    CAPABILITIES = ",".join(CLASSES)
 
     def claim_next_job(self, capabilities: str | None = None) -> dict[str, Any] | None:
-        headers = {"x-claim-token-supported": "1"}
+        caps = json.dumps(advertise(), separators=(",", ":"))
+        headers = {"x-claim-token-supported": "1", "x-runner-capabilities": caps}
         version = _compute_version()
         if version:
             headers["x-compute-version"] = version
