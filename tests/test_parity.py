@@ -105,6 +105,9 @@ def test_every_verb_names_a_route_the_api_declares(noun):
         pytest.skip("no mechbench-api checkout beside this one")
     routes = {(m, normal(p)) for m, p in declared_routes(src)}
     for v in noun.verbs:
+        if not v.api:
+            assert v.local, f"{noun.name} {v.name} names no route and is not local"
+            continue
         method, _, path = v.api.partition(" ")
         assert (method, normal(path)) in routes, (
             f"{noun.name} {v.name}: no {v.api} in the API"

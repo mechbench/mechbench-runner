@@ -196,6 +196,32 @@ argument, in about 26 KB.
 | thread | **fork**(id, message, project?, title?) | draft | `POST /threads/:id/fork` | `thread(verb="fork")` | `mechbench thread fork` |
 | thread | **delete**(id, yes?) | delete when yes=true * | `DELETE /threads/:id` | `thread(verb="delete")` | `mechbench thread delete` |
 | thread | **history**(id) | read | `GET /history/:kind/:id` | `thread(verb="history")` | `mechbench thread history` |
+| op | **list**(reads?, emits?, owner?, search?, limit?, offset?) | read | `GET /ops` | `op(verb="list")` | `mechbench op list` |
+| op | **read**(address) | read | `GET /ops/:address` | `op(verb="read")` | `mechbench op read` |
+| op | **next**(kind, owner?, search?, limit?, offset?) | read | `GET /ops` | `op(verb="next")` | `mechbench op next` |
+| op | create | — | — | — | — (an op is declared in an extension's package; `extension push` publishes it) |
+| op | update | — | — | — | — (an op changes with its extension's next version; `extension push`) |
+| op | delete | — | — | — | — (an extension's version is withdrawn (`extension withdraw`), and core's ops leave with a compute release) |
+| op | history | — | — | — | — (an extension's op changes with its versions (`extension history`); core's with compute's releases) |
+| extension | **new**(scope, name, op, dir?) | read | — (on the caller's machine) | `extension(verb="new")` | `mechbench extension new` |
+| extension | **test**(dir, model?, python?) | read | — (on the caller's machine) | `extension(verb="test")` | `mechbench extension test` |
+| extension | **push**(dir, draft?, python?) | outward * | `PUT /extensions/:owner/:project/:name` | `extension(verb="push")` | `mechbench extension push` |
+| extension | **verify**(address) | draft | `POST /extensions/:owner/:project/extensions/:ref/verify` | `extension(verb="verify")` | `mechbench extension verify` |
+| extension | **list**(owner?, state?, reads?, emits?, search?, limit?, offset?) | read | `GET /extensions` | `extension(verb="list")` | `mechbench extension list` |
+| extension | **read**(address) | read | `GET /extensions/:owner/:project/extensions/:ref` | `extension(verb="read")` | `mechbench extension read` |
+| extension | **history**(address) | read | `GET /extensions/:owner/:project/extensions/:ref` | `extension(verb="history")` | `mechbench extension history` |
+| extension | **withdraw**(address, reason) | delete * | `POST /extensions/:owner/:project/extensions/:ref/withdraw` | `extension(verb="withdraw")` | `mechbench extension withdraw` |
+| extension | **visibility**(address, visibility) | outward when visibility=org|public * | `PUT /extensions/:owner/:project/extensions/:ref/visibility` | `extension(verb="visibility")` | `mechbench extension visibility` |
+| extension | create | — | — | — | — (push is its create: a package is pushed, by its manifest's name) |
+| extension | update | — | — | — | — (a version never changes: push the next; visibility and withdraw are the platform's fields) |
+| extension | delete | — | — | — | — (a version is withdrawn, never deleted, so what ran on it stays readable) |
+| policy | **list**(search?, limit?, offset?) | read | `GET /policies` | `policy(verb="list")` | `mechbench policy list` |
+| policy | **read**(id) | read | `GET /policies/:id` | `policy(verb="read")` | `mechbench policy read` |
+| policy | **create**(name, body, org_id?) | draft | `POST /policies` | `policy(verb="create")` | `mechbench policy create` |
+| policy | **update**(id, body, name?, yes?) | outward when yes=true * | `PUT /policies/:id` | `policy(verb="update")` | `mechbench policy update` |
+| policy | **apply**(runner, policy, yes?) | outward when yes=true * | `PUT /runners/:id/policy` | `policy(verb="apply")` | `mechbench policy apply` |
+| policy | delete | — | — | — | — (runners reference a policy by id and version; put them under another (`policy apply`) instead) |
+| policy | history | — | — | — | — (`policy read` carries every version, newest first) |
 
 **Effects.** What a verb does to the platform, recorded on each verb:
 
@@ -222,7 +248,7 @@ A verb marked * needs the person's consent: the platform's own agent proposes it
 - `mechbench delete`: `<noun> delete`, the noun read from the id's prefix or a path.
 - `mechbench history`: `<noun> history`, by kind and id.
 
-**Files on the caller's machine** are the command line's. Over MCP an argument that names one is the thing itself: a push takes `protocol`, not `file`; an article or protocol takes `body` or `description`, not `body_file` or `description_file`; and an export answers its text rather than writing it to `path`.
+**Files on the caller's machine** are the command line's. Over MCP an argument that names one is the thing itself: a push takes `protocol`, not `file`; an article or protocol takes `body` or `description`, not `body_file` or `description_file`; and an export answers its text rather than writing it to `path`. `extension new`, `test` and `push` work on a package in the caller's directory, so they are the command line's too: over MCP they answer what to run instead.
 
 **API only.**
 

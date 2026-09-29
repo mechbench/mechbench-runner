@@ -121,10 +121,21 @@ IDS = {
     "dataset": "ds_1",
     "project": "proj_1",
     "thread": "thr_1",
+    "policy": "pol_1",
+}
+SAMPLES = {
+    ("op", "address"): "geometry/align",
+    ("op", "kind"): "direction/vector",
+    ("extension", "address"): "alice/lab/extensions/interp-extras@2",
+    ("policy", "body"): '{"extensions": {"install": "mine"}}',
+    ("policy", "runner"): "rnr_1",
+    ("policy", "policy"): "pol_1",
 }
 
 
 def sample(noun: str, a: Arg, tmp) -> Any:
+    if (noun, a.name) in SAMPLES:
+        return SAMPLES[(noun, a.name)]
     if a.name in ("id", "path"):
         return IDS[noun]
     if a.name == "into":
@@ -192,7 +203,9 @@ def argv_of(noun: str, v: Verb, args: dict[str, Any]) -> list[str]:
 
 OWN_WAY = {("run", "watch"), ("run", "result")}
 
-CASES = [(n.name, v.name) for n in NOUNS for v in n.verbs]
+ON_THIS_MACHINE = {("extension", "new"), ("extension", "test"), ("extension", "push")}
+CASES = [(n.name, v.name) for n in NOUNS for v in n.verbs
+         if (n.name, v.name) not in ON_THIS_MACHINE]
 
 
 @pytest.mark.parametrize("noun,verb", CASES)
@@ -219,7 +232,7 @@ def test_the_command_line_makes_the_calls_its_arguments_name(
 
 
 def test_every_verb_is_exercised():
-    assert len(CASES) == sum(len(n.verbs) for n in NOUNS) >= 40
+    assert len(CASES) + len(ON_THIS_MACHINE) == sum(len(n.verbs) for n in NOUNS) >= 40
 
 
 class TestShapes:

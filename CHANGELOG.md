@@ -23,6 +23,58 @@ with both headings.
 
 ---
 
+## 0.49.0 — 2026-09-29
+
+### Changes that raise
+
+- **`VERB_REGISTRY`'s `method` and `route` may be null** (models'
+  `verbs.generated.ts`): `extension new` and `extension test` run on the
+  caller's machine and name no API route. A consumer that reads either
+  field as a string handles the null.
+- **The API has no executor for the new verbs yet.** Its
+  `executorGaps()` test lists every `op`, `extension` and `policy` verb
+  as missing once it takes this registry; until they are written, a
+  thread's agent or an MCP client calling one is answered that there is
+  no such verb.
+
+### Changes that alter results without raising
+
+- **Three nouns: `op`, `extension` and `policy`**, on the command line
+  and in the registry MCP and threads read (task 000415, 000815).
+  - `op list [--reads K] [--emits K] [--owner H] [--search Q]` reads
+    `GET /ops` (core's in the lexicon's order, then the extensions' you
+    would use); `op read <address>` reads `GET /ops/:address`, core's or
+    an extension's with its declaration and pin; `op next <kind>` is
+    `op list --reads <kind>` with the ports that take it, and given an
+    object's path follows its kind. All reads.
+  - `extension new <owner>/<project> --name N --op family/leaf`
+    scaffolds a package (pyproject.toml with the `mechbench.extensions`
+    entry point and a hatchling build, the manifest, one op file with
+    `OP` and `run`, an empty `kinds/`, a README) that passes
+    `extension test` as written; a leaf that is not a verb is refused
+    first. `extension test <dir>` runs
+    `python -m mechbench_compute.conformance <module:MANIFEST>` in this
+    environment (or `--python`), `--inputs <dir>/inputs` when present,
+    `--model` when asked or when `MECHBENCH_WARM_MODEL_ID` is set and an
+    op needs a model; it prints the report and exits 1 when it fails.
+  - `extension push <dir> [--draft]` (outward, consent) compiles the
+    declarations with `Extension.to_dict()`, builds the sdist
+    (`uv build --sdist`, else `python -m build --sdist`), stores it as
+    raw bytes by hash at
+    `<owner>/<project>/extensions/<name>/sdist/<hex16>`, PUTs the
+    manifest without the platform's fields and with `package.sdist:
+    ~hash/sha256:…`, and answers the address, version, hash, pin, the
+    sdist and a consent line saying who will see it; without `--draft`
+    it asks for verification and answers the job and `waitingFor`. The
+    pin this machine's compute computes is compared with the platform's.
+  - `extension verify`, `list`, `read`, `history` (the versions),
+    `withdraw` (delete, consent) and `visibility` (outward when it
+    widens). There is no install verb: machines install under policy.
+  - `policy list`, `read`, `create`; `policy update` and
+    `policy apply <runner> <policy>` name the runners they reach and
+    change nothing unless `--yes` (outward, consent when yes).
+- The CI installs `build`, so the push test builds an sdist without uv.
+
 ## 0.48.0 — 2026-09-29
 
 ### Changes that raise

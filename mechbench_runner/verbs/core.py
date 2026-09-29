@@ -91,6 +91,10 @@ class Ctx:
     def get(self, route: str, **query: Any) -> Any:
         return self.api("GET", route, query=query)[0]
 
+    def put_bytes(self, path: str, data: bytes, kind: str) -> dict[str, Any]:
+        with self._client(self.config) as api:
+            return api.put_bytes(path, data, kind=kind)
+
     def bench(self) -> Any:
         from mechbench_compute import bench
 
@@ -162,6 +166,13 @@ def listing(
     items = data.get(unwrap, []) if unwrap and isinstance(data, dict) else data
     nxt = headers.get("x-next-offset")
     return {"items": items, "next": int(nxt) if nxt else None}
+
+
+def paged(items: list[Any], a: Mapping[str, Any]) -> dict[str, Any]:
+    offset = int(a.get("offset") or 0)
+    limit = a.get("limit")
+    end = len(items) if limit is None else offset + int(limit)
+    return {"items": items[offset:end], "next": end if end < len(items) else None}
 
 
 def page(a: Mapping[str, Any]) -> dict[str, Any]:

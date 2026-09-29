@@ -45,6 +45,7 @@ def add_nouns(sub: argparse._SubParsersAction) -> None:
             help=argparse.SUPPRESS
             if name == RUN_NOUN
             else f"{n.help} Verbs: {', '.join(v.name for v in n.verbs)}.",
+            description=n.help,
         )
         verbs = p.add_subparsers(dest="verb", required=True, metavar="<verb>")
         for v in n.verbs:
@@ -267,6 +268,12 @@ def render_figure(noun_name: str) -> Render:
     return go
 
 
+def render_test(_c: Config, ctx: Ctx, a: dict) -> int:
+    out = invoke(ctx, "extension", "test", a)
+    print(json.dumps(out, indent=1, default=str))
+    return 0 if out.get("passed") else 1
+
+
 RENDER: dict[tuple[str, str], Render] = {
     ("object", "render"): render_figure("object"),
     ("protocol", "render"): render_figure("protocol"),
@@ -292,8 +299,10 @@ RENDER: dict[tuple[str, str], Render] = {
     ("run", "cancel"): lambda c, _x, a: bench_cmd.cancel(
         c, [a["id"]], a.get("reason") or ""
     ),
-    **{(n.name, "delete"): render_delete(n) for n in NOUNS if n.name != "thread"},
-    **{(n.name, "history"): render_history(n) for n in NOUNS},
+    **{(n.name, "delete"): render_delete(n) for n in NOUNS if n.name in HISTORY_KIND
+       and n.name != "thread"},
+    **{(n.name, "history"): render_history(n) for n in NOUNS if n.name in HISTORY_KIND},
+    ("extension", "test"): render_test,
 }
 
 

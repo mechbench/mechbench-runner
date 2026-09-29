@@ -37,8 +37,8 @@ def verb_of(v: Verb) -> dict:
         "noun": v.noun,
         "name": v.name,
         "help": v.help,
-        "method": method,
-        "route": route,
+        "method": method or None,
+        "route": route or None,
         "shape": v.shape,
         "effect": v.effect,
         "consentWhen": {k: list(vs) for k, vs in v.consent_when.items()},
@@ -93,14 +93,14 @@ def main() -> None:
         "(`effect`), and the argument values that make a call need consent "
         "(`consentWhen`, any of them; empty means every call does when the "
         "effect needs consent). `local` says it computes on the caller's "
-        "machine. */"
+        "machine; one with no `method` has no route at all. */"
     )
     print("export interface RegistryVerb {")
     print("  noun: string;")
     print("  name: string;")
     print("  help: string;")
-    print('  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";')
-    print("  route: string;")
+    print('  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | null;')
+    print("  route: string | null;")
     print("  shape: string;")
     print("  effect: VerbEffect;")
     print("  consentWhen: Record<string, (string | number | boolean)[]>;")

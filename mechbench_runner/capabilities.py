@@ -83,8 +83,9 @@ def table() -> str:
             cli, mcp = surface_names(n.name, v.name)
             args = ", ".join(a.name + ("" if a.required else "?") for a in v.args)
             effect = v.effect_label() + (" *" if v.effect in CONSENT else "")
+            api = f"`{v.api}`" if v.api else "— (on the caller's machine)"
             out.append(
-                f"| {n.name} | **{v.name}**({args}) | {effect} | `{v.api}` | `{mcp}` "
+                f"| {n.name} | **{v.name}**({args}) | {effect} | {api} | `{mcp}` "
                 f"| `{cli}` |"
             )
         for verb in LIFECYCLE:
@@ -129,7 +130,9 @@ def one_surface() -> str:
         "argument that names one is the thing itself: a push takes `protocol`, "
         "not `file`; an article or protocol takes `body` or `description`, not "
         "`body_file` or `description_file`; and an export answers its text "
-        "rather than writing it to `path`.",
+        "rather than writing it to `path`. `extension new`, `test` and `push` "
+        "work on a package in the caller's directory, so they are the command "
+        "line's too: over MCP they answer what to run instead.",
     ]
     lines += ["", "**API only.**", ""]
     lines += [f"- {k}: {why}." for k, why in API_ONLY.items()]
@@ -156,7 +159,7 @@ def splice(doc: str) -> str:
 
 SUMMARY = (
     "Every noun an agent works with (objects, protocols, runs, articles, "
-    "datasets, projects, threads) and its verbs, spelled on the command line, over MCP "
+    "datasets, projects, threads, ops, extensions, policies) and its verbs, spelled on the command line, over MCP "
     "and on the API, with what each surface leaves out and why."
 )
 

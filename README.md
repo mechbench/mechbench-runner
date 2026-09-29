@@ -14,7 +14,7 @@ The machine-side process of the [mechbench](https://mechbench.ai) family: it cla
 
 Two surfaces for different callers:
 
-1. **Command line.** `mechbench <noun> <verb>` lists, reads, pushes, launches and deletes the platform's objects, protocols, runs, models, articles, datasets, projects and threads, as a person or an agent with a shell.
+1. **Command line.** `mechbench <noun> <verb>` lists, reads, pushes, launches and deletes the platform's objects, protocols, runs, models, articles, datasets, projects, threads, ops, extensions and policies, as a person or an agent with a shell.
 2. **Job-runner.** Polls `mechbench-api`'s `/jobs/next` for queued protocols, runs them against `mechbench-compute`, posts results back.
 
 An agent without a shell connects to the platform's MCP server at `https://api.mechbench.ai/mcp`, which has the same verbs; it is not part of this package.
@@ -125,6 +125,18 @@ MCP and the command line.
 | `mechbench dataset` | list, read, create, update, delete, history |
 | `mechbench project` | list, read, create, update, delete, history |
 | `mechbench thread` | list, read, create, update, fork, delete, history |
+| `mechbench op` | list, read, next |
+| `mechbench extension` | new, test, push, verify, list, read, history, withdraw, visibility |
+| `mechbench policy` | list, read, create, update, apply |
+
+An extension's loop, from nothing to a verified version:
+
+```bash
+mechbench extension new alice/lab --name count-things --op records/count
+mechbench extension test count-things            # conformance, here, examples twice
+mechbench extension push count-things --draft    # usable by you at once
+mechbench extension push count-things            # the same bytes again: verification queued on your runner
+```
 
 ### Job-runner
 

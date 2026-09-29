@@ -17,14 +17,19 @@ from .core import (
     refusal,
 )
 from .dataset import DATASET
+from .extension import EXTENSION
 from .model import MODEL
 from .object import OBJECT
+from .op import OP
+from .policy import POLICY
 from .project import PROJECT, project_id
 from .protocol import PROTOCOL, split_version
 from .run import RUN, job_of
 from .thread import THREAD
 
-NOUNS: tuple[Noun, ...] = (OBJECT, PROTOCOL, RUN, MODEL, ARTICLE, DATASET, PROJECT, THREAD)
+NOUNS: tuple[Noun, ...] = (
+    OBJECT, PROTOCOL, RUN, MODEL, ARTICLE, DATASET, PROJECT, THREAD, OP, EXTENSION, POLICY,
+)
 
 
 def noun(name: str) -> Noun:
