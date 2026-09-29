@@ -272,6 +272,12 @@ class JobRunner:
                 return
 
     def run(self) -> int:
+        try:
+            return self._run()
+        finally:
+            self._limiter.save()
+
+    def _run(self) -> int:
         self.install_signal_handlers()
         if not self.config.api_key:
             print(

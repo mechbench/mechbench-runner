@@ -105,6 +105,87 @@ class TestSharedLimiter:
         assert "sk-ant-super-secret" not in text
         assert scope in text and len(scope) == 12
 
+    def test_slots_held_when_the_file_was_written_are_free_after_a_restart(
+            self, tmp_path):
+        path = tmp_path / "limits.json"
+        first = SharedLimiter(path)
+        for _ in range(8):
+            first.acquire("anthropic", "claude-opus-5", "acct", "concurrency", 1)
+        first.acquire("anthropic", "claude-opus-5", "acct", "requests", 1)
+        first.save()
+        second = SharedLimiter(path)
+        assert all(b["currency"] != "concurrency"
+                   for b in second.snapshot()["buckets"])
+        for _ in range(8):
+            assert second.acquire("anthropic", "claude-opus-5", "acct",
+                                  "concurrency", 1) == 0.0
+        snap = second.snapshot()
+        slots = next(b for b in snap["buckets"] if b["currency"] == "concurrency")
+        assert slots["capacity"] == 8 and slots["available"] == 0
+
+    def test_a_file_from_before_the_fix_loads_with_every_slot_free(self, tmp_path):
+        path = tmp_path / "limits.json"
+        path.write_text(json.dumps({"version": 1, "saved_at": time.time(),
+            "buckets": [
+                {"key": ["anthropic", "claude-haiku-4-5", "acct", "concurrency"],
+                 "tokens": 1.0, "capacity": 8.0, "per_second": 0.0},
+                {"key": ["openai", "gpt-5", "acct", "requests"],
+                 "tokens": 3.0, "capacity": 500.0, "per_second": 500 / 60},
+            ], "holds": []}))
+        lim = SharedLimiter(path)
+        snap = {b["currency"]: b for b in lim.snapshot()["buckets"]}
+        assert "concurrency" not in snap
+        assert snap["requests"]["available"] < 500
+        for _ in range(8):
+            assert lim.acquire("anthropic", "claude-haiku-4-5", "acct",
+                               "concurrency", 1) == 0.0
+
+    def test_the_file_names_no_concurrency_bucket(self, tmp_path):
+        path = tmp_path / "limits.json"
+        lim = SharedLimiter(path)
+        lim.acquire("openai", "gpt-5", "acct", "concurrency", 3)
+        lim.acquire("openai", "gpt-5", "acct", "requests", 1)
+        lim.save()
+        keys = [e["key"] for e in json.loads(path.read_text())["buckets"]]
+        assert keys == [["openai", "gpt-5", "acct", "requests"]]
+
+    def test_a_release_saves_the_other_currencies(self, tmp_path):
+        path = tmp_path / "limits.json"
+        lim = SharedLimiter(path, save_every=0.0)
+        lim.acquire("openai", "gpt-5", "acct", "concurrency", 1)
+        lim.acquire("openai", "gpt-5", "acct", "requests", 7)
+        assert not path.exists()
+        lim.release("openai", "gpt-5", "acct", "concurrency", 1)
+        entry = json.loads(path.read_text())["buckets"][0]
+        assert entry["key"][3] == "requests" and entry["tokens"] < 500
+
+    def test_the_runner_saves_the_limiter_when_it_stops(self, monkeypatch):
+        import signal
+
+        from mechbench_runner.paths import limits_path
+
+        monkeypatch.setattr(jr, "ControlServer", StubControl)
+        config = Config(api_base_url="http://127.0.0.1:1", api_key="mbk_test",
+                        poll_interval_seconds=0.01, warm_model_id=None,
+                        runner_id="rnr_1", from_stored_credentials=True)
+        runner = jr.JobRunner(config)
+        runner._limiter.acquire("openai", "gpt-5", "acct", "requests", 4)
+        assert not limits_path().exists()
+        handlers = {}
+        monkeypatch.setattr(jr.signal, "signal",
+                            lambda sig, fn: handlers.__setitem__(sig, fn))
+
+        def stop_at_start():
+            handlers[signal.SIGTERM](signal.SIGTERM, None)
+            raise SystemExit(0)
+
+        monkeypatch.setattr(runner, "_claim_control_socket", stop_at_start)
+        with pytest.raises(SystemExit):
+            runner.run()
+        assert runner._shutdown is True
+        entry = json.loads(limits_path().read_text())["buckets"][0]
+        assert entry["key"] == ["openai", "gpt-5", "acct", "requests"]
+
 
 class TestReporting:
     def test_spend_rides_along_with_progress(self, monkeypatch):

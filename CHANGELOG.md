@@ -23,6 +23,34 @@ with both headings.
 
 ---
 
+## 0.47.1 — 2026-09-29
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+- **Concurrency slots no longer survive a restart.** `SharedLimiter`
+  saved every bucket to `~/.mechbench/limits.json`, including the
+  concurrency buckets, whose tokens only `release()` returns; slots held
+  by calls in flight when the file was written were lost for good after
+  a restart, so each restart could only lower a provider's concurrency
+  (8 → 1 for three keys by 2026-09-29, which slowed 024's judge from
+  2 to 14.7 minutes with no provider pressure). `save()` now leaves
+  concurrency buckets out, and `load()` skips any it finds in a file
+  from an older runner, so the registry's capacity applies with every
+  slot free. Runs that were throttled by lost slots finish faster;
+  `throttled_seconds` and `waited_seconds` drop accordingly.
+- **The other currencies are saved on `release()` and when the runner
+  stops**, not only from `observe()` at most every five seconds, so a
+  restarted runner reads `requests` and token buckets as they were when
+  it stopped. `release()` saves at the same five-second rate as
+  `observe()`; `JobRunner.run()` saves once on every exit, including
+  after SIGTERM or SIGINT.
+
+---
+
 ## 0.47.0 — 2026-09-29
 
 ### Changes that raise

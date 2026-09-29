@@ -43,6 +43,10 @@ class SpendLedger:
         return out
 
 
+def _is_slot(key: tuple | list) -> bool:
+    return len(key) == 4 and key[3] == "concurrency"
+
+
 class SharedLimiter:
     def __init__(self, path: Path | None = None, *, save_every: float = 5.0) -> None:
         from mechbench_compute.providers.registry import TokenBucketLimiter
@@ -73,6 +77,7 @@ class SharedLimiter:
     def release(self, provider: str, model: str, scope: str, currency: str,
                 amount: float) -> None:
         self._inner.release(provider, model, scope, currency, amount)
+        self._maybe_save()
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -112,6 +117,7 @@ class SharedLimiter:
                     {"key": list(key), "tokens": round(b.tokens, 3),
                      "capacity": b.capacity, "per_second": b.per_second}
                     for key, b in self._inner._buckets.items()
+                    if not _is_slot(key)
                 ],
                 "holds": [
                     {"key": list(key), "until": wall + (until - now)}
@@ -143,6 +149,8 @@ class SharedLimiter:
         with self._lock:
             for entry in state.get("buckets", []):
                 key = tuple(entry["key"])
+                if _is_slot(key):
+                    continue
                 self._inner._buckets[key] = Bucket(
                     capacity=float(entry["capacity"]),
                     per_second=float(entry["per_second"]),
