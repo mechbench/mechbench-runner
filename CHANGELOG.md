@@ -23,6 +23,44 @@ with both headings.
 
 ---
 
+## 0.48.0 — 2026-09-29
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+- **The runner runs verification jobs.** A claimed job of kind
+  `verification` (queued by `POST /extensions/…@n/verify`, placed only
+  on a runner whose policy admits the version) is handled by
+  `mechbench_runner/verification.py` and never installs anything into
+  the runner's own environment. It re-checks the version against its
+  own policy (a refusal releases the job, as an install does), fetches
+  the sdist by hash, makes a scratch venv under
+  `~/.mechbench/extensions/verify/<job>` with the runner's own
+  interpreter (`uv venv --python`), builds the wheel from the sdist
+  (`uv build --wheel`), freezes the runner's environment
+  (`uv pip freeze`) into a constraints file, installs
+  `mechbench-compute==<the runner's compute>` and the wheel into the
+  scratch venv under those constraints (`uv pip install --constraint`),
+  resolves the lock under the same constraints
+  (`uv pip compile --constraint … --generate-hashes
+  --no-emit-package <the package>`), so a lock can never move a package
+  compute pins, fetches each example's `$ref` bench input, and runs
+  `python -m mechbench_compute.conformance <entry point> --inputs <dir>`
+  there (`--model` when a warm model is set and an op needs one). The
+  wheel and lock are stored as objects under the job's `builds` path,
+  and the job completes with `{report}`: compute's report
+  (`conformance`, `passed`, `findings`, `examples`), the `wheel` and
+  `lock` refs, `model`, and `compute`. Any step that fails completes the
+  job with `failure: {stage, message}` (the resolver's message for a
+  conflict); the scratch venv is removed either way. An editable
+  install of compute or schema (a source checkout) is built into a
+  wheelhouse and pinned at the checkout's version.
+- `ApiClient.put_bytes` (an octet-stream object write by hash) and
+  `ApiClient.complete_verification`.
+
 ## 0.47.1 — 2026-09-29
 
 ### Changes that raise

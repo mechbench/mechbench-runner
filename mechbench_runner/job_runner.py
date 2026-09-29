@@ -33,6 +33,7 @@ from .paths import limits_path, spool_dir
 from .policy import PolicyHolder, check_installs
 from .spend import SharedLimiter, SpendLedger
 from .spool import JobSpool
+from .verification import VERIFICATION, Verification
 from .watchdog import Watchdog
 
 BACKOFF_MAX_SECONDS = 30.0
@@ -608,6 +609,9 @@ class JobRunner:
     def _handle(self, api: ApiClient, job: dict[str, Any]) -> None:
         job_id = job["id"]
         kind = job["protocolKind"]
+        if kind == VERIFICATION:
+            self._verify(api, job)
+            return
         spec_dict = job.get("spec") or {}
         prompt = spec_dict.get("prompt") or ""
         model_id = spec_dict.get("modelId") or self.config.warm_model_id
@@ -743,6 +747,18 @@ class JobRunner:
             self._release_awake()
             secrets.clear()
             job.pop("integrations", None)
+
+    def _verify(self, api: ApiClient, job: dict[str, Any]) -> None:
+        job_id = job["id"]
+        print(f"[runner] verifying {job_id}: "
+              f"{(job.get('spec') or {}).get('extension', {}).get('address')}")
+        self.state.job_claimed(job_id, VERIFICATION, None)
+        self._hold_awake()
+        try:
+            Verification(model=bool(self.config.warm_model_id),
+                         extensions=self._extensions).handle(api, job, self._policy)
+        finally:
+            self._release_awake()
 
     def _spool_node_start(self, nid: str, fingerprint: str) -> None:
         if self._spool is not None:

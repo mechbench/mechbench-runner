@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mechbench-ext-interp-extras"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["mechbench-compute>=0.165.0"]
+
+[project.entry-points."mechbench.extensions"]
+interp-extras = "mb_fixture_ext:MANIFEST"
+
+[tool.setuptools.packages.find]
+include = ["mb_fixture_ext*"]
+
+[tool.setuptools.package-data]
+mb_fixture_ext = ["marks/*.json"]

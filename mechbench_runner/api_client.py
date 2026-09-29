@@ -404,6 +404,25 @@ class ApiClient:
         self._raise_for_status(res)
         return res.json()
 
+    def put_bytes(self, path: str, data: bytes, *, kind: str | None = None,
+                  timeout: float = 600.0) -> dict[str, Any]:
+        import hashlib
+
+        headers = {"content-type": "application/octet-stream",
+                   "x-content-hash": f"sha256:{hashlib.sha256(data).hexdigest()}"}
+        if kind:
+            headers["x-object-kind"] = kind
+        res = self._client.put(f"/objects/{path}", content=data, headers=headers,
+                               timeout=httpx.Timeout(timeout))
+        self._raise_for_status(res)
+        return res.json()
+
+    def complete_verification(self, job_id: str, report: Mapping[str, Any]) -> None:
+        res = self._client.post(f"/jobs/{job_id}/complete",
+                                json={"report": dict(report)},
+                                headers=self._job_headers(job_id))
+        self._raise_for_status(res)
+
     def report_installed(self, installed: list[dict[str, Any]]) -> None:
         res = self._client.post("/runners/me/installed", json={"installed": installed})
         self._raise_for_status(res)
