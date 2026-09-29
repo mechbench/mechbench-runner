@@ -59,6 +59,7 @@ class LiveChannel:
         self._stopped = False
         self._ws: Any = None
         self.on_live: Any = None
+        self.on_policy: Any = None
 
     def start(self) -> None:
         if not self.config.api_key:
@@ -229,6 +230,12 @@ class LiveChannel:
         kind = frame.get("type")
         if kind == "ping":
             await ws.send(json.dumps({"v": PROTOCOL_VERSION, "type": "pong"}))
+            if self.on_policy is not None and frame.get("policy") is not None:
+                self.on_policy(frame["policy"])
+            return
+        if kind == "policy":
+            if self.on_policy is not None:
+                self.on_policy({"id": frame.get("id"), "version": frame.get("version")})
             return
         if kind == "welcome":
             if self.on_live is not None:

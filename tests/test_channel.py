@@ -140,6 +140,38 @@ class TestHeartbeat:
         assert api.next("pong")["type"] == "pong"
 
 
+class TestPolicy:
+    def _listen(self, ch):
+        got: queue.Queue[dict] = queue.Queue()
+        ch.on_policy = got.put
+        return got
+
+    def test_a_policy_frame_reaches_the_holder(self, channel):
+        ch, _, api = channel
+        got = self._listen(ch)
+        api.next("hello")
+        api.send({"v": PROTOCOL_VERSION, "type": "policy", "id": "pol_team",
+                  "version": 4})
+        assert got.get(timeout=5) == {"id": "pol_team", "version": 4}
+
+    def test_a_ping_carries_the_policy_and_is_still_answered(self, channel):
+        ch, _, api = channel
+        got = self._listen(ch)
+        api.next("hello")
+        api.send({"v": PROTOCOL_VERSION, "type": "ping",
+                  "policy": {"id": "pol_personal", "version": 2}})
+        assert api.next("pong")["type"] == "pong"
+        assert got.get(timeout=5) == {"id": "pol_personal", "version": 2}
+
+    def test_a_ping_without_one_says_nothing(self, channel):
+        ch, _, api = channel
+        got = self._listen(ch)
+        api.next("hello")
+        api.send({"v": PROTOCOL_VERSION, "type": "ping"})
+        api.next("pong")
+        assert got.empty()
+
+
 class TestCommands:
     def test_pause_and_resume_reach_the_state(self, channel):
         _, state, api = channel

@@ -1,0 +1,1007 @@
+[
+  {
+    "name": "locked installs nothing, even verified",
+    "policy": {
+      "extensions": {
+        "install": "locked",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "alice/interp-extras",
+      "owner": "u_alice",
+      "state": "verified",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "The policy is locked: it installs nothing."
+  },
+  {
+    "name": "withdrawn is refused before the level",
+    "policy": {
+      "extensions": {
+        "install": "locked",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "alice/interp-extras",
+      "owner": "u_alice",
+      "state": "withdrawn",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "alice/interp-extras is withdrawn, and a withdrawn version is never installed."
+  },
+  {
+    "name": "mine: a verified extension for the owner's own job",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "alice/interp-extras",
+      "owner": "u_alice",
+      "state": "verified",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": true
+  },
+  {
+    "name": "mine: the owner's own draft",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "alice/interp-extras",
+      "owner": "u_alice",
+      "state": "draft",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": true
+  },
+  {
+    "name": "mine: the owner's own pending version",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "alice/interp-extras",
+      "owner": "u_alice",
+      "state": "pending",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": true
+  },
+  {
+    "name": "mine: someone else's draft",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "draft",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "Under mine, carol/tools must be verified or your own draft; it is draft."
+  },
+  {
+    "name": "mine: someone else's verified extension for the owner's job",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "verified",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": true
+  },
+  {
+    "name": "mine: another person's job",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "alice/interp-extras",
+      "owner": "u_alice",
+      "state": "verified",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_bob"
+    },
+    "ok": false,
+    "reason": "Under mine, a runner installs only for its owner's own jobs."
+  },
+  {
+    "name": "mine: another person's job, their own draft",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "alice/interp-extras",
+      "owner": "u_bob",
+      "state": "draft",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_bob"
+    },
+    "ok": false,
+    "reason": "Under mine, a runner installs only for its owner's own jobs."
+  },
+  {
+    "name": "mine: withdrawn, even the owner's own",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "alice/interp-extras",
+      "owner": "u_alice",
+      "state": "withdrawn",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "alice/interp-extras is withdrawn, and a withdrawn version is never installed."
+  },
+  {
+    "name": "verified: anyone's verified extension for anyone's job",
+    "policy": {
+      "extensions": {
+        "install": "verified",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "verified",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_bob"
+    },
+    "ok": true
+  },
+  {
+    "name": "verified: the owner's own draft",
+    "policy": {
+      "extensions": {
+        "install": "verified",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "alice/interp-extras",
+      "owner": "u_alice",
+      "state": "draft",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "Under verified, alice/interp-extras must be verified; it is draft."
+  },
+  {
+    "name": "verified: a pending version",
+    "policy": {
+      "extensions": {
+        "install": "verified",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "pending",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "Under verified, carol/tools must be verified; it is pending."
+  },
+  {
+    "name": "allowlist: a listed owner's verified extension",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {
+            "owner": "u_carol"
+          }
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "verified",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_bob"
+    },
+    "ok": true
+  },
+  {
+    "name": "allowlist: a listed owner's draft",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {
+            "owner": "u_carol"
+          }
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "draft",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_bob"
+    },
+    "ok": true
+  },
+  {
+    "name": "allowlist: a listed extension, verified",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {
+            "extension": "carol/tools"
+          }
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "verified",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": true
+  },
+  {
+    "name": "allowlist: a listed extension, draft, owner not listed",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {
+            "extension": "carol/tools"
+          }
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "draft",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "carol/tools is draft, and an unverified extension installs only when its owner is listed."
+  },
+  {
+    "name": "allowlist: a listed org's verified extension",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {
+            "org": "o_lab"
+          }
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "verified",
+      "visibility": "public",
+      "needs": [],
+      "org": "o_lab"
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": true
+  },
+  {
+    "name": "allowlist: a listed org's draft, owner not listed",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {
+            "org": "o_lab"
+          }
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "draft",
+      "visibility": "public",
+      "needs": [],
+      "org": "o_lab"
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "carol/tools is draft, and an unverified extension installs only when its owner is listed."
+  },
+  {
+    "name": "allowlist: an entry naming owner and extension, draft",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {
+            "owner": "u_carol",
+            "extension": "carol/tools"
+          }
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "draft",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": true
+  },
+  {
+    "name": "allowlist: every field an entry names must match",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {
+            "owner": "u_carol",
+            "extension": "carol/other"
+          }
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "verified",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "carol/tools is not on the policy's allowlist."
+  },
+  {
+    "name": "allowlist: an unlisted owner",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {
+            "owner": "u_dave"
+          }
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "verified",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "carol/tools is not on the policy's allowlist."
+  },
+  {
+    "name": "allowlist: an entry naming nothing matches nothing",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {}
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "verified",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "carol/tools is not on the policy's allowlist."
+  },
+  {
+    "name": "allowlist: an empty list",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "verified",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "carol/tools is not on the policy's allowlist."
+  },
+  {
+    "name": "allowlist: a listed owner's withdrawn version",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {
+            "owner": "u_carol"
+          }
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "withdrawn",
+      "visibility": "public",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "carol/tools is withdrawn, and a withdrawn version is never installed."
+  },
+  {
+    "name": "network none refuses a network need",
+    "policy": {
+      "extensions": {
+        "install": "verified",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "verified",
+      "visibility": "public",
+      "needs": [
+        "network:api.example.com"
+      ]
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "The policy allows no network, and carol/tools declares network:api.example.com."
+  },
+  {
+    "name": "network declared admits a network need",
+    "policy": {
+      "extensions": {
+        "install": "verified",
+        "allow": [],
+        "network": "declared",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "verified",
+      "visibility": "public",
+      "needs": [
+        "network:api.example.com"
+      ]
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": true
+  },
+  {
+    "name": "network none admits needs that are not network",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "alice/interp-extras",
+      "owner": "u_alice",
+      "state": "verified",
+      "visibility": "public",
+      "needs": [
+        "accelerator:mlx",
+        "files:read"
+      ]
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": true
+  },
+  {
+    "name": "network none under mine, the owner's own draft",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "alice/interp-extras",
+      "owner": "u_alice",
+      "state": "draft",
+      "visibility": "public",
+      "needs": [
+        "network:huggingface.co"
+      ]
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "The policy allows no network, and alice/interp-extras declares network:huggingface.co."
+  },
+  {
+    "name": "the level is refused before the network",
+    "policy": {
+      "extensions": {
+        "install": "verified",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "draft",
+      "visibility": "public",
+      "needs": [
+        "network:api.example.com"
+      ]
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "Under verified, carol/tools must be verified; it is draft."
+  },
+  {
+    "name": "visibility does not decide admission",
+    "policy": {
+      "extensions": {
+        "install": "verified",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "verified",
+      "visibility": "private",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": true
+  }
+]

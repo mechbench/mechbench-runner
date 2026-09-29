@@ -128,6 +128,11 @@ class ApiClient:
         self._raise_for_status(res)
         return res.json()
 
+    def fetch_policy(self) -> dict[str, Any]:
+        res = self._client.get("/runners/me/policy")
+        self._raise_for_status(res)
+        return res.json()
+
     def revoke_runner(self, runner_id: str) -> None:
         self._raise_for_status(self._client.delete(f"/runners/{runner_id}"))
 

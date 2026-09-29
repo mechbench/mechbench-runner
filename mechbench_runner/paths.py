@@ -28,5 +28,9 @@ def limits_path() -> Path:
     return mechbench_dir() / "limits.json"
 
 
+def policy_path() -> Path:
+    return mechbench_dir() / "policy.json"
+
+
 def checkpoints_dir() -> Path:
     return mechbench_dir() / "checkpoints"

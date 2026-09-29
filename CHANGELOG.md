@@ -23,6 +23,34 @@ with both headings.
 
 ---
 
+## 0.45.0 — 2026-09-29
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+- **A claim made under another policy version than the runner holds is
+  released, not run.** The runner re-fetches its policy when a claim names
+  a different `{id, version}`; if the two still disagree, it fails the job
+  with `POLICY_MISMATCH: …` and the reason, and runs nothing of it. The
+  API has no call that returns a claimed job to the queue, so the release
+  is a `fail`.
+
+Also:
+
+- **The runner holds its policy.** It fetches `GET /runners/me/policy` at
+  startup, mirrors it to `~/.mechbench/policy.json` so a restart with the
+  API unreachable starts from the last known copy, and re-fetches when a
+  `policy` frame, a ping or a claim names another version. A change logs
+  `policy <id> v<n> applied`.
+- `mechbench_runner.policy.policy_admits`: the twin of mechbench-models'
+  `policyAdmits`, tested against `policy_cases.json`, vendored verbatim
+  from models. `check_installs` re-checks every item of a claim's
+  `install` list against the held copy and releases the claim on any
+  refusal; no claim carries an `install` list yet.
+
 ## 0.44.1 — 2026-09-28
 
 ### Changes that raise

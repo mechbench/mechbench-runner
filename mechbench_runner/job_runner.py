@@ -28,6 +28,7 @@ from .config import Config
 from .control import ControlServer, RunnerState, probe, socket_path
 from .exits import EXIT_CRASH, EXIT_OK
 from .paths import limits_path, spool_dir
+from .policy import PolicyHolder, check_installs
 from .spend import SharedLimiter, SpendLedger
 from .spool import JobSpool
 from .watchdog import Watchdog
@@ -236,11 +237,17 @@ class JobRunner:
         self._live = LiveHost(self._executor, self._channel.send_live,
                               lambda: self._watchdog.stamp())
         self._channel.on_live = self._live.offer
+        self._policy = PolicyHolder()
+        self._channel.on_policy = self._on_policy
         self._watchdog = Watchdog(
             stall_seconds=config.watchdog_seconds,
             on_stall=self._announce_stall,
             exit_code=EXIT_CRASH,
         )
+
+    def _on_policy(self, ref: Any) -> None:
+        if self._policy.note(ref):
+            self._live.wake.set()
 
     def install_signal_handlers(self) -> None:
         def _handler(signum: int, _frame: FrameType | None) -> None:
@@ -288,6 +295,7 @@ class JobRunner:
 
         with ApiClient(self.config) as api:
             backoff = self.config.poll_interval_seconds
+            self._policy.start(api)
             self._reconcile_jobs(api)
             last_reconcile = time.monotonic()
             while not self._shutdown:
@@ -311,6 +319,14 @@ class JobRunner:
                 if self.state.paused:
                     self._sleep(self.config.poll_interval_seconds)
                     continue
+                try:
+                    self._policy.ensure_current(api)
+                except ApiError as e:
+                    if e.status != 401:
+                        raise
+                    self._signed_out()
+                    self._stop_channel()
+                    return EXIT_OK
                 self._live.serve(api)
                 try:
                     job = (api.claim_next_job(PURE) if self._live.holding
@@ -336,6 +352,9 @@ class JobRunner:
 
                 if job is None:
                     self._sleep(self.config.poll_interval_seconds)
+                    continue
+
+                if not all(a.ok for a in check_installs(api, self._policy, job)):
                     continue
 
                 self._sweep_cache(job)

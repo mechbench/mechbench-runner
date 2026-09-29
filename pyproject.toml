@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mechbench"
-version = "0.44.1"
+version = "0.45.0"
 description = "The mechbench runner: claims jobs from mechbench-api, executes protocols against mechbench-compute, and emits results; the command line for the platform's verbs."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -47,6 +47,9 @@ mechbench = "mechbench.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["mechbench", "mechbench_runner*"]
+
+[tool.setuptools.package-data]
+mechbench_runner = ["policy_cases.json"]
 
 [tool.ruff]
 line-length = 88
