@@ -102,7 +102,7 @@ def _compute_version() -> str:
 
 CLASSES = ("mlx-local", "pure", "remote")
 
-INSTALLS = False
+INSTALLS = True
 
 _PIN = re.compile(r"^sha256:[0-9a-f]{64}$")
 
@@ -393,6 +393,20 @@ class ApiClient:
         res = self._client.get(f"/objects/{path}")
         self._raise_for_status(res)
         return res.content
+
+    def fetch_by_hash(self, ref: str, timeout: float = 600.0) -> bytes:
+        res = self._client.get(f"/objects/{ref}", timeout=httpx.Timeout(timeout))
+        self._raise_for_status(res)
+        return res.content
+
+    def extension_detail(self, address: str, version: int) -> dict[str, Any]:
+        res = self._client.get(f"/extensions/{address}@{version}")
+        self._raise_for_status(res)
+        return res.json()
+
+    def report_installed(self, installed: list[dict[str, Any]]) -> None:
+        res = self._client.post("/runners/me/installed", json={"installed": installed})
+        self._raise_for_status(res)
 
     def call(self, method: str, route: str, *,
              query: Mapping[str, Any] | None = None,

@@ -34,7 +34,7 @@ class TestAdvertise:
                              "accelerator", "memory_gb"}
         assert caps["classes"] == ["mlx-local", "pure", "remote"]
         assert caps["compute"] == __version__
-        assert caps["installs"] is False
+        assert caps["installs"] is True
         assert caps["installed"] == []
         assert caps["accelerator"] in {"applegpu", "cuda", "cpu"}
         assert isinstance(caps["memory_gb"], int) and caps["memory_gb"] >= 0

@@ -26,7 +26,9 @@ from .live import PURE, LiveHost
 from .channel import LiveChannel
 from .config import Config
 from .control import ControlServer, RunnerState, probe, socket_path
-from .exits import EXIT_CRASH, EXIT_OK
+from .machine import default_name
+from .exits import EXIT_CRASH, EXIT_OK, EXIT_RESTART
+from .extensions import Extensions
 from .paths import limits_path, spool_dir
 from .policy import PolicyHolder, check_installs
 from .spend import SharedLimiter, SpendLedger
@@ -238,6 +240,8 @@ class JobRunner:
                               lambda: self._watchdog.stamp())
         self._channel.on_live = self._live.offer
         self._policy = PolicyHolder()
+        self._extensions = Extensions()
+        self._restart_pending: str | None = None
         self._channel.on_policy = self._on_policy
         self._watchdog = Watchdog(
             stall_seconds=config.watchdog_seconds,
@@ -328,6 +332,15 @@ class JobRunner:
                     self._stop_channel()
                     return EXIT_OK
                 self._live.serve(api)
+                if not self._live.holding:
+                    if self._restart_pending is None:
+                        self._restart_pending = self._between_jobs(api)
+                    if self._restart_pending is not None:
+                        self.state.request_exit(EXIT_RESTART, self._restart_pending)
+                        continue
+                elif self._restart_pending is not None:
+                    self._sleep(self.config.poll_interval_seconds)
+                    continue
                 try:
                     job = (api.claim_next_job(PURE) if self._live.holding
                            else api.claim_next_job())
@@ -357,6 +370,9 @@ class JobRunner:
                 if not all(a.ok for a in check_installs(api, self._policy, job)):
                     continue
 
+                if not self._install_for(api, job):
+                    continue
+
                 self._sweep_cache(job)
 
                 try:
@@ -374,6 +390,30 @@ class JobRunner:
         self._stop_channel()
         self._watchdog.stop()
         return EXIT_OK
+
+    def _between_jobs(self, api: ApiClient) -> str | None:
+        try:
+            return self._extensions.between_jobs(api, self._policy)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[runner] extension upkeep skipped ({exc})")
+            return None
+
+    def _install_for(self, api: ApiClient, job: dict[str, Any]) -> bool:
+        runner = self.config.runner_name or default_name()
+        outcome = self._extensions.install(api, job, self._policy, runner)
+        if outcome.restart is None:
+            return outcome.ok
+        job_id = str(job.get("id"))
+        reason = f"an installed extension changed version: {outcome.restart}"
+        try:
+            api.interrupt_job(job_id, "the runner restarts to load a new version of "
+                              "an extension this job needs; it resumes here after",
+                              timeout=15.0)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[runner] could not interrupt {job_id} before restarting ({exc})")
+        print(f"[runner] {job_id} waits for a restart: {reason}", flush=True)
+        self._restart_pending = reason
+        return False
 
     def _configure_bench(self) -> None:
         try:

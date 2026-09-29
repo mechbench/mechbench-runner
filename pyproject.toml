@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mechbench"
-version = "0.46.0"
+version = "0.47.0"
 description = "The mechbench runner: claims jobs from mechbench-api, executes protocols against mechbench-compute, and emits results; the command line for the platform's verbs."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -24,7 +24,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "mechbench-compute>=0.162.1",
+    "mechbench-compute>=0.165.0",
+    "packaging>=23,<27",
     "mechbench-schema>=0.17.0",
     "certifi>=2024.2",
     "httpx>=0.27,<1",

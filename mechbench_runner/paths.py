@@ -34,3 +34,9 @@ def policy_path() -> Path:
 
 def checkpoints_dir() -> Path:
     return mechbench_dir() / "checkpoints"
+
+
+def extensions_dir() -> Path:
+    d = mechbench_dir() / "extensions"
+    d.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return d

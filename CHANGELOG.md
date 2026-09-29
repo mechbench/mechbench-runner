@@ -23,6 +23,65 @@ with both headings.
 
 ---
 
+## 0.47.0 — 2026-09-29
+
+### Changes that raise
+
+- **The runner's floor on compute is 0.165.0** (the release with the
+  extension registry), and it depends on `packaging`. An environment
+  holding an older compute is upgraded when the runner is.
+
+### Changes that alter results without raising
+
+- **The runner installs the extensions a claimed job needs.** When a
+  claim's `install` list is admitted (by `check_installs`, then by
+  `policy_admits` again for each item right before installing), the
+  runner (`mechbench_runner/extensions.py`) fetches each item's wheel
+  (else its sdist) and lock by hash (`GET /objects/~hash/sha256:<hex>`)
+  into `~/.mechbench/extensions/cache/`, refuses any file whose sha256
+  differs from its reference, and installs into its own environment:
+  `uv pip install --python <this interpreter> --require-hashes -r <req>`
+  when there is a lock (`<req>` is the lock plus the wheel as a
+  `name @ file://… --hash=sha256:…` line, since uv's hash mode refuses a
+  bare wheel path), else `uv pip install --python <this interpreter>
+  <wheel>`. It records `{hash, address, version, name, package_name,
+  installed_at, by_job, used_at}` under the pin in
+  `~/.mechbench/extensions/installed.json` (the file compute's
+  `InstalledSource` reads for the digest), then calls compute's
+  `REGISTRY.refresh()`, then runs the job. `advertise()` now says
+  `installs: true`, with those pins.
+- **A failed install releases the job.** A failed download, a hash
+  mismatch, a uv error or an extension compute refuses at load releases
+  the job with `INSTALL_FAILED` and `install of <address>@<n> failed on
+  <runner>: <reason>`, writes the reason, the compute version and the
+  policy version to `~/.mechbench/extensions/failed.json`, and is not
+  tried again until one of those two changes. An extension that installed
+  but did not load is uninstalled.
+- **A new version of a loaded extension restarts the runner.** Python
+  cannot unload a module, so when `refresh()` raises `RestartRequired`
+  the job is interrupted (not released: this runner re-claims it as a
+  resume) and the `run` child exits with the restart code the supervisor
+  already honours, between jobs, and not while a live run is held.
+- **Extensions are collected.** Between jobs, at most once an hour, an
+  extension no job has named for `policy.gc.unused_days`, or whose
+  version `GET /extensions/<address>@<n>` says is withdrawn, is
+  `uv pip uninstall`ed and dropped from `installed.json`.
+- **The runner upgrades itself under `upgrades.compute: auto`.** Between
+  jobs, at most once an hour, it reads the newest `mechbench` and the
+  newest `mechbench-compute` that release allows from PyPI's JSON API,
+  and when either is newer than what it runs, installs both pinned
+  (`uv pip install --python <this interpreter> --refresh-package …
+  mechbench==<v> mechbench-compute==<v>`), checks the new code imports,
+  and restarts. A failed install or check restores the previous pair and
+  skips that pair from then on. `upgrades: hold` does nothing, and a
+  runner running from a source checkout never upgrades itself.
+
+Also:
+
+- `POST /runners/me/installed` is sent after each change; against an API
+  without the route (404) the runner stops sending it, and the next
+  claim's `X-Runner-Capabilities` carries the same set.
+
 ## 0.46.0 — 2026-09-29
 
 ### Changes that raise
