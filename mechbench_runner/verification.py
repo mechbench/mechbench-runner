@@ -15,7 +15,7 @@ from . import install as install_mod
 from . import paths
 from .confine import make_owned, owned_dir, remove_owned, under
 from .extensions import Extensions, InstallError, _norm, compute_version
-from .policy import PolicyHolder, _release, policy_admits
+from .policy import PolicyHolder, _release, job_of, policy_admits, runner_of
 
 VERIFICATION = "verification"
 COMPUTE_DIST = "mechbench-compute"
@@ -154,6 +154,21 @@ def _decode(data: bytes) -> Any:
     return found
 
 
+def extension_for_policy(ext: Mapping[str, Any]) -> dict[str, Any]:
+    owner = ext.get("projectOwner")
+    if not isinstance(owner, Mapping):
+        org = ext.get("org")
+        owner = {"kind": "org", "id": org} if org else {"kind": "user", "id": ext.get("owner")}
+    return {
+        "name": ext.get("name"),
+        "projectOwner": dict(owner),
+        "state": ext.get("state"),
+        "party": ext.get("party"),
+        "needs": list(ext.get("needs") or []),
+        "approvedBy": list(ext.get("approvedBy") or []),
+    }
+
+
 @dataclass
 class Verification:
     python: str = field(default_factory=lambda: sys.executable)
@@ -201,13 +216,12 @@ class Verification:
         job_id = str(job.get("id"))
         if holder is not None:
             held = holder.held
-            context: dict[str, Any] = {
-                "runnerOwnerId": holder.owner(api),
-                "jobCreatorId": job.get("userId"),
-            }
-            if job.get("orgId") is not None:
-                context["jobOrgId"] = job["orgId"]
-            admit = policy_admits(held.body, ext, context) if held is not None else None
+            admit = (
+                policy_admits(held.body, extension_for_policy(ext), job_of(job),
+                              runner_of(api, holder, job))
+                if held is not None
+                else None
+            )
             if admit is None or not admit.ok:
                 _release(api, job, [admit] if admit is not None else [])
                 return None

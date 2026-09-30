@@ -23,7 +23,7 @@ from . import install as install_mod
 from . import paths, release_manifest
 from .api_client import ApiError, installed_path
 from .confine import under
-from .policy import PolicyHolder, _release, policy_admits
+from .policy import PolicyHolder, _release, job_of, policy_admits, runner_of
 
 INSTALL_FAILED = "INSTALL_FAILED"
 
@@ -232,13 +232,14 @@ class Extensions:
             self.note_used(job)
             return Outcome(True)
         held = holder.held
-        context: dict[str, Any] = {"runnerOwnerId": holder.owner(api),
-                                   "jobCreatorId": job.get("userId")}
-        if job.get("orgId") is not None:
-            context["jobOrgId"] = job["orgId"]
-        admits = [policy_admits(held.body, i, context) if held else None for i in items]
-        if held is None or not all(a is not None and a.ok for a in admits):
-            _release(api, job, [a for a in admits if a is not None])
+        if held is None:
+            _release(api, job, [])
+            return Outcome(False)
+        who = runner_of(api, holder, job)
+        claimed = job_of(job)
+        admits = [policy_admits(held.body, i, claimed, who) for i in items]
+        if not all(a.ok for a in admits):
+            _release(api, job, admits)
             return Outcome(False)
         installed = read_installed()
         changed = False

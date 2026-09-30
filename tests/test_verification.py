@@ -25,11 +25,10 @@ FIXTURE = Path(__file__).parent / "fixtures" / "verify_ext"
 INPUTS = Path(__file__).parent / "fixtures" / "verify_ext_inputs"
 ADDRESS = "alice/lab/extensions/interp-extras"
 BODY = {
-    "extensions": {"install": "mine", "allow": [], "network": "none",
-                   "require_approved": False},
+    "jobs": {"serve": ["own"], "allow": []},
+    "extensions": {"admit": ["own"], "allow": [], "network": "none"},
     "upgrades": {"compute": "auto"},
     "gc": {"unused_days": 30},
-    "pools": [],
 }
 
 
@@ -93,7 +92,8 @@ def manifest() -> dict:
 
 
 def job(sdist_ref: str, *, state: str = "pending", owner: str = "u_alice") -> dict:
-    return {"id": "j_verify1", "userId": "u_alice", "orgId": None,
+    return {"id": "j_verify1", "creatorId": "u_alice", "projectId": "prj_lab",
+            "projectOwner": {"kind": "user", "id": "u_alice"},
             "protocolKind": "verification",
             "spec": {"extension": {
                 "address": ADDRESS, "version": 2, "hash": "sha256:" + "b" * 64,
@@ -109,7 +109,7 @@ def job(sdist_ref: str, *, state: str = "pending", owner: str = "u_alice") -> di
 def holder() -> PolicyHolder:
     h = PolicyHolder()
     h.held = HeldPolicy(id="pol_personal", version=1, body=BODY)
-    h.owner_id = "u_alice"
+    h._identity = {"owner": {"kind": "user", "id": "u_alice"}, "orgIds": []}
     return h
 
 
@@ -391,3 +391,16 @@ def test_install_run_is_never_reached(monkeypatch):
     monkeypatch.setattr(install, "_run", boom)
     api, report = run_faked(FakeUv())
     assert report["failure"] is None
+
+
+def test_the_payload_is_read_in_either_owner_shape():
+    from mechbench_runner.verification import extension_for_policy
+
+    old = {"name": "a/b/extensions/c", "owner": "u_alice", "org": None, "state": "pending",
+           "party": "third", "needs": []}
+    assert extension_for_policy(old)["projectOwner"] == {"kind": "user", "id": "u_alice"}
+    assert extension_for_policy({**old, "org": "org_acme"})["projectOwner"] == {
+        "kind": "org", "id": "org_acme"}
+    new = {"name": "a/b/extensions/c", "projectOwner": {"kind": "org", "id": "org_acme"},
+           "approvedBy": ["org_acme"], "state": "checked", "party": "third", "needs": []}
+    assert extension_for_policy(new) == new

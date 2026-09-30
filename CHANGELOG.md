@@ -23,6 +23,68 @@ with both headings.
 
 ---
 
+## Unreleased
+
+### Changes that raise
+
+- **A policy has two axes, `serve` and `admit`, and the runner checks
+  both before acting on a claim** (task 000977; CAPABILITY.md §5).
+  `policy.py` holds `policy_serves` (whose protocols the machine runs:
+  `own`, `org`, `members`, `listed`) and `policy_admits` (whose
+  extensions it installs: `own`, `org`, `approved`, `verified`,
+  `listed`), the twins of mechbench-models 0.99.0, and the vendored
+  `policy_cases.json` is the models copy (85 cases over both rules,
+  each reason word for word). Before acting on a claim the runner
+  evaluates the job against `serve` and every install against `admit`
+  from its own copy of the policy; a disagreement releases the claim
+  with `POLICY_MISMATCH` and the rule's words, then re-fetches the
+  policy and who owns the machine. A job the policy does not serve is
+  released with "This runner does not serve it: …". A runner holding
+  no policy takes no job. The claim is read by its new names: on the
+  job `creatorId`, `projectId`, `projectOwner {kind, id}` and
+  `creatorOrgIds`; on each install item `projectOwner`, `state`,
+  `party`, `needs` and `approvedBy`. The runner learns its own owner
+  and orgs from `GET /runners/me` (`owner` and `orgIds` when the API
+  names them; otherwise an org-scoped runner is its org's and any
+  other its account's, with no orgs), or from a `runner {owner,
+  orgIds}` the claim carries. It needs an API that sends these names.
+- **`mechbench policy create` and `update` take the policy by its
+  options.** `--serve` and `--admit` take an option from the Runners
+  page (`me only`, `me and my org`, `the org`, `the org and its
+  members' own work`, `nobody (paused)`; `mine`, `mine and my org's`,
+  `mine and my org's approved`, `mechbench-verified`, `nothing
+  (locked)`) or sources joined by commas; `--serve-allow` and
+  `--admit-allow` set the `listed` entries (`owner=…,org=…,project=…`
+  and `owner=…,org=…,extension=…`, repeated); `--network`,
+  `--upgrades` and `--unused-days` set the rest. `create` starts from
+  the machine's default (a person's `serve: [own]`, `admit: [own]`; an
+  org's, with `--org-id`, `admit: [own, approved]`) and `update` from
+  the current version; `--body` is optional and must be the new shape.
+  A body naming `install`, `require_approved` or `pools` is refused.
+  `policy read` shows each axis as its option or Custom with the
+  sources in words; `policy list` has `serve` and `admit` columns.
+- **`mechbench extension verify` is renamed `extension check`** (it
+  queues the checking job, `POST …/check`), and `extension push`
+  without `--draft` calls `…/check` and answers `check` instead of
+  `verify`. `extension verify` is now the site admin's approval for
+  the platform (`POST …/verify`, `--override` for a blocker flag).
+- **New verbs for an org's approval**: `extension approve <address@n>
+  --org <handle> [--note] [--override]`, `extension revoke
+  <address@n> --org <handle>`, and `extension review <address@n>
+  [--org <handle>]` (with `--org`, the reviewer runs on the org's
+  credential and budget). The org is named by its handle and sent by
+  its id. `extension list` has an `approved` column and `extension
+  read` answers `approvals` and `approved`.
+- The mirrored policy (`~/.mechbench/policy.json`) in the shape before
+  `serve` and `admit` is read through the models migration: `mine` →
+  `admit: [own]`, `verified` → `[own, verified]`, `allowlist` →
+  `[own, listed]`, `locked` → `[]`, `serve: [own]`; `require_approved`
+  and `pools` are dropped.
+
+### Changes that alter results without raising
+
+_None._
+
 ## 0.53.0 — 2026-09-30
 
 ### Changes that raise

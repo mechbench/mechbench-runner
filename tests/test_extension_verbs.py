@@ -66,7 +66,18 @@ class FakeApi:
         if method == "PUT" and route.startswith("/extensions/") and route.count("/") == 4:
             return {"address": "alice/lab/extensions/count-things", "version": body["version"],
                     "hash": HASH, "state": "draft", "visibility": "private"}, {}
-        if route.endswith("/verify"):
+        if route.startswith("/orgs/"):
+            if route == "/orgs/acme":
+                return {"org": {"id": "org_acme", "handle": "acme"}, "role": "admin"}, {}
+            from mechbench_runner.api_client import ApiError
+
+            raise ApiError(404, {"code": "NOT_FOUND", "error": "not found"})
+        if route == "/policies/pol_1" and method == "GET":
+            return {"id": "pol_1", "name": "studio", "orgId": None, "version": 3,
+                    "body": {"jobs": {"serve": ["own"], "allow": []},
+                             "extensions": {"admit": ["own"], "allow": [], "network": "none"},
+                             "upgrades": {"compute": "auto"}, "gc": {"unused_days": 30}}}, {}
+        if route.endswith("/check"):
             return {"address": "alice/lab/extensions/count-things", "version": 1, "hash": HASH,
                     "state": "pending", "visibility": "private", "job": "j_9",
                     "waitingFor": ["no runner of yours is connected"]}, {}
@@ -76,7 +87,8 @@ class FakeApi:
 
                 raise ApiError(404, {"code": "NOT_FOUND", "error": "not found"})
             return {"address": "alice/lab/extensions/count-things", "version": 1, "hash": HASH,
-                    "manifest": {"visibility": "org"},
+                    "manifest": {"visibility": "org", "approvals": [
+                        {"org": "org_acme", "by": "u_jo", "at": "2026-10-02T00:00:00Z"}]},
                     "versions": [{"version": 1, "state": "verified", "hash": HASH, "createdAt": "t"}],
                     "usage": {"protocols": 0, "runs": 0, "replications": 0, "citations": 0}}, {}
         return {"ok": True}, {}
@@ -199,6 +211,23 @@ def validate_with_models(body: dict[str, Any]) -> None:
     assert proc.returncode == 0, proc.stderr
 
 
+def validate_policy_with_models(body: dict[str, Any]) -> None:
+    node = shutil.which("node")
+    dist = MODELS / "dist" / "index.js"
+    if node is None or not dist.exists():
+        assert set(body) == {"jobs", "extensions", "upgrades", "gc"}
+        return
+    script = (
+        f"import {{ PolicySchema }} from {json.dumps(str(dist))};"
+        "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{"
+        "const r=PolicySchema.safeParse(JSON.parse(s));"
+        "if(!r.success){console.error(JSON.stringify(r.error.issues));process.exit(1)}})"
+    )
+    proc = subprocess.run([node, "--input-type=module", "-e", script], input=json.dumps(body),
+                          capture_output=True, text=True, check=False)
+    assert proc.returncode == 0, proc.stderr
+
+
 class TestPush:
     def test_a_draft_push_round_trip(self, fake, package):
         out = call("extension", "push", {"dir": str(package), "draft": True})
@@ -215,15 +244,15 @@ class TestPush:
         assert not {"state", "visibility", "party", "flags", "conformance"} & set(body)
         validate_with_models(body)
         assert out["pin"] == f"alice/lab/extensions/count-things@{HASH}"
-        assert out["version"] == 1 and "verify" not in out
+        assert out["version"] == 1 and "check" not in out
         assert "shown to no one else" in out["consent"]
-        assert not any(c[1].endswith("/verify") for c in fake.calls)
+        assert not any(c[1].endswith("/check") for c in fake.calls)
 
-    def test_push_without_draft_asks_for_verification(self, fake, package):
+    def test_push_without_draft_queues_the_checks(self, fake, package):
         fake.existing = True
         out = call("extension", "push", {"dir": str(package)})
-        assert fake.calls[-1][:2] == ("POST", "/extensions/alice/lab/extensions/count-things@1/verify")
-        assert out["verify"] == {"state": "pending", "job": "j_9",
+        assert fake.calls[-1][:2] == ("POST", "/extensions/alice/lab/extensions/count-things@1/check")
+        assert out["check"] == {"state": "pending", "job": "j_9",
                                  "waitingFor": ["no runner of yours is connected"]}
 
     def test_the_consent_line_follows_the_visibility(self):
@@ -248,7 +277,48 @@ class TestExtensionVerbs:
         call("extension", "visibility", {"address": "alice/lab/extensions/x@3", "visibility": "public"})
         assert fake.calls[-1][3] == {"visibility": "public"}
         with pytest.raises(VerbError, match="names no version"):
-            call("extension", "verify", {"address": "alice/lab/extensions/x"})
+            call("extension", "check", {"address": "alice/lab/extensions/x"})
+
+    def test_check_queues_the_checks(self, fake):
+        call("extension", "check", {"address": "alice/lab/extensions/x@3"})
+        assert fake.calls[-1][:2] == ("POST", "/extensions/alice/lab/extensions/x@3/check")
+
+    def test_verify_is_the_site_admin_s(self, fake):
+        call("extension", "verify", {"address": "alice/lab/extensions/x@3"})
+        assert fake.calls[-1][1:] == ("/extensions/alice/lab/extensions/x@3/verify", {}, {})
+        call("extension", "verify", {"address": "alice/lab/extensions/x@3", "override": "read it"})
+        assert fake.calls[-1][3] == {"override": "read it"}
+
+    def test_approve_and_revoke_name_the_org_by_its_id(self, fake):
+        call("extension", "approve", {"address": "alice/lab/extensions/x@3", "org": "@acme",
+                                      "note": "read by Jo", "override": "the flag is a test"})
+        assert fake.calls[-1][1:] == ("/extensions/alice/lab/extensions/x@3/approve", {}, {
+            "org": "org_acme", "note": "read by Jo", "override": "the flag is a test"})
+        call("extension", "revoke", {"address": "alice/lab/extensions/x@3", "org": "acme"})
+        assert fake.calls[-1][1:] == ("/extensions/alice/lab/extensions/x@3/revoke", {},
+                                      {"org": "org_acme"})
+        with pytest.raises(VerbError, match="no org @nope"):
+            call("extension", "approve", {"address": "alice/lab/extensions/x@3", "org": "nope"})
+
+    def test_review_for_an_org_or_the_platform(self, fake):
+        call("extension", "review", {"address": "alice/lab/extensions/x@3", "org": "acme"})
+        assert fake.calls[-1][1:] == ("/extensions/alice/lab/extensions/x@3/review", {},
+                                      {"org": "org_acme"})
+        call("extension", "review", {"address": "alice/lab/extensions/x@3"})
+        assert fake.calls[-1][3] == {}
+
+    def test_read_and_list_show_approvals(self, fake, monkeypatch):
+        fake.existing = True
+        out = call("extension", "read", {"address": "alice/lab/extensions/count-things"})
+        assert out["approved"] == "org_acme"
+        assert out["approvals"][0]["by"] == "u_jo"
+        monkeypatch.setattr(fake, "api", lambda _c, m, r, **k: (
+            {"extensions": [{"address": "a/b/extensions/c", "approvedBy": []},
+                            {"address": "a/b/extensions/d",
+                             "approvals": [{"org": "org_acme"}, {"org": "org_b"}]}]}, {}))
+        rows = call("extension", "list", {})
+        rows = rows["items"] if isinstance(rows, dict) else rows
+        assert [r["approved"] for r in rows] == ["no org", "org_acme, org_b"]
 
     def test_list_filters(self, fake):
         call("extension", "list", {"owner": "alice", "state": "draft", "search": "ext"})
@@ -256,13 +326,82 @@ class TestExtensionVerbs:
 
 
 class TestPolicy:
+    def test_create_by_option_names(self, fake):
+        call("policy", "create", {"name": "lab", "serve": "me and my org",
+                                  "admit": "mechbench-verified"})
+        body = fake.calls[-1][3]["body"]
+        assert body["jobs"] == {"serve": ["own", "org"], "allow": []}
+        assert body["extensions"] == {"admit": ["own", "verified"], "allow": [],
+                                      "network": "none"}
+        validate_policy_with_models(body)
+
+    def test_an_org_policy_starts_from_the_org_default(self, fake):
+        call("policy", "create", {"name": "gpu", "org_id": "org_acme"})
+        body = fake.calls[-1][3]["body"]
+        assert body["jobs"]["serve"] == ["own"]
+        assert body["extensions"]["admit"] == ["own", "approved"]
+        assert fake.calls[-1][3]["orgId"] == "org_acme"
+
+    def test_an_option_offered_on_the_other_machine_is_refused(self, fake):
+        with pytest.raises(VerbError, match="not offered on an org's machine"):
+            call("policy", "create", {"name": "gpu", "org_id": "org_acme",
+                                      "serve": "me and my org"})
+
+    def test_sources_and_allow_lists(self, fake):
+        call("policy", "create", {
+            "name": "custom", "serve": "own,listed", "admit": "own, listed",
+            "serve_allow": ["project=prj_1", "org=org_acme"],
+            "admit_allow": ["owner=u_bob,extension=bob/tools/extensions/x"],
+            "network": "declared", "upgrades": "hold", "unused_days": 7})
+        body = fake.calls[-1][3]["body"]
+        assert body["jobs"] == {"serve": ["own", "listed"],
+                                "allow": [{"project": "prj_1"}, {"org": "org_acme"}]}
+        assert body["extensions"] == {
+            "admit": ["own", "listed"], "network": "declared",
+            "allow": [{"owner": "u_bob", "extension": "bob/tools/extensions/x"}]}
+        assert body["upgrades"] == {"compute": "hold"} and body["gc"] == {"unused_days": 7}
+        validate_policy_with_models(body)
+
+    @pytest.mark.parametrize("args,match", [
+        ({"serve": "own,pool"}, "neither an option"),
+        ({"admit": "own,own"}, "twice"),
+        ({"admit_allow": ["project=prj_1"]}, "each part is"),
+    ])
+    def test_bad_words_are_refused(self, fake, args, match):
+        with pytest.raises(VerbError, match=match):
+            call("policy", "create", {"name": "x", **args})
+
+    def test_update_changes_one_axis_of_the_current_version(self, fake):
+        call("policy", "update", {"id": "pol_1", "admit": "mine and my org's approved",
+                                  "yes": True})
+        body = fake.calls[-1][3]["body"]
+        assert body["jobs"]["serve"] == ["own"]
+        assert body["extensions"]["admit"] == ["own", "approved"]
+
+    def test_read_shows_the_options_or_custom(self, fake):
+        out = call("policy", "read", {"id": "pol_1"})
+        assert out["shown"]["serve"]["option"] == "me only"
+        assert out["shown"]["admit"]["option"] == "mine"
+        from mechbench_runner.verbs.policy import shown
+
+        custom = shown({"id": "pol_x", "orgId": "org_acme", "body": {
+            "jobs": {"serve": ["own", "listed"], "allow": [{"project": "prj_1"}]},
+            "extensions": {"admit": ["own", "org"], "allow": [], "network": "none"},
+            "upgrades": {"compute": "auto"}, "gc": {"unused_days": 30}}})
+        assert custom["serve"]["option"] == "Custom"
+        assert custom["serve"]["sources"] == ["own", "listed"]
+        assert custom["serve"]["means"][1] == "Jobs on the projects, owners or orgs listed."
+        assert custom["admit"]["option"] == "Custom"
+        assert custom["machines"] == "an org's machine"
+
     def test_update_names_the_runners_it_reaches_and_waits_for_yes(self, fake):
-        out = call("policy", "update", {"id": "pol_1", "body": '{"upgrades": {"compute": "hold"}}'})
+        out = call("policy", "update", {"id": "pol_1", "upgrades": "hold"})
         assert out["updated"] is False
         assert out["consent"] == "a new version of pol_1 reaches 1 runner: studio (rnr_1)"
         assert not any(c[0] == "PUT" for c in fake.calls)
-        out = call("policy", "update", {"id": "pol_1", "body": '{"upgrades": {"compute": "hold"}}', "yes": True})
+        out = call("policy", "update", {"id": "pol_1", "upgrades": "hold", "yes": True})
         assert fake.calls[-1][:2] == ("PUT", "/policies/pol_1") and out["updated"] is True
+        assert fake.calls[-1][3]["body"]["upgrades"] == {"compute": "hold"}
 
     def test_apply_names_the_runner(self, fake):
         out = call("policy", "apply", {"runner": "rnr_2", "policy": "pol_1"})
@@ -272,11 +411,18 @@ class TestPolicy:
 
     def test_create_takes_a_file_or_json(self, fake, tmp_path):
         f = tmp_path / "p.json"
-        f.write_text('{"extensions": {"install": "verified"}}')
+        body = {"jobs": {"serve": ["own"], "allow": []},
+                "extensions": {"admit": ["own", "verified"], "allow": [], "network": "none"},
+                "upgrades": {"compute": "auto"}, "gc": {"unused_days": 30}}
+        f.write_text(json.dumps(body))
         call("policy", "create", {"name": "open", "body": str(f)})
-        assert fake.calls[-1][3] == {"name": "open", "body": {"extensions": {"install": "verified"}}}
+        assert fake.calls[-1][3] == {"name": "open", "body": body}
+        call("policy", "create", {"name": "open", "body": json.dumps(body), "serve": "nobody (paused)"})
+        assert fake.calls[-1][3]["body"]["jobs"]["serve"] == []
         with pytest.raises(VerbError, match="JSON"):
             call("policy", "create", {"name": "x", "body": "not json"})
+        with pytest.raises(VerbError, match="current shape"):
+            call("policy", "create", {"name": "x", "body": '{"extensions": {"install": "mine"}}'})
 
     def test_list_searches_here(self, fake):
         out = call("policy", "list", {"search": "pers"})

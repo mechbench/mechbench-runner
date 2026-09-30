@@ -83,6 +83,8 @@ def rec(monkeypatch, tmp_path):
                 body,
             )
         )
+        if route.startswith("/orgs/"):
+            return {"org": {"id": "org_1", "handle": route.rsplit("/", 1)[1]}}, {}
         if route in ("/objects",):
             return {"objects": [{"path": "benji/lab/x"}]}, {"x-next-offset": "3"}
         if method == "GET" and route.count("/") == 1 and route not in ("/auth/me",):
@@ -128,7 +130,12 @@ SAMPLES = {
     ("op", "address"): "geometry/align",
     ("op", "kind"): "direction/vector",
     ("extension", "address"): "alice/lab/extensions/interp-extras@2",
-    ("policy", "body"): '{"extensions": {"install": "mine"}}',
+    ("policy", "body"): '{"jobs": {"serve": ["own"]}, "extensions": {"admit": ["own"]}}',
+    ("policy", "serve"): "nobody (paused)",
+    ("policy", "admit"): "mechbench-verified",
+    ("policy", "serve_allow"): ["project=prj_1"],
+    ("policy", "admit_allow"): ["owner=u_bob,extension=bob/tools/extensions/x"],
+    ("extension", "org"): "acme",
     ("policy", "runner"): "rnr_1",
     ("policy", "policy"): "pol_1",
 }

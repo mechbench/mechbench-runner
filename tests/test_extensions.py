@@ -25,11 +25,10 @@ from mechbench_runner.extensions import Extensions  # noqa: E402
 from mechbench_runner.policy import HeldPolicy, PolicyHolder  # noqa: E402
 
 BODY = {
-    "extensions": {"install": "mine", "allow": [], "network": "none",
-                   "require_approved": False},
+    "jobs": {"serve": ["own"], "allow": []},
+    "extensions": {"admit": ["own"], "allow": [], "network": "none"},
     "upgrades": {"compute": "auto"},
     "gc": {"unused_days": 30},
-    "pools": [],
 }
 ADDRESS = "u_alice/lab/extensions/tiny"
 FAKE_UV = "/fake/bin/uv"
@@ -73,8 +72,8 @@ def item(wheel: bytes, *, lock: bytes | None = None, version: int = 1,
                         "sdist": "~hash/sha256:" + "0" * 64,
                         "wheel": wheel_ref or ref_of(wheel),
                         "lock": ref_of(lock) if lock is not None else None},
-            "needs": [], "state": "draft", "visibility": "private",
-            "owner": "u_alice", "org": None, "party": "third"}
+            "needs": [], "state": "draft", "party": "third",
+            "projectOwner": {"kind": "user", "id": "u_alice"}, "approvedBy": []}
 
 
 class FakeApi:
@@ -97,7 +96,7 @@ class FakeApi:
         return {"policyId": "pol_personal", "version": 1, "body": BODY}
 
     def whoami(self):
-        return {"account": {"userId": "u_alice"}}
+        return {"runner": {"scope": "user"}, "account": {"userId": "u_alice"}}
 
     def claim_next_job(self, *_a):
         if not self.claims:
@@ -184,12 +183,13 @@ def uv(monkeypatch):
 def holder(tmp_path):
     h = PolicyHolder(tmp_path / "policy.json")
     h.held = HeldPolicy("pol_personal", 1, dict(BODY))
-    h.owner_id = "u_alice"
+    h._identity = {"owner": {"kind": "user", "id": "u_alice"}, "orgIds": []}
     return h
 
 
 def job(items, jid="j_1", **extra):
-    return {"id": jid, "userId": "u_alice", "orgId": None,
+    return {"id": jid, "creatorId": "u_alice", "projectId": "prj_lab",
+            "projectOwner": {"kind": "user", "id": "u_alice"}, "creatorOrgIds": [],
             "policy": {"id": "pol_personal", "version": 1},
             "spec": {"graph": {"nodes": [
                 {"id": "align", "block": "u_alice/lab/ops/geo/align"}]}},
@@ -305,7 +305,7 @@ class TestInstall:
             self, uv, holder):
         holder.held = HeldPolicy("pol_personal", 1,
                                  {**BODY, "extensions": {**BODY["extensions"],
-                                                         "install": "locked"}})
+                                                         "admit": []}})
         wheel = tiny_wheel()
         it = item(wheel)
         api = FakeApi(blobs={it["package"]["wheel"]: wheel})

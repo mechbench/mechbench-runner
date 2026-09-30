@@ -206,7 +206,11 @@ argument, in about 26 KB.
 | extension | **new**(scope, name, op, dir?) | read | — (on the caller's machine) | `extension(verb="new")` | `mechbench extension new` |
 | extension | **test**(dir, model?, python?) | read | — (on the caller's machine) | `extension(verb="test")` | `mechbench extension test` |
 | extension | **push**(dir, draft?, python?) | outward * | `PUT /extensions/:owner/:project/:name` | `extension(verb="push")` | `mechbench extension push` |
-| extension | **verify**(address) | draft | `POST /extensions/:owner/:project/extensions/:ref/verify` | `extension(verb="verify")` | `mechbench extension verify` |
+| extension | **check**(address) | draft | `POST /extensions/:owner/:project/extensions/:ref/check` | `extension(verb="check")` | `mechbench extension check` |
+| extension | **review**(address, org?) | spend * | `POST /extensions/:owner/:project/extensions/:ref/review` | `extension(verb="review")` | `mechbench extension review` |
+| extension | **approve**(address, org, note?, override?) | outward * | `POST /extensions/:owner/:project/extensions/:ref/approve` | `extension(verb="approve")` | `mechbench extension approve` |
+| extension | **revoke**(address, org) | draft | `POST /extensions/:owner/:project/extensions/:ref/revoke` | `extension(verb="revoke")` | `mechbench extension revoke` |
+| extension | **verify**(address, override?) | outward * | `POST /extensions/:owner/:project/extensions/:ref/verify` | `extension(verb="verify")` | `mechbench extension verify` |
 | extension | **list**(owner?, state?, reads?, emits?, search?, limit?, offset?) | read | `GET /extensions` | `extension(verb="list")` | `mechbench extension list` |
 | extension | **read**(address) | read | `GET /extensions/:owner/:project/extensions/:ref` | `extension(verb="read")` | `mechbench extension read` |
 | extension | **history**(address) | read | `GET /extensions/:owner/:project/extensions/:ref` | `extension(verb="history")` | `mechbench extension history` |
@@ -217,8 +221,8 @@ argument, in about 26 KB.
 | extension | delete | — | — | — | — (a version is withdrawn, never deleted, so what ran on it stays readable) |
 | policy | **list**(search?, limit?, offset?) | read | `GET /policies` | `policy(verb="list")` | `mechbench policy list` |
 | policy | **read**(id) | read | `GET /policies/:id` | `policy(verb="read")` | `mechbench policy read` |
-| policy | **create**(name, body, org_id?) | draft | `POST /policies` | `policy(verb="create")` | `mechbench policy create` |
-| policy | **update**(id, body, name?, yes?) | outward when yes=true * | `PUT /policies/:id` | `policy(verb="update")` | `mechbench policy update` |
+| policy | **create**(name, body?, serve?, admit?, serve_allow?, admit_allow?, network?, upgrades?, unused_days?, org_id?) | draft | `POST /policies` | `policy(verb="create")` | `mechbench policy create` |
+| policy | **update**(id, body?, serve?, admit?, serve_allow?, admit_allow?, network?, upgrades?, unused_days?, name?, yes?) | outward when yes=true * | `PUT /policies/:id` | `policy(verb="update")` | `mechbench policy update` |
 | policy | **apply**(runner, policy, yes?) | outward when yes=true * | `PUT /runners/:id/policy` | `policy(verb="apply")` | `mechbench policy apply` |
 | policy | delete | — | — | — | — (runners reference a policy by id and version; put them under another (`policy apply`) instead) |
 | policy | history | — | — | — | — (`policy read` carries every version, newest first) |

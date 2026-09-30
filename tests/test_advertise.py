@@ -10,7 +10,7 @@ pytest.importorskip("mechbench_compute")
 from mechbench_runner import api_client  # noqa: E402
 from mechbench_runner.api_client import ApiClient, advertise  # noqa: E402
 from mechbench_runner.config import Config  # noqa: E402
-from mechbench_runner.policy import Admit, PolicyHolder, check_installs  # noqa: E402
+from mechbench_runner.policy import Decision, PolicyHolder, check_claim  # noqa: E402
 
 PIN_A = "sha256:" + "a" * 64
 PIN_B = "sha256:" + "b" * 64
@@ -111,13 +111,12 @@ class Api:
 
     def fetch_policy(self) -> dict:
         return {"policyId": "pol_personal", "version": 1, "name": "personal",
-                "body": {"extensions": {"install": "mine", "allow": [],
-                                        "network": "none", "require_approved": False},
-                         "upgrades": {"compute": "auto"}, "gc": {"unused_days": 30},
-                         "pools": []}}
+                "body": {"jobs": {"serve": ["own"], "allow": []},
+                         "extensions": {"admit": ["own"], "allow": [], "network": "none"},
+                         "upgrades": {"compute": "auto"}, "gc": {"unused_days": 30}}}
 
     def whoami(self) -> dict:
-        return {"runner": {"id": "rnr_1", "userId": "u_alice"},
+        return {"runner": {"id": "rnr_1", "userId": "u_alice", "scope": "user"},
                 "account": {"userId": "u_alice", "handle": "alice",
                             "displayName": None},
                 "scopeLabel": "alice"}
@@ -126,7 +125,7 @@ class Api:
         self.released.append((job_id, code, message))
 
 
-def test_check_installs_reads_the_claim_as_the_api_shapes_it(tmp_path):
+def test_check_claim_reads_the_claim_as_the_api_shapes_it(tmp_path):
     api = Api()
     holder = PolicyHolder(tmp_path / "policy.json")
     holder.start(api)
@@ -135,13 +134,14 @@ def test_check_installs_reads_the_claim_as_the_api_shapes_it(tmp_path):
         "name": "alice/tools/extensions/interp-extras",
         "package": {"name": "mechbench-ext-interp-extras", "python": ">=3.12",
                     "sdist": "~hash/sha256:" + "c" * 64, "wheel": None, "lock": None},
-        "needs": [], "state": "draft", "visibility": "private",
-        "owner": "u_alice", "org": None, "party": "third",
+        "needs": [], "state": "draft", "party": "third",
+        "projectOwner": {"kind": "user", "id": "u_alice"}, "approvedBy": [],
     }
-    claim = {"id": "j_1", "userId": "u_alice",
-             "policy": {"id": "pol_personal", "version": 1},
-             "install": [item], "orgId": None}
-    assert check_installs(api, holder, claim) == [Admit(True)]
-    other = {**claim, "userId": "u_bob"}
-    assert [a.ok for a in check_installs(api, holder, other)] == [False]
+    claim = {"id": "j_1", "creatorId": "u_alice", "projectId": "prj_1",
+             "projectOwner": {"kind": "user", "id": "u_alice"}, "creatorOrgIds": [],
+             "policy": {"id": "pol_personal", "version": 1}, "install": [item]}
+    assert check_claim(api, holder, claim) == [Decision(True), Decision(True)]
+    other = {**claim, "creatorId": "u_bob",
+             "projectOwner": {"kind": "user", "id": "u_bob"}}
+    assert [a.ok for a in check_claim(api, holder, other)] == [False, True]
     assert len(api.released) == 1

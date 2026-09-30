@@ -34,7 +34,7 @@ from .job_credentials import HELD as HELD_CREDENTIALS
 from .live import PURE, LiveHost
 from .machine import default_name
 from .paths import limits_path, spool_dir
-from .policy import PolicyHolder, check_installs
+from .policy import PolicyHolder, check_claim
 from .spend import SharedLimiter, SpendLedger
 from .spool import JobSpool, adopt_legacy, job_dir, make_job_dir
 from .verification import VERIFICATION, Verification
@@ -412,7 +412,7 @@ class JobRunner:
                     self._report_error(api, job, exc)
                     continue
 
-                if not all(a.ok for a in check_installs(api, self._policy, job)):
+                if not all(a.ok for a in check_claim(api, self._policy, job)):
                     continue
 
                 if not self._install_for(api, job):

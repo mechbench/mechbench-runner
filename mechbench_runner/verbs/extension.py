@@ -350,9 +350,24 @@ def extension_push(ctx: Ctx, a: dict) -> Any:
     draft = bool(a.get("draft"))
     out["consent"] = push_consent(out["visibility"], draft)
     if not draft:
-        v = ctx.api("POST", f"{version_route(address)}@{answer.get('version')}/verify")[0]
-        out["verify"] = {k: v.get(k) for k in ("state", "job", "waitingFor") if isinstance(v, Mapping)}
+        v = ctx.api("POST", f"{version_route(address)}@{answer.get('version')}/check")[0]
+        out["check"] = {k: v.get(k) for k in ("state", "job", "waitingFor") if isinstance(v, Mapping)}
     return out
+
+
+def approvals_of(row: Mapping[str, Any]) -> list[dict[str, Any]]:
+    manifest = row.get("manifest") if isinstance(row.get("manifest"), Mapping) else {}
+    found = row.get("approvals")
+    if not isinstance(found, list):
+        found = manifest.get("approvals")
+    if isinstance(found, list):
+        return [dict(x) for x in found if isinstance(x, Mapping)]
+    return [{"org": o} for o in row.get("approvedBy") or []]
+
+
+def approved_words(row: Mapping[str, Any]) -> str:
+    orgs = [str(x.get("orgHandle") or x.get("org")) for x in approvals_of(row)]
+    return ", ".join(orgs) if orgs else "no org"
 
 
 def extension_list(ctx: Ctx, a: dict) -> Any:
@@ -362,7 +377,53 @@ def extension_list(ctx: Ctx, a: dict) -> Any:
         emits=a.get("emits"), q=a.get("search"),
     )
     items = unwrap(data, "extensions")
-    return paged(items if isinstance(items, list) else [], a)
+    rows = [{**r, "approved": approved_words(r)} if isinstance(r, Mapping) else r
+            for r in (items if isinstance(items, list) else [])]
+    return paged(rows, a)
+
+
+def extension_read(ctx: Ctx, a: dict) -> Any:
+    got = ctx.get(version_route(a["address"]))
+    if not isinstance(got, Mapping):
+        return got
+    return {**got, "approvals": approvals_of(got), "approved": approved_words(got)}
+
+
+def org_id_of(ctx: Ctx, handle: str) -> str:
+    said = str(handle).strip().lstrip("@")
+    try:
+        got = ctx.get(f"/orgs/{quote(said)}")
+    except Exception as e:  # noqa: BLE001
+        if getattr(e, "status", None) == 404:
+            raise VerbError(f"no org @{said} that you belong to") from None
+        raise
+    org = got.get("org") if isinstance(got, Mapping) else None
+    if not isinstance(org, Mapping) or not org.get("id"):
+        raise VerbError(f"the platform named no id for org @{said}")
+    return str(org["id"])
+
+
+def extension_approve(ctx: Ctx, a: dict) -> Any:
+    body: dict[str, Any] = {"org": org_id_of(ctx, a["org"])}
+    for k in ("note", "override"):
+        if a.get(k):
+            body[k] = a[k]
+    return ctx.api("POST", version_route(a["address"], True) + "/approve", body=body)[0]
+
+
+def extension_revoke(ctx: Ctx, a: dict) -> Any:
+    body = {"org": org_id_of(ctx, a["org"])}
+    return ctx.api("POST", version_route(a["address"], True) + "/revoke", body=body)[0]
+
+
+def extension_review(ctx: Ctx, a: dict) -> Any:
+    body = {"org": org_id_of(ctx, a["org"])} if a.get("org") else {}
+    return ctx.api("POST", version_route(a["address"], True) + "/review", body=body)[0]
+
+
+def extension_verify(ctx: Ctx, a: dict) -> Any:
+    body = {"override": a["override"]} if a.get("override") else {}
+    return ctx.api("POST", version_route(a["address"], True) + "/verify", body=body)[0]
 
 
 def extension_history(ctx: Ctx, a: dict) -> Any:
@@ -394,8 +455,9 @@ PYTHON = Arg(
 EXTENSION = Noun(
     "extension",
     "An extension: one project's operations, kinds and marks with the package that "
-    "runs them, pushed as versions and verified. There is no install verb: a "
-    "machine installs what a claimed job needs, under its policy.",
+    "runs them, pushed as versions, checked, approved by an org for itself and "
+    "verified by the platform. There is no install verb: a machine installs what "
+    "a claimed job needs, under its policy.",
     (
         Verb(
             "extension",
@@ -453,14 +515,65 @@ EXTENSION = Noun(
         ),
         Verb(
             "extension",
-            "verify",
+            "check",
             "Queue a version's checks: a job on your runner that makes it checked "
-            "when it passes (verified takes a person's review), and says what it "
-            "waits for.",
-            "POST /extensions/:owner/:project/extensions/:ref/verify",
+            "when it passes, and says what it waits for. Checked is not approved "
+            "and not verified: nobody has read the code.",
+            "POST /extensions/:owner/:project/extensions/:ref/check",
             (VERSIONED,),
-            lambda ctx, a: ctx.api("POST", version_route(a["address"], True) + "/verify")[0],
+            lambda ctx, a: ctx.api("POST", version_route(a["address"], True) + "/check")[0],
             effect="draft",
+        ),
+        Verb(
+            "extension",
+            "review",
+            "Ask the platform's reviewer to read a version's code and report what it "
+            "reaches (network, files, subprocesses, credentials). With org, an admin "
+            "of that org asks, on the org's own provider credential and budget, and "
+            "the report is the org's to read before approving; without, a site admin "
+            "asks, on the platform's.",
+            "POST /extensions/:owner/:project/extensions/:ref/review",
+            (VERSIONED, Arg("org", "The org's handle: review for that org (you are its admin).")),
+            extension_review,
+            effect="spend",
+        ),
+        Verb(
+            "extension",
+            "approve",
+            "Approve a checked or verified version for an org you are an admin of: "
+            "its machines and members whose policy admits approved install it. It "
+            "changes nothing outside the org. A version with a blocker flag needs "
+            "override.",
+            "POST /extensions/:owner/:project/extensions/:ref/approve",
+            (
+                VERSIONED,
+                Arg("org", "The org's handle.", required=True),
+                Arg("note", "Your words on the approval, shown with it."),
+                Arg("override", "Why you approve over a blocker flag."),
+            ),
+            extension_approve,
+            effect="outward",
+        ),
+        Verb(
+            "extension",
+            "revoke",
+            "Take an org's approval of a version back: machines admitting approved "
+            "stop installing it for new jobs.",
+            "POST /extensions/:owner/:project/extensions/:ref/revoke",
+            (VERSIONED, Arg("org", "The org's handle.", required=True)),
+            extension_revoke,
+            effect="draft",
+        ),
+        Verb(
+            "extension",
+            "verify",
+            "A site admin's approval for the platform: a reviewed, checked version "
+            "becomes verified, installable wherever a policy admits verified. A "
+            "blocker flag needs override.",
+            "POST /extensions/:owner/:project/extensions/:ref/verify",
+            (VERSIONED, Arg("override", "Why you verify over a blocker flag.")),
+            extension_verify,
+            effect="outward",
         ),
         Verb(
             "extension",
@@ -480,17 +593,18 @@ EXTENSION = Noun(
             ),
             extension_list,
             "list",
-            ("address", "version", "state", "visibility", "ops"),
+            ("address", "version", "state", "approved", "visibility", "ops"),
             effect="read",
         ),
         Verb(
             "extension",
             "read",
             "One version (the newest you would use by default): its manifest, pin "
-            "hash, the versions you may see, and what uses it.",
+            "hash, the orgs that approved it, the versions you may see, and what "
+            "uses it.",
             "GET /extensions/:owner/:project/extensions/:ref",
             (ADDRESS,),
-            lambda ctx, a: ctx.get(version_route(a["address"])),
+            extension_read,
             "read",
             effect="read",
         ),

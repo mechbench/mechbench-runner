@@ -1,1461 +1,4504 @@
 [
   {
-    "name": "locked installs nothing, even verified",
+    "name": "serve own, person: my job on my project",
+    "why": "own on a person's machine is the jobs its owner created.",
+    "rule": "serve",
     "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
       "extensions": {
-        "install": "locked",
+        "admit": [
+          "own"
+        ],
         "allow": [],
-        "network": "none",
-        "require_approved": false
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
     },
-    "extension": {
-      "name": "alice/interp-extras",
-      "owner": "u_alice",
-      "state": "verified",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "The policy is locked: it installs nothing."
-  },
-  {
-    "name": "withdrawn is refused before the level",
-    "policy": {
-      "extensions": {
-        "install": "locked",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "alice/interp-extras",
-      "owner": "u_alice",
-      "state": "withdrawn",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "alice/interp-extras is withdrawn, and a withdrawn version is never installed."
-  },
-  {
-    "name": "mine: a verified extension for the owner's own job",
-    "policy": {
-      "extensions": {
-        "install": "mine",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "alice/interp-extras",
-      "owner": "u_alice",
-      "state": "verified",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
     },
     "ok": true
   },
   {
-    "name": "mine: the owner's own draft",
+    "name": "serve own, person: my job on an org project",
+    "why": "My click is my job, on any project, even one spending the org's keys.",
+    "rule": "serve",
     "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
       "extensions": {
-        "install": "mine",
+        "admit": [
+          "own"
+        ],
         "allow": [],
-        "network": "none",
-        "require_approved": false
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
     },
-    "extension": {
-      "name": "alice/interp-extras",
-      "owner": "u_alice",
-      "state": "draft",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
     },
     "ok": true
   },
   {
-    "name": "mine: the owner's own pending version",
+    "name": "serve own, person: a colleague's job on the org's project",
+    "why": "own reads the creator; a colleague created it.",
+    "rule": "serve",
     "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
       "extensions": {
-        "install": "mine",
+        "admit": [
+          "own"
+        ],
         "allow": [],
-        "network": "none",
-        "require_approved": false
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
     },
-    "extension": {
-      "name": "alice/interp-extras",
-      "owner": "u_alice",
-      "state": "pending",
-      "visibility": "public",
-      "needs": []
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
     },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+    "ok": false,
+    "reason": "The policy serves own, and this job was run by user u_bea on a project org org_acme owns."
+  },
+  {
+    "name": "serve own, person: a stranger's job",
+    "why": "own on a person's machine never serves another person's job.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_cat",
+      "projectId": "prj_cat",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      }
+    },
+    "ok": false,
+    "reason": "The policy serves own, and this job was run by user u_cat on a project user u_cat owns."
+  },
+  {
+    "name": "serve own+org, person: a colleague's job on the org's project",
+    "why": "org serves every job on the projects of an org the owner belongs to, whoever created it.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own",
+          "org"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
     },
     "ok": true
   },
   {
-    "name": "mine: someone else's draft",
+    "name": "serve org, person: a job on an org the owner does not belong to",
+    "why": "org reads the owner's memberships; org_other is not one.",
+    "rule": "serve",
     "policy": {
+      "jobs": {
+        "serve": [
+          "org"
+        ],
+        "allow": []
+      },
       "extensions": {
-        "install": "mine",
+        "admit": [
+          "own"
+        ],
         "allow": [],
-        "network": "none",
-        "require_approved": false
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
     },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "draft",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_other",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_other"
+      }
     },
     "ok": false,
-    "reason": "Under mine, carol/tools must be your own or the platform's own verified extension; it is another author's draft version."
+    "reason": "The policy serves org, and this job was run by user u_bea on a project org org_other owns."
   },
   {
-    "name": "mine: another author's verified extension is refused (only the platform's own)",
+    "name": "serve own+org, person: a colleague's job on the colleague's own project",
+    "why": "org is the org's projects, not its members' personal ones.",
+    "rule": "serve",
     "policy": {
+      "jobs": {
+        "serve": [
+          "own",
+          "org"
+        ],
+        "allow": []
+      },
       "extensions": {
-        "install": "mine",
+        "admit": [
+          "own"
+        ],
         "allow": [],
-        "network": "none",
-        "require_approved": false
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
     },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "verified",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_bea",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_bea"
+      },
+      "creatorOrgIds": [
+        "org_acme"
+      ]
     },
     "ok": false,
-    "reason": "Under mine, carol/tools must be your own or the platform's own verified extension; it is another author's verified version."
+    "reason": "The policy serves own and org, and this job was run by user u_bea on a project user u_bea owns."
   },
   {
-    "name": "mine: another person's job",
+    "name": "serve org, person with no orgs: an org project's job",
+    "why": "A person who belongs to no org has nothing for org to serve.",
+    "rule": "serve",
     "policy": {
+      "jobs": {
+        "serve": [
+          "org"
+        ],
+        "allow": []
+      },
       "extensions": {
-        "install": "mine",
+        "admit": [
+          "own"
+        ],
         "allow": [],
-        "network": "none",
-        "require_approved": false
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": []
     },
-    "extension": {
-      "name": "alice/interp-extras",
-      "owner": "u_alice",
-      "state": "verified",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_bob"
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
     },
     "ok": false,
-    "reason": "Under mine, a runner installs only for its owner's own jobs."
+    "reason": "The policy serves org, and this job was run by user u_bea on a project org org_acme owns."
   },
   {
-    "name": "mine: another person's job, their own draft",
+    "name": "serve members, person: ignored",
+    "why": "members is meaningful on an org's machine only; a person's machine ignores it and serves nothing by it.",
+    "rule": "serve",
     "policy": {
+      "jobs": {
+        "serve": [
+          "members"
+        ],
+        "allow": []
+      },
       "extensions": {
-        "install": "mine",
+        "admit": [
+          "own"
+        ],
         "allow": [],
-        "network": "none",
-        "require_approved": false
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
     },
-    "extension": {
-      "name": "alice/interp-extras",
-      "owner": "u_bob",
-      "state": "draft",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_bob"
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_bea",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_bea"
+      },
+      "creatorOrgIds": [
+        "org_acme"
+      ]
     },
     "ok": false,
-    "reason": "Under mine, a runner installs only for its owner's own jobs."
+    "reason": "The policy serves members, and this job was run by user u_bea on a project user u_bea owns."
   },
   {
-    "name": "mine: withdrawn, even the owner's own",
+    "name": "serve own+members, person: own still serves",
+    "why": "Ignoring members on a person's machine leaves the other sources as they are.",
+    "rule": "serve",
     "policy": {
+      "jobs": {
+        "serve": [
+          "own",
+          "members"
+        ],
+        "allow": []
+      },
       "extensions": {
-        "install": "mine",
+        "admit": [
+          "own"
+        ],
         "allow": [],
-        "network": "none",
-        "require_approved": false
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
     },
-    "extension": {
-      "name": "alice/interp-extras",
-      "owner": "u_alice",
-      "state": "withdrawn",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "alice/interp-extras is withdrawn, and a withdrawn version is never installed."
-  },
-  {
-    "name": "verified: anyone's verified extension for anyone's job",
-    "policy": {
-      "extensions": {
-        "install": "verified",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "verified",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_bob"
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
     },
     "ok": true
   },
   {
-    "name": "verified: the owner's own draft",
+    "name": "serve nothing, person: paused",
+    "why": "An empty serve serves nobody, the owner included.",
+    "rule": "serve",
     "policy": {
+      "jobs": {
+        "serve": [],
+        "allow": []
+      },
       "extensions": {
-        "install": "verified",
+        "admit": [
+          "own"
+        ],
         "allow": [],
-        "network": "none",
-        "require_approved": false
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
     },
-    "extension": {
-      "name": "alice/interp-extras",
-      "owner": "u_alice",
-      "state": "draft",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
     },
     "ok": false,
-    "reason": "Under verified, alice/interp-extras must be verified; it is draft."
+    "reason": "The policy serves nobody: this machine is paused."
   },
   {
-    "name": "verified: a pending version",
+    "name": "serve listed, person: an entry naming the project",
+    "why": "listed serves a job whose project an allow entry names.",
+    "rule": "serve",
     "policy": {
-      "extensions": {
-        "install": "verified",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "pending",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "Under verified, carol/tools must be verified; it is pending."
-  },
-  {
-    "name": "allowlist: a listed owner's verified extension",
-    "policy": {
-      "extensions": {
-        "install": "allowlist",
+      "jobs": {
+        "serve": [
+          "listed"
+        ],
         "allow": [
           {
-            "owner": "u_carol"
+            "project": "prj_cat"
           }
+        ]
+      },
+      "extensions": {
+        "admit": [
+          "own"
         ],
-        "network": "none",
-        "require_approved": false
+        "allow": [],
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
     },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "verified",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_bob"
+    "job": {
+      "creatorId": "u_cat",
+      "projectId": "prj_cat",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      }
     },
     "ok": true
   },
   {
-    "name": "allowlist: a listed owner's draft",
+    "name": "serve listed, person: an entry naming the project's owner",
+    "why": "An allow entry's owner is the person whose project the job runs in.",
+    "rule": "serve",
     "policy": {
-      "extensions": {
-        "install": "allowlist",
+      "jobs": {
+        "serve": [
+          "listed"
+        ],
         "allow": [
           {
-            "owner": "u_carol"
+            "owner": "u_cat"
           }
+        ]
+      },
+      "extensions": {
+        "admit": [
+          "own"
         ],
-        "network": "none",
-        "require_approved": false
+        "allow": [],
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
     },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "draft",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_bob"
+    "job": {
+      "creatorId": "u_cat",
+      "projectId": "prj_cat",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      }
     },
     "ok": true
   },
   {
-    "name": "allowlist: a listed extension, verified",
+    "name": "serve listed, person: an entry naming the org",
+    "why": "An allow entry's org matches a job on that org's project, whoever created it.",
+    "rule": "serve",
     "policy": {
-      "extensions": {
-        "install": "allowlist",
+      "jobs": {
+        "serve": [
+          "listed"
+        ],
         "allow": [
           {
-            "extension": "carol/tools"
+            "org": "org_other"
           }
+        ]
+      },
+      "extensions": {
+        "admit": [
+          "own"
         ],
-        "network": "none",
-        "require_approved": false
+        "allow": [],
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
     },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "verified",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_other",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_other"
+      }
     },
     "ok": true
   },
   {
-    "name": "allowlist: a listed extension, draft, owner not listed",
+    "name": "serve listed, person: an entry naming nothing",
+    "why": "An entry naming nothing matches nothing.",
+    "rule": "serve",
     "policy": {
-      "extensions": {
-        "install": "allowlist",
-        "allow": [
-          {
-            "extension": "carol/tools"
-          }
+      "jobs": {
+        "serve": [
+          "listed"
         ],
-        "network": "none",
-        "require_approved": false
+        "allow": [
+          {}
+        ]
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
     },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "draft",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+    "job": {
+      "creatorId": "u_cat",
+      "projectId": "prj_cat",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      }
     },
     "ok": false,
-    "reason": "carol/tools is draft, and an unchecked extension installs only when its owner is listed."
+    "reason": "The policy serves listed, and this job was run by user u_cat on a project user u_cat owns."
   },
   {
-    "name": "allowlist: a listed org's verified extension",
+    "name": "serve listed, person: every named field must match",
+    "why": "The entry names the owner and a different project; both must match.",
+    "rule": "serve",
     "policy": {
-      "extensions": {
-        "install": "allowlist",
+      "jobs": {
+        "serve": [
+          "listed"
+        ],
         "allow": [
           {
-            "org": "o_lab"
+            "owner": "u_cat",
+            "project": "prj_elsewhere"
           }
+        ]
+      },
+      "extensions": {
+        "admit": [
+          "own"
         ],
-        "network": "none",
-        "require_approved": false
+        "allow": [],
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_cat",
+      "projectId": "prj_cat",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      }
+    },
+    "ok": false,
+    "reason": "The policy serves listed, and this job was run by user u_cat on a project user u_cat owns."
+  },
+  {
+    "name": "serve listed, person: owner names a person, not the creator",
+    "why": "owner matches the project's owner; u_bea created the job but the project is u_cat's.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "listed"
+        ],
+        "allow": [
+          {
+            "owner": "u_bea"
+          }
+        ]
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_cat",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "creatorOrgIds": [
+        "org_acme"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy serves listed, and this job was run by user u_bea on a project user u_cat owns."
+  },
+  {
+    "name": "serve own, org machine: a member's job on the org's project",
+    "why": "own on an org's machine is jobs on the org's projects, whichever member created them.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "ok": true
+  },
+  {
+    "name": "serve own, org machine: another member's job on the org's project",
+    "why": "Which member ran it does not matter.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "ok": true
+  },
+  {
+    "name": "serve own, org machine: a member's job on their own project",
+    "why": "Personal work is served only under members.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_bea",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_bea"
+      },
+      "creatorOrgIds": [
+        "org_acme"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy serves own, and this job was run by user u_bea on a project user u_bea owns."
+  },
+  {
+    "name": "serve own, org machine: another org's project",
+    "why": "own is this org's projects only.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_other",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_other"
+      }
+    },
+    "ok": false,
+    "reason": "The policy serves own, and this job was run by user u_bea on a project org org_other owns."
+  },
+  {
+    "name": "serve org, org machine: coincides with own",
+    "why": "On an org's machine org and own are the same set.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "org"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "ok": true
+  },
+  {
+    "name": "serve org, org machine: not the machine's other org ids",
+    "why": "An org machine's org is its own projects; the orgIds it lists are not read.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "org"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme",
+        "org_other"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_other",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_other"
+      }
+    },
+    "ok": false,
+    "reason": "The policy serves org, and this job was run by user u_bea on a project org org_other owns."
+  },
+  {
+    "name": "serve own+members, org machine: a member's job on their own project",
+    "why": "members serves the jobs the org's members created on their own projects.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own",
+          "members"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_bea",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_bea"
+      },
+      "creatorOrgIds": [
+        "org_acme"
+      ]
+    },
+    "ok": true
+  },
+  {
+    "name": "serve own+members, org machine: a non-member's own project",
+    "why": "The creator does not belong to the org.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own",
+          "members"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_cat",
+      "projectId": "prj_cat",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "creatorOrgIds": [
+        "org_other"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy serves own and members, and this job was run by user u_cat on a project user u_cat owns."
+  },
+  {
+    "name": "serve own+members, org machine: a member's job on someone else's project",
+    "why": "members is a member's own projects; this one is u_cat's.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own",
+          "members"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_cat",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "creatorOrgIds": [
+        "org_acme"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy serves own and members, and this job was run by user u_bea on a project user u_cat owns."
+  },
+  {
+    "name": "serve own+members, org machine: membership unknown",
+    "why": "A job without the creator's orgs reads as a creator in none.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own",
+          "members"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_bea",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_bea"
+      }
+    },
+    "ok": false,
+    "reason": "The policy serves own and members, and this job was run by user u_bea on a project user u_bea owns."
+  },
+  {
+    "name": "serve nothing, org machine: paused",
+    "why": "An empty serve serves nobody.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "ok": false,
+    "reason": "The policy serves nobody: this machine is paused."
+  },
+  {
+    "name": "serve listed, org machine: an entry naming a person",
+    "why": "listed on an org machine serves the projects its entries name.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "listed"
+        ],
+        "allow": [
+          {
+            "owner": "u_cat"
+          }
+        ]
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_cat",
+      "projectId": "prj_cat",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      }
+    },
+    "ok": true
+  },
+  {
+    "name": "serve listed, org machine: a project no entry names",
+    "why": "listed serves only what its entries name; the org's own projects are own's.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "listed"
+        ],
+        "allow": [
+          {
+            "project": "prj_cat"
+          }
+        ]
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "ok": false,
+    "reason": "The policy serves listed, and this job was run by user u_bea on a project org org_acme owns."
+  },
+  {
+    "name": "corner: my protocols only, with the org's approved extensions (serve)",
+    "why": "serve [own] turns down a colleague's org job whatever admit says.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "approved"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "ok": false,
+    "reason": "The policy serves own, and this job was run by user u_bea on a project org org_acme owns."
+  },
+  {
+    "name": "corner: my protocols and the org's, with my own and verified extensions (serve)",
+    "why": "serve [own, org] takes a colleague's org job; admit is asked separately.",
+    "rule": "serve",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own",
+          "org"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "verified"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "ok": true
+  },
+  {
+    "name": "admit own, person: my draft",
+    "why": "own admits versions in the owner's projects in any state but withdrawn.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
     },
     "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "verified",
-      "visibility": "public",
+      "name": "ann/tools/extensions/interp-extras",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "state": "draft",
+      "party": "third",
       "needs": [],
-      "org": "o_lab"
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+      "approvedBy": []
     },
     "ok": true
   },
   {
-    "name": "allowlist: a listed org's draft, owner not listed",
+    "name": "admit own, person: my pending version",
+    "why": "Pending is admitted by own like a draft.",
+    "rule": "admit",
     "policy": {
-      "extensions": {
-        "install": "allowlist",
-        "allow": [
-          {
-            "org": "o_lab"
-          }
+      "jobs": {
+        "serve": [
+          "own"
         ],
-        "network": "none",
-        "require_approved": false
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
     },
     "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "draft",
-      "visibility": "public",
+      "name": "ann/tools/extensions/interp-extras",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "state": "pending",
+      "party": "third",
       "needs": [],
-      "org": "o_lab"
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "carol/tools is draft, and an unchecked extension installs only when its owner is listed."
-  },
-  {
-    "name": "allowlist: an entry naming owner and extension, draft",
-    "policy": {
-      "extensions": {
-        "install": "allowlist",
-        "allow": [
-          {
-            "owner": "u_carol",
-            "extension": "carol/tools"
-          }
-        ],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "draft",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+      "approvedBy": []
     },
     "ok": true
   },
   {
-    "name": "allowlist: every field an entry names must match",
+    "name": "admit own, person: my checked version",
+    "why": "A checked version runs on its author's machine.",
+    "rule": "admit",
     "policy": {
-      "extensions": {
-        "install": "allowlist",
-        "allow": [
-          {
-            "owner": "u_carol",
-            "extension": "carol/other"
-          }
+      "jobs": {
+        "serve": [
+          "own"
         ],
-        "network": "none",
-        "require_approved": false
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
     },
     "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "verified",
-      "visibility": "public",
-      "needs": []
+      "name": "ann/tools/extensions/interp-extras",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
     },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "carol/tools is not on the policy's allowlist."
+    "ok": true
   },
   {
-    "name": "allowlist: an unlisted owner",
+    "name": "admit own, person: my draft, for a colleague's job",
+    "why": "admit never reads the job's creator: serve decided whose jobs, admit whose code.",
+    "rule": "admit",
     "policy": {
-      "extensions": {
-        "install": "allowlist",
-        "allow": [
-          {
-            "owner": "u_dave"
-          }
+      "jobs": {
+        "serve": [
+          "own",
+          "org"
         ],
-        "network": "none",
-        "require_approved": false
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
     },
     "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "verified",
-      "visibility": "public",
-      "needs": []
+      "name": "ann/tools/extensions/interp-extras",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "state": "draft",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
     },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "carol/tools is not on the policy's allowlist."
+    "ok": true
   },
   {
-    "name": "allowlist: an entry naming nothing matches nothing",
+    "name": "admit own, person: a stranger's protocol using my extension",
+    "why": "The protocol's author never enters; a stranger's published protocol run by me is my job, and my extension is mine.",
+    "rule": "admit",
     "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
       "extensions": {
-        "install": "allowlist",
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "ann/tools/extensions/interp-extras",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": true
+  },
+  {
+    "name": "admit own, person: a stranger's protocol using the stranger's draft",
+    "why": "admit reads the extension's owner, not the protocol's author or the job's creator.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "draft",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits own, and cat/public/extensions/geometry is a draft version in a project user u_cat owns, approved by no org."
+  },
+  {
+    "name": "admit own, person: a stranger's checked version",
+    "why": "Checked is not verified, and it is not the owner's.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits own, and cat/public/extensions/geometry is a checked version in a project user u_cat owns, approved by no org."
+  },
+  {
+    "name": "admit own, person: the org's draft",
+    "why": "own is the person's projects, not the org's.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "extension": {
+      "name": "acme/lab/extensions/circuits",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "state": "draft",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits own, and acme/lab/extensions/circuits is a draft version in a project org org_acme owns, approved by no org."
+  },
+  {
+    "name": "admit own+org, person: the org's draft",
+    "why": "org admits versions in the projects of every org the owner belongs to, in any state.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "org"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "extension": {
+      "name": "acme/lab/extensions/circuits",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "state": "draft",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": true
+  },
+  {
+    "name": "admit own+org, person: a colleague's personal draft",
+    "why": "org is the org's projects; a colleague's own project is not one.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "org"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "bea/scratch/extensions/probe-kit",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_bea"
+      },
+      "state": "draft",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits own and org, and bea/scratch/extensions/probe-kit is a draft version in a project user u_bea owns, approved by no org."
+  },
+  {
+    "name": "admit own+org, person: another org's checked version",
+    "why": "The owner does not belong to org_other.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "org"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "other/shared/extensions/lens",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_other"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits own and org, and other/shared/extensions/lens is a checked version in a project org org_other owns, approved by no org."
+  },
+  {
+    "name": "admit own+approved, person: approved by my org",
+    "why": "approved admits a checked version an org the owner belongs to approved.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "approved"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "acme/lab/extensions/circuits",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": [
+        "org_acme"
+      ]
+    },
+    "ok": true
+  },
+  {
+    "name": "admit own+approved, person: a colleague's version approved by my org",
+    "why": "Approval covers a version wherever it lives.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "approved"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "bea/scratch/extensions/probe-kit",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_bea"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": [
+        "org_acme"
+      ]
+    },
+    "ok": true
+  },
+  {
+    "name": "admit own+approved, person: approved by another org",
+    "why": "Another org's approval does not count on the machine of someone outside it.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "approved"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": [
+        "org_other"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy admits own and approved, and cat/public/extensions/geometry is a checked version in a project user u_cat owns, approved by org_other."
+  },
+  {
+    "name": "admit own+approved, person: the org's draft, approved by nobody",
+    "why": "Unapproved org work is org's to admit, not approved's.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "approved"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "extension": {
+      "name": "acme/lab/extensions/circuits",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "state": "draft",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits own and approved, and acme/lab/extensions/circuits is a draft version in a project org org_acme owns, approved by no org."
+  },
+  {
+    "name": "admit approved, person: an approval on a draft is not read",
+    "why": "Approval requires checked: an approval on a version that is not checked or verified admits nothing.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "approved"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "acme/lab/extensions/circuits",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "state": "draft",
+      "party": "third",
+      "needs": [],
+      "approvedBy": [
+        "org_acme"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy admits approved, and acme/lab/extensions/circuits is a draft version in a project org org_acme owns, approved by org_acme."
+  },
+  {
+    "name": "admit approved, person: approved and verified",
+    "why": "A verified version an org approved is admitted by approved.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "approved"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "verified",
+      "party": "third",
+      "needs": [],
+      "approvedBy": [
+        "org_acme"
+      ]
+    },
+    "ok": true
+  },
+  {
+    "name": "admit own+approved, person with no orgs",
+    "why": "A person in no org has no approvals to read.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "approved"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": []
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "acme/lab/extensions/circuits",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": [
+        "org_acme"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy admits own and approved, and acme/lab/extensions/circuits is a checked version in a project org org_acme owns, approved by org_acme."
+  },
+  {
+    "name": "admit own+verified, person: a stranger's verified version",
+    "why": "verified admits any verified version, whoever's.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "verified"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "verified",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": true
+  },
+  {
+    "name": "admit own+verified, person: a stranger's checked version",
+    "why": "Checked is not verified.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "verified"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits own and verified, and cat/public/extensions/geometry is a checked version in a project user u_cat owns, approved by no org."
+  },
+  {
+    "name": "admit own, person: a stranger's verified version",
+    "why": "Without verified, a stranger's verified version is not admitted.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "verified",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits own, and cat/public/extensions/geometry is a verified version in a project user u_cat owns, approved by no org."
+  },
+  {
+    "name": "admit listed, person: a draft whose owner is named",
+    "why": "listed admits a draft when an entry names its owner.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "listed"
+        ],
+        "allow": [
+          {
+            "owner": "u_cat"
+          }
+        ],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "draft",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": true
+  },
+  {
+    "name": "admit listed, person: a draft named only by its address",
+    "why": "A draft or pending version needs an entry that names its owner.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "listed"
+        ],
+        "allow": [
+          {
+            "extension": "cat/public/extensions/geometry"
+          }
+        ],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "draft",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "cat/public/extensions/geometry is a draft version, and listed admits one only when an entry names its owner."
+  },
+  {
+    "name": "admit listed, person: a checked version named by its address",
+    "why": "A checked version is admitted by any matching entry.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "listed"
+        ],
+        "allow": [
+          {
+            "extension": "cat/public/extensions/geometry"
+          }
+        ],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": true
+  },
+  {
+    "name": "admit listed, person: a pending version whose org is named",
+    "why": "An entry naming the org names the owner of a version in that org's project.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "listed"
+        ],
+        "allow": [
+          {
+            "org": "org_other"
+          }
+        ],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "other/shared/extensions/lens",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_other"
+      },
+      "state": "pending",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": true
+  },
+  {
+    "name": "admit listed, person: no entry matches",
+    "why": "Nothing on the list names this version.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "listed"
+        ],
+        "allow": [
+          {
+            "owner": "u_bea"
+          }
+        ],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "verified",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits listed, and cat/public/extensions/geometry is a verified version in a project user u_cat owns, approved by no org."
+  },
+  {
+    "name": "admit listed, person: an entry naming nothing",
+    "why": "An entry naming nothing matches nothing.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "listed"
+        ],
         "allow": [
           {}
         ],
-        "network": "none",
-        "require_approved": false
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
     },
     "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "verified",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
     },
     "ok": false,
-    "reason": "carol/tools is not on the policy's allowlist."
+    "reason": "The policy admits listed, and cat/public/extensions/geometry is a checked version in a project user u_cat owns, approved by no org."
   },
   {
-    "name": "allowlist: an empty list",
+    "name": "admit own, person: withdrawn",
+    "why": "A withdrawn version is never admitted, even the owner's.",
+    "rule": "admit",
     "policy": {
-      "extensions": {
-        "install": "allowlist",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "verified",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "carol/tools is not on the policy's allowlist."
-  },
-  {
-    "name": "allowlist: a listed owner's withdrawn version",
-    "policy": {
-      "extensions": {
-        "install": "allowlist",
-        "allow": [
-          {
-            "owner": "u_carol"
-          }
+      "jobs": {
+        "serve": [
+          "own"
         ],
-        "network": "none",
-        "require_approved": false
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
     },
     "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
+      "name": "ann/tools/extensions/interp-extras",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
       "state": "withdrawn",
-      "visibility": "public",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
     },
     "ok": false,
-    "reason": "carol/tools is withdrawn, and a withdrawn version is never installed."
+    "reason": "ann/tools/extensions/interp-extras is withdrawn, and a withdrawn version is never installed."
   },
   {
-    "name": "network none refuses a network need",
+    "name": "admit nothing, person: withdrawn is said first",
+    "why": "Withdrawn is refused before the sources are read.",
+    "rule": "admit",
     "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
       "extensions": {
-        "install": "verified",
+        "admit": [],
         "allow": [],
-        "network": "none",
-        "require_approved": false
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
-      },
-      "pools": []
+      }
     },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "verified",
-      "visibility": "public",
-      "needs": [
-        "network:api.example.com"
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
       ]
     },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "ann/tools/extensions/interp-extras",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "state": "withdrawn",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
     },
     "ok": false,
-    "reason": "The policy allows no network, and carol/tools declares network:api.example.com."
+    "reason": "ann/tools/extensions/interp-extras is withdrawn, and a withdrawn version is never installed."
   },
   {
-    "name": "network declared admits a network need",
+    "name": "admit nothing, person: even my own",
+    "why": "An empty admit installs nothing.",
+    "rule": "admit",
     "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
       "extensions": {
-        "install": "verified",
+        "admit": [],
         "allow": [],
-        "network": "declared",
-        "require_approved": false
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
-      },
-      "pools": []
+      }
     },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "verified",
-      "visibility": "public",
-      "needs": [
-        "network:api.example.com"
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
       ]
     },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": true
-  },
-  {
-    "name": "network none admits needs that are not network",
-    "policy": {
-      "extensions": {
-        "install": "mine",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
     },
     "extension": {
-      "name": "alice/interp-extras",
-      "owner": "u_alice",
-      "state": "verified",
-      "visibility": "public",
-      "needs": [
-        "accelerator:mlx",
-        "files:read"
-      ]
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": true
-  },
-  {
-    "name": "network none under mine, the owner's own draft",
-    "policy": {
-      "extensions": {
-        "install": "mine",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
+      "name": "ann/tools/extensions/interp-extras",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "alice/interp-extras",
-      "owner": "u_alice",
       "state": "draft",
-      "visibility": "public",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits nothing: core operations only."
+  },
+  {
+    "name": "first party, person: admitted under own",
+    "why": "The platform's own verified versions are admitted by every non-empty admit.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "mechbench/stdlib/extensions/interp",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_mechbench"
+      },
+      "state": "verified",
+      "party": "first",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": true
+  },
+  {
+    "name": "first party, person: admitted under approved alone",
+    "why": "Any non-empty admit, whatever its sources.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "approved"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "mechbench/stdlib/extensions/interp",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_mechbench"
+      },
+      "state": "verified",
+      "party": "first",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": true
+  },
+  {
+    "name": "first party, org machine: admitted under the org default",
+    "why": "The platform's own verified versions run on every machine that admits anything.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "approved"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "extension": {
+      "name": "mechbench/stdlib/extensions/interp",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_mechbench"
+      },
+      "state": "verified",
+      "party": "first",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": true
+  },
+  {
+    "name": "first party, person: not under an empty admit",
+    "why": "An empty admit refuses even the platform's own.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "mechbench/stdlib/extensions/interp",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_mechbench"
+      },
+      "state": "verified",
+      "party": "first",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits nothing: core operations only."
+  },
+  {
+    "name": "first party, person: a checked version is not the rule's",
+    "why": "Only a verified first-party version is admitted everywhere.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "mechbench/stdlib/extensions/interp",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_mechbench"
+      },
+      "state": "checked",
+      "party": "first",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits own, and mechbench/stdlib/extensions/interp is a checked version in a project user u_mechbench owns, approved by no org."
+  },
+  {
+    "name": "first party, person: withdrawn",
+    "why": "A withdrawn version is never admitted, the platform's included.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "mechbench/stdlib/extensions/interp",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_mechbench"
+      },
+      "state": "withdrawn",
+      "party": "first",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "mechbench/stdlib/extensions/interp is withdrawn, and a withdrawn version is never installed."
+  },
+  {
+    "name": "network none, person: my own extension declaring a host",
+    "why": "network none refuses a network: need whatever admitted the version.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "ann/tools/extensions/interp-extras",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "state": "draft",
+      "party": "third",
+      "needs": [
+        "model.forward",
+        "network:api.example.com"
+      ],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy allows no network, and ann/tools/extensions/interp-extras declares network:api.example.com."
+  },
+  {
+    "name": "network declared, person: my own extension declaring a host",
+    "why": "network declared lets a version reach the hosts it declares.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "declared"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "ann/tools/extensions/interp-extras",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "state": "draft",
+      "party": "third",
+      "needs": [
+        "network:api.example.com"
+      ],
+      "approvedBy": []
+    },
+    "ok": true
+  },
+  {
+    "name": "network none, person: first party declaring a host",
+    "why": "network none holds for the platform's own versions too.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "mechbench/stdlib/extensions/interp",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_mechbench"
+      },
+      "state": "verified",
+      "party": "first",
       "needs": [
         "network:huggingface.co"
-      ]
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+      ],
+      "approvedBy": []
     },
     "ok": false,
-    "reason": "The policy allows no network, and alice/interp-extras declares network:huggingface.co."
+    "reason": "The policy allows no network, and mechbench/stdlib/extensions/interp declares network:huggingface.co."
   },
   {
-    "name": "the level is refused before the network",
+    "name": "network none, person: needs without a host",
+    "why": "Only a network: need is a network need.",
+    "rule": "admit",
     "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
       "extensions": {
-        "install": "verified",
+        "admit": [
+          "own"
+        ],
         "allow": [],
-        "network": "none",
-        "require_approved": false
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
     },
     "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
+      "name": "ann/tools/extensions/interp-extras",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [
+        "model.forward",
+        "objects.read"
+      ],
+      "approvedBy": []
+    },
+    "ok": true
+  },
+  {
+    "name": "network none, person: an unadmitted version says why it is unadmitted",
+    "why": "The source refusal comes before the network one.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
       "state": "draft",
-      "visibility": "public",
+      "party": "third",
       "needs": [
         "network:api.example.com"
+      ],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits own, and cat/public/extensions/geometry is a draft version in a project user u_cat owns, approved by no org."
+  },
+  {
+    "name": "admit own, org machine: the org's draft",
+    "why": "own on an org's machine is versions in the org's projects, in any state.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
       ]
     },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "Under verified, carol/tools must be verified; it is draft."
-  },
-  {
-    "name": "visibility does not decide admission",
-    "policy": {
-      "extensions": {
-        "install": "verified",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
     },
     "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "verified",
-      "visibility": "private",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": true
-  },
-  {
-    "name": "mine: the owner's own checked version",
-    "policy": {
-      "extensions": {
-        "install": "mine",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
+      "name": "acme/lab/extensions/circuits",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
       },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "alice/interp-extras",
-      "owner": "u_alice",
-      "state": "checked",
-      "visibility": "private",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": true
-  },
-  {
-    "name": "mine: the platform's own verified extension",
-    "policy": {
-      "extensions": {
-        "install": "mine",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "mechbench/interp-extras",
-      "owner": "u_platform",
-      "state": "verified",
-      "visibility": "public",
-      "needs": [],
-      "party": "first"
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": true
-  },
-  {
-    "name": "mine: the platform's own checked version is not verified",
-    "policy": {
-      "extensions": {
-        "install": "mine",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "mechbench/interp-extras",
-      "owner": "u_platform",
-      "state": "checked",
-      "visibility": "private",
-      "needs": [],
-      "party": "first"
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "mechbench/interp-extras is checked, not verified: it runs only on its author's own runners."
-  },
-  {
-    "name": "mine: the platform's own draft",
-    "policy": {
-      "extensions": {
-        "install": "mine",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "mechbench/interp-extras",
-      "owner": "u_platform",
       "state": "draft",
-      "visibility": "private",
+      "party": "third",
       "needs": [],
-      "party": "first"
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "Under mine, mechbench/interp-extras must be your own or the platform's own verified extension; it is another author's draft version."
-  },
-  {
-    "name": "mine: another author's checked version runs only on their runners",
-    "policy": {
-      "extensions": {
-        "install": "mine",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "checked",
-      "visibility": "org",
-      "needs": [],
-      "org": "o_lab"
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "carol/tools is checked, not verified: it runs only on its author's own runners."
-  },
-  {
-    "name": "mine: party first names no owner, verified by another author is not first party",
-    "policy": {
-      "extensions": {
-        "install": "mine",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "verified",
-      "visibility": "public",
-      "needs": [],
-      "party": "third"
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "Under mine, carol/tools must be your own or the platform's own verified extension; it is another author's verified version."
-  },
-  {
-    "name": "verified: a checked version is refused",
-    "policy": {
-      "extensions": {
-        "install": "verified",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "checked",
-      "visibility": "private",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "carol/tools is checked, not verified: it runs only on its author's own runners."
-  },
-  {
-    "name": "verified: the owner's own checked version is refused too",
-    "policy": {
-      "extensions": {
-        "install": "verified",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "alice/interp-extras",
-      "owner": "u_alice",
-      "state": "checked",
-      "visibility": "private",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "alice/interp-extras is checked, not verified: it runs only on its author's own runners."
-  },
-  {
-    "name": "verified: the platform's own verified extension",
-    "policy": {
-      "extensions": {
-        "install": "verified",
-        "allow": [],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "mechbench/interp-extras",
-      "owner": "u_platform",
-      "state": "verified",
-      "visibility": "public",
-      "needs": [],
-      "party": "first"
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_bob"
+      "approvedBy": []
     },
     "ok": true
   },
   {
-    "name": "allowlist: a listed owner's checked version",
+    "name": "admit org, org machine: coincides with own",
+    "why": "On an org's machine org and own are the same set.",
+    "rule": "admit",
     "policy": {
-      "extensions": {
-        "install": "allowlist",
-        "allow": [
-          {
-            "owner": "u_carol"
-          }
+      "jobs": {
+        "serve": [
+          "own"
         ],
-        "network": "none",
-        "require_approved": false
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "org"
+        ],
+        "allow": [],
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
       },
-      "pools": []
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
     },
     "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "checked",
-      "visibility": "private",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_bob"
-    },
-    "ok": true
-  },
-  {
-    "name": "allowlist: a listed extension, checked, owner not listed",
-    "policy": {
-      "extensions": {
-        "install": "allowlist",
-        "allow": [
-          {
-            "extension": "carol/tools"
-          }
-        ],
-        "network": "none",
-        "require_approved": false
+      "name": "acme/lab/extensions/circuits",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
       },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "checked",
-      "visibility": "private",
-      "needs": []
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": true
-  },
-  {
-    "name": "allowlist: a listed org's checked version",
-    "policy": {
-      "extensions": {
-        "install": "allowlist",
-        "allow": [
-          {
-            "org": "o_lab"
-          }
-        ],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
-      "state": "checked",
-      "visibility": "private",
-      "needs": [],
-      "org": "o_lab"
-    },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": true
-  },
-  {
-    "name": "allowlist: a listed extension, pending, owner not listed",
-    "policy": {
-      "extensions": {
-        "install": "allowlist",
-        "allow": [
-          {
-            "extension": "carol/tools"
-          }
-        ],
-        "network": "none",
-        "require_approved": false
-      },
-      "upgrades": {
-        "compute": "auto"
-      },
-      "gc": {
-        "unused_days": 30
-      },
-      "pools": []
-    },
-    "extension": {
-      "name": "carol/tools",
-      "owner": "u_carol",
       "state": "pending",
-      "visibility": "private",
-      "needs": []
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
     },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
-    },
-    "ok": false,
-    "reason": "carol/tools is pending, and an unchecked extension installs only when its owner is listed."
+    "ok": true
   },
   {
-    "name": "network none refuses a checked version's network need under mine",
+    "name": "admit org, org machine: not the machine's other org ids",
+    "why": "An org machine's org is its own projects; the orgIds it lists are not read.",
+    "rule": "admit",
     "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
       "extensions": {
-        "install": "mine",
+        "admit": [
+          "org"
+        ],
         "allow": [],
-        "network": "none",
-        "require_approved": false
+        "network": "none"
       },
       "upgrades": {
         "compute": "auto"
       },
       "gc": {
         "unused_days": 30
-      },
-      "pools": []
+      }
     },
-    "extension": {
-      "name": "alice/interp-extras",
-      "owner": "u_alice",
-      "state": "checked",
-      "visibility": "private",
-      "needs": [
-        "network:api.example.com"
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme",
+        "org_other"
       ]
     },
-    "context": {
-      "runnerOwnerId": "u_alice",
-      "jobCreatorId": "u_alice"
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "extension": {
+      "name": "other/shared/extensions/lens",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_other"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
     },
     "ok": false,
-    "reason": "The policy allows no network, and alice/interp-extras declares network:api.example.com."
+    "reason": "The policy admits org, and other/shared/extensions/lens is a checked version in a project org org_other owns, approved by no org."
+  },
+  {
+    "name": "admit own, org machine: a member's personal draft",
+    "why": "A member's own draft runs on the org's machine only under Custom listed.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "extension": {
+      "name": "bea/scratch/extensions/probe-kit",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_bea"
+      },
+      "state": "draft",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits own, and bea/scratch/extensions/probe-kit is a draft version in a project user u_bea owns, approved by no org."
+  },
+  {
+    "name": "admit listed, org machine: a member's draft, owner named",
+    "why": "listed naming the member admits their draft on the org's machine.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "listed"
+        ],
+        "allow": [
+          {
+            "owner": "u_bea"
+          }
+        ],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "extension": {
+      "name": "bea/scratch/extensions/probe-kit",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_bea"
+      },
+      "state": "draft",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": true
+  },
+  {
+    "name": "admit own+approved, org machine: the org's approved version",
+    "why": "The org default admits versions the org approved.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "approved"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": [
+        "org_acme"
+      ]
+    },
+    "ok": true
+  },
+  {
+    "name": "admit own+approved, org machine: approved by another org",
+    "why": "On an org's machine only that org's approval counts.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "approved"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": [
+        "org_other"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy admits own and approved, and cat/public/extensions/geometry is a checked version in a project user u_cat owns, approved by org_other."
+  },
+  {
+    "name": "admit own+approved, org machine: another org's approval, listed in orgIds",
+    "why": "An org machine reads its own approval only, whatever orgIds holds.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "approved"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme",
+        "org_other"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": [
+        "org_other"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy admits own and approved, and cat/public/extensions/geometry is a checked version in a project user u_cat owns, approved by org_other."
+  },
+  {
+    "name": "admit own+verified, org machine: a stranger's verified version",
+    "why": "verified admits any verified version on any machine.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "verified"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "verified",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": true
+  },
+  {
+    "name": "admit own, org machine: a stranger's verified version",
+    "why": "The org's own is not the registry.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "extension": {
+      "name": "cat/public/extensions/geometry",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_cat"
+      },
+      "state": "verified",
+      "party": "third",
+      "needs": [],
+      "approvedBy": []
+    },
+    "ok": false,
+    "reason": "The policy admits own, and cat/public/extensions/geometry is a verified version in a project user u_cat owns, approved by no org."
+  },
+  {
+    "name": "corner: my protocols only, with the org's approved extensions (admit)",
+    "why": "serve [own], admit [own, approved]: my job installs the org's approved version.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "approved"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_ann",
+      "projectId": "prj_ann",
+      "projectOwner": {
+        "kind": "user",
+        "id": "u_ann"
+      }
+    },
+    "extension": {
+      "name": "acme/lab/extensions/circuits",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": [
+        "org_acme"
+      ]
+    },
+    "ok": true
+  },
+  {
+    "name": "corner: my protocols and the org's, with my own and verified extensions (admit)",
+    "why": "serve [own, org], admit [own, verified]: a colleague's job needing an org-only extension is not taken here.",
+    "rule": "admit",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own",
+          "org"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own",
+          "verified"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "job": {
+      "creatorId": "u_bea",
+      "projectId": "prj_acme",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      }
+    },
+    "extension": {
+      "name": "acme/lab/extensions/circuits",
+      "projectOwner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "state": "checked",
+      "party": "third",
+      "needs": [],
+      "approvedBy": [
+        "org_acme"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy admits own and verified, and acme/lab/extensions/circuits is a checked version in a project org org_acme owns, approved by org_acme."
   }
 ]

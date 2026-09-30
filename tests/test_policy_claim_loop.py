@@ -9,11 +9,10 @@ from mechbench_runner.api_client import ApiError  # noqa: E402
 from mechbench_runner.config import Config  # noqa: E402
 
 BODY = {
-    "extensions": {"install": "mine", "allow": [], "network": "none",
-                   "require_approved": False},
+    "jobs": {"serve": ["own"], "allow": []},
+    "extensions": {"admit": ["own"], "allow": [], "network": "none"},
     "upgrades": {"compute": "auto"},
     "gc": {"unused_days": 30},
-    "pools": [],
 }
 
 
@@ -35,6 +34,9 @@ class FakeApi:
         self.fetches += 1
         version = self.served[min(self.fetches, len(self.served)) - 1]
         return {"policyId": "pol_personal", "version": version, "body": BODY}
+
+    def whoami(self) -> dict:
+        return {"runner": {"id": "rnr_1", "scope": "user"}, "account": {"userId": "u_alice"}}
 
     def claim_next_job(self, *_a):
         if not self.claims:
@@ -81,7 +83,8 @@ def runner(monkeypatch):
 
 
 def _job(version: int) -> dict:
-    return {"id": f"j_{version}", "userId": "u_alice",
+    return {"id": f"j_{version}", "creatorId": "u_alice", "projectId": "prj_1",
+            "projectOwner": {"kind": "user", "id": "u_alice"},
             "policy": {"id": "pol_personal", "version": version}}
 
 
