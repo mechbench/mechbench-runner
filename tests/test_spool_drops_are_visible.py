@@ -58,7 +58,7 @@ class TestADroppedItem:
         r = _runner(monkeypatch)
         r._spool_item("gen", "k1", {"text": "story", "n": 1})
         assert r._spool.dropped == {}
-        assert len(list((r._spool.root / "gen" / "items").glob("*.cbor"))) == 1
+        assert len(list((r._spool.node_dir("gen") / "items").glob("*.cbor"))) == 1
 
     def test_the_summary_reports_drops(self, monkeypatch):
         r = _runner(monkeypatch)

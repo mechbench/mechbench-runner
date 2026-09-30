@@ -172,7 +172,7 @@ class TestDeliverChoosesThePath:
         jr._spool_result("j_1", b"\xa0" * 200, "00")
         r._deliver(api, "j_1", b"\xa0" * 200, "00")
         assert api.finalized == []
-        assert (jr.spool_dir() / "j_1" / "result.cbor").is_file()
+        assert (jr.job_dir("j_1") / "result.cbor").is_file()
 
 
 class TestDeclaringWhatDidNotRun:
@@ -199,7 +199,7 @@ class TestDeclaringWhatDidNotRun:
 
     def test_a_result_that_lost_nothing_spools_no_sidecar(self):
         jr._spool_result("j_3", b"\xa0" * 10, "00")
-        assert not (jr.spool_dir() / "j_3" / "result.missing.json").exists()
+        assert not (jr.job_dir("j_3") / "result.missing.json").exists()
         assert jr._spooled_missing("j_3") is None
 
     def test_missing_is_read_off_a_payload_either_way_it_is_wrapped(self):

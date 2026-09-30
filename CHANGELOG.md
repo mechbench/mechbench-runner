@@ -23,6 +23,51 @@ with both headings.
 
 ---
 
+## 0.52.0 — 2026-09-30
+
+### Changes that raise
+
+- **A job id or protocol node id outside `^[A-Za-z0-9_-]{1,64}$` is
+  refused at claim** (task 000963, security review finding H4). The
+  runner fails the job with the offending id in the message before it
+  installs, spools or runs anything. The models schema still takes any
+  1–64 characters for a node id, so a protocol with a node id such as
+  `gen.1` or `a b` validates on the API and then fails on every runner
+  from this version. None of mechbench-experiments' protocols has one.
+- **A verification job refuses an example input whose object path
+  resolves outside its scratch inputs directory**, before fetching it.
+- **An extension package reference whose sha256 is not 64 lowercase hex
+  digits is refused** (it used to be refused only after the fetch, when
+  the hash did not match).
+
+### Changes that alter results without raising
+
+_None._ The spool's layout changes; what it holds, and what a resumed
+run reuses, does not.
+
+### Other
+
+- **Spool directories are named by a hash of the id, never by the id**
+  (task 000963). A job's spool is `~/.mechbench/spool/<h(job id)>/` and
+  a node's is `<job>/<h(node id)>/`, where `h` is the first 32 hex
+  digits of sha256. Each directory holds a `.mechbench-owned` marker
+  naming its id, written when the runner creates it; the resume map and
+  the spooled-job list read ids from the markers.
+- **One helper, `mechbench_runner/confine.py`, derives every path the
+  runner builds from a job id, node id, object path or package digest**:
+  it checks the id, resolves the path, and refuses (`PathRefusedError`,
+  naming the id) anything that is not strictly under its root, including
+  through a symlink. It deletes only a directory carrying the marker,
+  never follows a symlink when deleting, and never claims an existing
+  directory it did not create. The verification scratch directory is
+  named and cleaned the same way.
+- **A result spooled by 0.51.0 or earlier is adopted**: a directory
+  named by a valid job id holding `result.cbor` is moved to its hashed
+  name and marked the first time the runner lists the spool, so an
+  undelivered result survives the upgrade. Partial node spools from
+  those versions are left where they are and not read; a job resumed
+  across the upgrade recomputes those nodes.
+
 ## 0.51.0 — 2026-09-30
 
 ### Changes that raise

@@ -25,6 +25,7 @@ from .ambient import NodeWatch, model_bearing
 from .api_client import ApiClient, ApiError
 from .channel import LiveChannel
 from .config import Config
+from .confine import PathRefusedError, check_id, owner_of, remove_owned
 from .control import ControlServer, RunnerState, probe, socket_path
 from .exits import EXIT_CRASH, EXIT_OK, EXIT_RESTART
 from .extensions import Extensions
@@ -33,7 +34,7 @@ from .machine import default_name
 from .paths import limits_path, spool_dir
 from .policy import PolicyHolder, check_installs
 from .spend import SharedLimiter, SpendLedger
-from .spool import JobSpool
+from .spool import JobSpool, adopt_legacy, job_dir, make_job_dir
 from .verification import VERIFICATION, Verification
 from .watchdog import Watchdog
 
@@ -62,8 +63,7 @@ TERMINAL_SERVER_STATUS = ("done", "done_with_missing", "failed", "cancelled")
 def _spool_result(job_id: str, cbor_bytes: bytes, digest: str,
                   claim_token: str | None = None,
                   missing: Mapping[str, Any] | None = None) -> None:
-    d = spool_dir() / job_id
-    d.mkdir(mode=0o700, parents=True, exist_ok=True)
+    d = make_job_dir(job_id)
     tmp = d / "result.cbor.tmp"
     tmp.write_bytes(cbor_bytes)
     os.replace(tmp, d / "result.cbor")
@@ -101,7 +101,7 @@ def _missing_of(payload: Any) -> dict[str, Any] | None:
 
 
 def _spooled_missing(job_id: str) -> dict[str, Any] | None:
-    f = spool_dir() / job_id / "result.missing.json"
+    f = job_dir(job_id) / "result.missing.json"
     if not f.is_file():
         return None
     with suppress(Exception):
@@ -112,7 +112,7 @@ def _spooled_missing(job_id: str) -> dict[str, Any] | None:
 
 
 def _spooled_claim_token(job_id: str) -> str | None:
-    tok = spool_dir() / job_id / "claim.token"
+    tok = job_dir(job_id) / "claim.token"
     return tok.read_text().strip() if tok.is_file() else None
 
 
@@ -128,7 +128,7 @@ def _remember_claim_token(api: Any, job_id: str, token: str) -> None:
 
 
 def _spooled_result(job_id: str) -> tuple[bytes, str] | None:
-    d = spool_dir() / job_id
+    d = job_dir(job_id)
     blob, sha = d / "result.cbor", d / "result.sha256"
     if not (blob.is_file() and sha.is_file()):
         return None
@@ -136,11 +136,14 @@ def _spooled_result(job_id: str) -> tuple[bytes, str] | None:
 
 
 def _clear_spool(job_id: str) -> None:
-    shutil.rmtree(spool_dir() / job_id, ignore_errors=True)
+    try:
+        remove_owned(job_dir(job_id))
+    except PathRefusedError as exc:
+        print(f"[runner] spool not cleared: {exc}")
 
 
 def _disown_spool(job_id: str, why: str) -> Path | None:
-    d = spool_dir() / job_id
+    d = job_dir(job_id)
     blob = d / "result.cbor"
     if not blob.is_file():
         return None
@@ -164,11 +167,20 @@ def _standing_refusal(exc: BaseException) -> str | None:
 
 
 def _spooled_job_ids() -> list[str]:
-    root = spool_dir()
+    adopt_legacy()
     return sorted(
-        p.name for p in root.iterdir()
-        if p.is_dir() and (p / "result.cbor").is_file()
+        job_id for p in spool_dir().iterdir()
+        if (job_id := owner_of(p)) is not None and (p / "result.cbor").is_file()
     )
+
+
+def _check_claim(job: Mapping[str, Any]) -> None:
+    check_id("job id", job.get("id"))
+    spec = job.get("spec")
+    graph = spec.get("graph") if isinstance(spec, Mapping) else None
+    nodes = graph.get("nodes") if isinstance(graph, Mapping) else None
+    for node in nodes if isinstance(nodes, list) else []:
+        check_id("node id", node.get("id") if isinstance(node, Mapping) else node)
 
 
 def _seconds_since(iso: object) -> float:
@@ -382,6 +394,14 @@ class JobRunner:
 
                 if job is None:
                     self._sleep(self.config.poll_interval_seconds)
+                    continue
+
+                try:
+                    _check_claim(job)
+                except PathRefusedError as exc:
+                    print(f"[runner] {exc}")
+                    self.state.job_failed(str(job.get("id", "?"))[:64], str(exc))
+                    self._report_error(api, job, exc)
                     continue
 
                 if not all(a.ok for a in check_installs(api, self._policy, job)):
@@ -617,7 +637,7 @@ class JobRunner:
             print("[runner] Run `mechbench login` to reconnect.")
 
     def _handle(self, api: ApiClient, job: dict[str, Any]) -> None:
-        job_id = job["id"]
+        job_id = check_id("job id", job["id"])
         kind = job["protocolKind"]
         if kind == VERIFICATION:
             self._verify(api, job)

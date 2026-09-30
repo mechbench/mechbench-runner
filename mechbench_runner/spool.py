@@ -3,10 +3,19 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 from pathlib import Path
 from typing import Any
 
+from .confine import (
+    MARKER,
+    PathRefusedError,
+    check_id,
+    make_owned,
+    owned_dir,
+    owner_of,
+    remove_owned,
+    under,
+)
 from .paths import spool_dir
 
 
@@ -17,37 +26,69 @@ def _write_atomic(path: Path, data: bytes) -> None:
     os.replace(tmp, path)
 
 
+def job_dir(job_id: str) -> Path:
+    return owned_dir(spool_dir(), "job id", job_id)
+
+
+def make_job_dir(job_id: str) -> Path:
+    return make_owned(job_dir(job_id), job_id)
+
+
+def adopt_legacy() -> None:
+    root = spool_dir()
+    for d in list(root.iterdir()):
+        if (d.is_symlink() or not d.is_dir() or (d / "result.cbor").is_symlink()
+                or not (d / "result.cbor").is_file()):
+            continue
+        name = d.name
+        try:
+            target = job_dir(name)
+        except PathRefusedError:
+            continue
+        if target.exists() or (d / MARKER).exists():
+            continue
+        os.replace(d, target)
+        make_owned(target, name, adopt=True)
+
+
 class JobSpool:
     def __init__(self, job_id: str) -> None:
-        self.job_id = job_id
-        self.root = spool_dir() / job_id
+        self.job_id = check_id("job id", job_id)
+        self.root = job_dir(job_id)
         self.dropped: dict[str, int] = {}
 
+    def node_dir(self, nid: str) -> Path:
+        return owned_dir(self.root, "node id", nid)
+
+    def _open(self, nid: str) -> Path:
+        d = self.node_dir(nid)
+        make_owned(self.root, self.job_id)
+        return make_owned(d, nid)
+
     def node_start(self, nid: str, fingerprint: str) -> None:
-        d = self.root / nid
+        d = self._open(nid)
         fp = d / "fingerprint"
         if fp.is_file() and fp.read_text().strip() != fingerprint:
-            for sub in ("items", "checkpoint"):
-                shutil.rmtree(d / sub, ignore_errors=True)
-            (d / "done").unlink(missing_ok=True)
-            (d / "held.cbor").unlink(missing_ok=True)
+            for sub in ("items", "checkpoint", "done", "held.cbor"):
+                remove_owned(d, sub)
         _write_atomic(fp, fingerprint.encode())
 
     def item(self, nid: str, key: str, item: Any) -> None:
         from mechbench_schema import dump_canonical
 
         name = hashlib.sha256(key.encode()).hexdigest()[:24] + ".cbor"
-        _write_atomic(self.root / nid / "items" / name,
+        d = self._open(nid)
+        _write_atomic(under(d, "items", name, what="node id", ident=nid),
                       dump_canonical({"key": key, "item": item}))
 
     def checkpoint(self, nid: str, state: dict[str, Any]) -> None:
         import mlx.core as mx
         from mechbench_schema import dump_canonical
 
-        d = self.root / nid / "checkpoint"
-        d.mkdir(mode=0o700, parents=True, exist_ok=True)
-        tmp = d.with_name("checkpoint.tmp")
-        shutil.rmtree(tmp, ignore_errors=True)
+        node = self._open(nid)
+        d = under(node, "checkpoint", what="node id", ident=nid)
+        tmp = under(node, "checkpoint.tmp", what="node id", ident=nid)
+        remove_owned(node, "checkpoint.tmp")
         tmp.mkdir(mode=0o700)
         mx.save_safetensors(str(tmp / "weights.safetensors"),
                             {k: mx.array(v) for k, v in state["weights"].items()})
@@ -64,19 +105,19 @@ class JobSpool:
                        else [int(x) for x in state["mx_key"]]),
         }
         (tmp / "state.cbor").write_bytes(dump_canonical(meta))
-        shutil.rmtree(d, ignore_errors=True)
+        remove_owned(node, "checkpoint")
         os.replace(tmp, d)
 
     def node_done(self, nid: str, path: str | None, fingerprint: str) -> None:
         from mechbench_schema import dump_canonical
 
-        _write_atomic(self.root / nid / "done",
+        _write_atomic(self._open(nid) / "done",
                       dump_canonical({"path": path, "fingerprint": fingerprint}))
 
     def node_kept(self, nid: str, fingerprint: str, result: Any) -> None:
         from mechbench_schema import dump_canonical
 
-        _write_atomic(self.root / nid / "held.cbor",
+        _write_atomic(self._open(nid) / "held.cbor",
                       dump_canonical({"fingerprint": fingerprint, "result": result}))
 
     def resume_map(self) -> dict[str, dict[str, Any]]:
@@ -87,7 +128,11 @@ class JobSpool:
         out: dict[str, dict[str, Any]] = {}
         if not self.root.is_dir():
             return out
-        for d in sorted(p for p in self.root.iterdir() if p.is_dir()):
+        if owner_of(self.root) != self.job_id:
+            return out
+        nodes = sorted((nid, p) for p in self.root.iterdir()
+                       if p.is_dir() and (nid := owner_of(p)) is not None)
+        for nid, d in nodes:
             fp_file = d / "fingerprint"
             if not fp_file.is_file():
                 continue
@@ -97,7 +142,7 @@ class JobSpool:
                 rec = load_raw(done.read_bytes())
                 if isinstance(rec, dict) and rec.get("path"):
                     entry["done"] = rec["path"]
-                    out[d.name] = entry
+                    out[nid] = entry
                     continue
             kept = d / "held.cbor"
             if kept.is_file():
@@ -108,7 +153,7 @@ class JobSpool:
                 if (isinstance(rec, dict) and "result" in rec
                         and rec.get("fingerprint") == entry["fingerprint"]):
                     entry["held"] = rec["result"]
-                    out[d.name] = entry
+                    out[nid] = entry
                     continue
             items_dir = d / "items"
             if items_dir.is_dir():
@@ -139,7 +184,7 @@ class JobSpool:
                                else np.array(meta["mx_key"], dtype=np.uint32)),
                 }
             if len(entry) > 1:
-                out[d.name] = entry
+                out[nid] = entry
         return out
 
     def summary(self) -> dict[str, Any]:
@@ -157,4 +202,4 @@ class JobSpool:
         }
 
     def clear(self) -> None:
-        shutil.rmtree(self.root, ignore_errors=True)
+        remove_owned(self.root)

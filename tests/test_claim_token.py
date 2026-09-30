@@ -113,7 +113,7 @@ class TestTheSpoolPersistsIt:
         jr._spool_result("j_1", b"\xa0", "00", "tok-first")
         assert jr._spooled_result("j_1") == (b"\xa0", "00")
         assert jr._spooled_claim_token("j_1") == "tok-first"
-        path = jr.spool_dir() / "j_1" / "claim.token"
+        path = jr.job_dir("j_1") / "claim.token"
         assert oct(path.stat().st_mode & 0o777) == "0o600"
 
     def test_no_token_means_no_file(self):

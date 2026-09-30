@@ -6,7 +6,7 @@ pytest.importorskip("mechbench_compute")
 
 from mechbench_runner import job_runner as jr  # noqa: E402
 from mechbench_runner.config import Config  # noqa: E402
-from mechbench_runner.paths import spool_dir  # noqa: E402
+from mechbench_runner.spool import job_dir, make_job_dir  # noqa: E402
 
 
 class RecordingApi:
@@ -70,7 +70,7 @@ def _runner(monkeypatch, runner_id="r_mine"):
 
 
 def _spooled(job_id: str) -> bool:
-    return (spool_dir() / job_id / "result.cbor").is_file()
+    return (job_dir(job_id) / "result.cbor").is_file()
 
 
 class TestSpoolHelpers:
@@ -83,8 +83,7 @@ class TestSpoolHelpers:
         assert jr._spooled_job_ids() == []
 
     def test_a_half_written_result_is_not_a_result(self):
-        d = spool_dir() / "j_half"
-        d.mkdir(parents=True)
+        d = make_job_dir("j_half")
         (d / "result.cbor.tmp").write_bytes(b"\xa0")
         assert jr._spooled_result("j_half") is None
         assert jr._spooled_job_ids() == []
@@ -193,10 +192,10 @@ class TestFlushAtReconciliation:
         jr._spool_result("j_1", b"\xa0", "00")
         runner._flush_spool(api)
         assert not _spooled("j_1")
-        kept = spool_dir() / "j_1" / "result.cbor.disowned"
+        kept = job_dir("j_1") / "result.cbor.disowned"
         assert kept.read_bytes() == b"\xa0"
         assert "another key holds the claim" in (
-            spool_dir() / "j_1" / "disowned.txt").read_text()
+            job_dir("j_1") / "disowned.txt").read_text()
         runner._flush_spool(api)
         assert api.completed == []
 

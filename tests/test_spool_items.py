@@ -80,7 +80,7 @@ class TestJobSpool:
         sp = JobSpool("j_e")
         sp.node_start("gen", "fp")
         sp.item("gen", "k", {"v": 1})
-        (sp.root / "gen" / "items" / "torn.cbor").write_bytes(b"\xff\x00")
+        (sp.node_dir("gen") / "items" / "torn.cbor").write_bytes(b"\xff\x00")
         assert list(sp.resume_map()["gen"]["items"]) == ["k"]
 
     def test_checkpoint_round_trip(self):

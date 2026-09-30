@@ -188,7 +188,8 @@ def holder(tmp_path):
 def job(items, jid="j_1", **extra):
     return {"id": jid, "userId": "u_alice", "orgId": None,
             "policy": {"id": "pol_personal", "version": 1},
-            "spec": {"graph": {"nodes": [{"block": "u_alice/lab/ops/geo/align"}]}},
+            "spec": {"graph": {"nodes": [
+                {"id": "align", "block": "u_alice/lab/ops/geo/align"}]}},
             "install": items, **extra}
 
 

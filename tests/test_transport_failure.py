@@ -8,7 +8,7 @@ from mechbench_compute.bench import BenchError, BenchTransportError  # noqa: E40
 
 from mechbench_runner import job_runner as jr  # noqa: E402
 from mechbench_runner.config import Config  # noqa: E402
-from mechbench_runner.paths import spool_dir  # noqa: E402
+from mechbench_runner.spool import job_dir  # noqa: E402
 
 
 class RecordingApi:
@@ -42,7 +42,7 @@ def _runner(monkeypatch):
 
 
 def _spooled(job_id: str) -> bool:
-    return (spool_dir() / job_id).is_dir()
+    return job_dir(job_id).is_dir()
 
 
 class TestClassification:

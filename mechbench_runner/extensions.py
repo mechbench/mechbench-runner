@@ -22,6 +22,7 @@ import httpx
 from . import install as install_mod
 from . import paths
 from .api_client import ApiError, installed_path
+from .confine import under
 from .policy import PolicyHolder, _release, policy_admits
 
 INSTALL_FAILED = "INSTALL_FAILED"
@@ -97,7 +98,7 @@ def read_failed() -> dict[str, dict[str, Any]]:
 def digest_of(ref: str) -> str:
     tail = ref.rsplit("/", 1)[-1]
     algo, _, hexd = tail.partition(":")
-    if algo != "sha256" or len(hexd) != 64:
+    if algo != "sha256" or not re.fullmatch(r"[0-9a-f]{64}", hexd):
         raise InstallError(f"{ref} is not a sha256 reference")
     return hexd
 
@@ -325,7 +326,7 @@ class Extensions:
     def _fetch(self, api: Any, ref: str, *, wheel: bool = False,
                lock: bool = False) -> Fetched:
         digest = digest_of(ref)
-        blob = cache_dir() / digest
+        blob = under(cache_dir(), digest, what="package reference", ident=ref)
         if not (blob.is_file() and _sha256(blob.read_bytes()) == digest):
             try:
                 data = api.fetch_by_hash(ref)

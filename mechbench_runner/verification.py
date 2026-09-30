@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -14,6 +13,7 @@ from typing import Any
 
 from . import install as install_mod
 from . import paths
+from .confine import make_owned, owned_dir, remove_owned, under
 from .extensions import Extensions, InstallError, _norm, compute_version
 from .policy import PolicyHolder, _release, policy_admits
 
@@ -236,9 +236,9 @@ class Verification:
             "model": False,
             "failure": None,
         }
-        scratch = scratch_root() / re.sub(r"[^A-Za-z0-9_-]", "_", job_id)
-        shutil.rmtree(scratch, ignore_errors=True)
-        scratch.mkdir(parents=True)
+        scratch = owned_dir(scratch_root(), "job id", job_id)
+        remove_owned(scratch)
+        make_owned(scratch, job_id)
         step = 0
 
         def progress(stage: str) -> None:
@@ -331,7 +331,7 @@ class Verification:
                 "message": _clip(f"{type(exc).__name__}: {exc}", MESSAGE_CHARS),
             }
         finally:
-            shutil.rmtree(scratch, ignore_errors=True)
+            remove_owned(scratch)
         return report
 
     def _needs(self, ext: Mapping[str, Any]) -> list[str]:
@@ -442,12 +442,13 @@ class Verification:
         return lock
 
     def _inputs(self, api: Any, root: Path, manifest: Mapping[str, Any]) -> Path:
-        root.mkdir(parents=True, exist_ok=True)
         wanted: list[str] = []
         for op in (manifest.get("provides") or {}).get("ops") or []:
             wanted += _refs_in(op.get("example_inputs") or {})
-        for where in sorted(set(wanted)):
-            target = root / f"{where}.json"
+        targets = {where: under(root, f"{where}.json", what="object path", ident=where)
+                   for where in sorted(set(wanted))}
+        root.mkdir(parents=True, exist_ok=True)
+        for where, target in targets.items():
             target.parent.mkdir(parents=True, exist_ok=True)
             try:
                 value = _decode(api.fetch_object(where))
