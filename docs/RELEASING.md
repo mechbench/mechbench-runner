@@ -119,7 +119,7 @@ the downloaded files and the manifest's sha256.
    `.env.local` as `MECHBENCH_RELEASE_API_KEY`; the PM sets the secret from
    the file without printing it:
    `sed -n 's/^MECHBENCH_RELEASE_API_KEY=//p' .env.local | gh secret set MECHBENCH_RELEASE_API_KEY --repo mechbench/mechbench-api --env release`.
-   A narrower `release` scope is task 000973.
+   A narrower `release` scope is filed as a follow-up.
 6. **After the first CI publish of each package works,** delete the PyPI
    API token twine used (pypi.org → Account settings → API tokens) and
    remove it from this Mac (`~/.pypirc`, or the keyring entry).
