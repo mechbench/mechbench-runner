@@ -23,7 +23,7 @@ with both headings.
 
 ---
 
-## Unreleased
+## 0.53.0 — 2026-09-30
 
 ### Changes that raise
 
@@ -70,14 +70,6 @@ with both headings.
 - **`extension list --state` takes `checked`**, and `extension push`
   and `extension verify` say they queue the version's checks, which make
   it `checked`; `verified` takes a person's review.
-
-### Changes that alter results without raising
-
-_None._
-
-## 0.53.0 — 2026-09-30
-
-### Changes that raise
 
 - **Runners upgrade only from the signed release manifest** (task
   000965, security review finding H6). The hourly upgrade under
