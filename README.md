@@ -118,6 +118,8 @@ between them.
    `sudo sysadminctl -autologin set -userName "$USER" -password -`.
 4. **Install and sign in.** No browser is needed: mint a single-use
    token at [mechbench.ai/download](https://mechbench.ai/download).
+   `scripts/dedicated-mac.sh` does steps 1, 2, 4, 5 and 7 unattended —
+   paste it (with the token) into the provider's startup script.
 
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh
