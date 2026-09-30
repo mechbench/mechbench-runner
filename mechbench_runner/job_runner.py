@@ -30,6 +30,7 @@ from .confine import PathRefusedError, check_id, owner_of, remove_owned
 from .control import ControlServer, RunnerState, probe, socket_path
 from .exits import EXIT_CRASH, EXIT_OK, EXIT_RESTART
 from .extensions import Extensions
+from .job_credentials import HELD as HELD_CREDENTIALS
 from .live import PURE, LiveHost
 from .machine import default_name
 from .paths import limits_path, spool_dir
@@ -209,6 +210,7 @@ class JobRunner:
         self.config = config
         self._shutdown = False
         self._active_job: str | None = None
+        self._deprecation_warned = False
         self._active_api: ApiClient | None = None
         self._last_byte_report = 0.0
         self._last_node: dict[str, Any] | None = None
@@ -281,6 +283,8 @@ class JobRunner:
     def install_signal_handlers(self) -> None:
         def _handler(signum: int, _frame: FrameType | None) -> None:
             self._shutdown = True
+            if self._active_job is None:
+                HELD_CREDENTIALS.clear()
             name = signal.Signals(signum).name
             print(f"\n[runner] {name} received; exiting after the current job.")
 
@@ -300,6 +304,7 @@ class JobRunner:
         try:
             return self._run()
         finally:
+            HELD_CREDENTIALS.clear()
             self._limiter.save()
 
     def _run(self) -> int:
@@ -375,6 +380,7 @@ class JobRunner:
                 try:
                     job = (api.claim_next_job(PURE) if self._live.holding
                            else api.claim_next_job())
+                    self._warn_deprecated(api)
                 except ApiError as e:
                     if e.status == 401:
                         self._signed_out()
@@ -429,6 +435,12 @@ class JobRunner:
         self._stop_channel()
         self._watchdog.stop()
         return EXIT_OK
+
+    def _warn_deprecated(self, api: ApiClient) -> None:
+        said = getattr(api, "deprecation", None)
+        if said and not self._deprecation_warned:
+            self._deprecation_warned = True
+            print(f"[runner] warning: {said}", flush=True)
 
     def _between_jobs(self, api: ApiClient) -> str | None:
         try:
@@ -708,7 +720,6 @@ class JobRunner:
         spec = ProtocolSpec(kind=kind, prompt=prompt, model_id=model_id,
                               extra={**spec_dict,
                                      "resultPath": job.get("resultPath")})
-        secrets = job.get("integrations") or {}
         self._spend = SpendLedger(spec_dict.get("budgetUsd"))
 
         promoted = False
@@ -760,6 +771,7 @@ class JobRunner:
                 print(f"[runner] progress report failed ({e}); continuing")
 
         try:
+            secrets = HELD_CREDENTIALS.fetch(api, job)
             run_kwargs: dict[str, Any] = {}
             if resume_map:
                 run_kwargs["resume"] = resume_map
@@ -790,7 +802,7 @@ class JobRunner:
             self._active_api = None
             self._spool = None
             self._release_awake()
-            secrets.clear()
+            HELD_CREDENTIALS.clear()
             job.pop("integrations", None)
 
     def _verify(self, api: ApiClient, job: dict[str, Any]) -> None:

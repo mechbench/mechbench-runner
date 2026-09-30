@@ -382,20 +382,26 @@ class TestTheJobRunnerHandsComputeWhatItNeeds:
         r._configure_bench()
         assert seen == {"api_url": "https://api.example.invalid", "api_key": "k"}
 
-    def test_claim_delivered_secrets_reach_compute_and_are_disposed(
+    def test_a_jobs_credentials_reach_compute_and_are_disposed(
             self, jr, monkeypatch):
         r = jr.JobRunner(_config())
         got: dict[str, object] = {}
 
         def fake_run(spec, *, on_progress=None, secrets=None, **_kw):
             got["secrets"] = secrets
-            got["copy"] = dict(secrets or {})
-            got["in_spec"] = "integrations" in json.dumps(spec.extra, default=str)
+            got["copy"] = {k: dict(v) for k, v in (secrets or {}).items()}
+            got["in_spec"] = "sk-secret" in json.dumps(spec.extra, default=str)
             got["in_env"] = any("sk-secret" in v for v in os.environ.values())
             return {"protocol": "layer_ablation"}
 
         class Api:
             claim_tokens: dict[str, str] = {}
+            asked: list[str] = []
+
+            def job_credentials(self, job_id):
+                self.asked.append(job_id)
+                return {"credentials": {"anthropic": {"token": "sk-secret"}},
+                        "missing": []}
 
             def report_progress(self, *_a, **_k):
                 return None
@@ -414,9 +420,10 @@ class TestTheJobRunnerHandsComputeWhatItNeeds:
         monkeypatch.setattr(jr, "dump_canonical", lambda _p: b"\xa0")
         job = {"id": "j_s", "protocolKind": "layer_ablation",
                "spec": {"prompt": "hi", "modelId": "m@r"},
-               "integrations": {"anthropic": {"token": "sk-secret"}}}
-        r._handle(Api(), job)
+               "providers": ["anthropic"]}
+        api = Api()
+        r._handle(api, job)
+        assert api.asked == ["j_s"]
         assert got["copy"] == {"anthropic": {"token": "sk-secret"}}
         assert got["in_spec"] is False and got["in_env"] is False
         assert got["secrets"] == {}
-        assert "integrations" not in job

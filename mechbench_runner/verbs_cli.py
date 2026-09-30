@@ -341,6 +341,12 @@ def main(config: Config, ns: argparse.Namespace, ctx: Ctx | None = None) -> int:
             f"{body.get('error') or ''}",
             file=sys.stderr,
         )
+        if body.get("code") == "KEY_SCOPE" and config.from_stored_credentials:
+            print(
+                "this machine's stored key is its runner's, which acts only as the "
+                "runner; for the verbs, set MECHBENCH_API_KEY to an API key of yours",
+                file=sys.stderr,
+            )
         source = a.get("body_file") or a.get("description_file") or a.get("file") or "-"
         for r in body.get("refusals") or []:
             print(

@@ -38,6 +38,25 @@ with both headings.
   its owner. A checked version refused on another person's runner says
   "is checked, not verified: it runs only on its author's own
   runners." The vendored `policy_cases.json` is the models copy.
+- **A job's provider credentials are fetched after the claim, held in
+  memory, and dropped when the job ends** (task 000962, security review
+  H3). The claim names the providers the job's graph uses; the runner
+  asks `POST /jobs/:id/credentials` for exactly those, holds them in
+  one in-memory holder for the job, and empties it in place when the
+  job finishes, fails or is released, on SIGTERM while idle, and at
+  exit. Nothing is written under `~/.mechbench` (the spool, held node
+  results and checkpoints included). A runner restarted mid-job asks
+  again after it re-claims. A provider the owner holds no credential
+  for is named in the log, and the nodes that call it fail as before.
+  Against an API that still puts `integrations` in the claim, those
+  are taken out of the claim into the holder.
+- **The runner's key acts only as its runner.** The CLI verbs
+  (`mechbench protocol list` and the rest) refused with `KEY_SCOPE`
+  on the stored runner key now say to set `MECHBENCH_API_KEY` to an
+  API key of yours. A runner claiming with a hand-minted user key logs
+  the API's deprecation line once; `mechbench login` registers the
+  machine with a runner key, and warns when `MECHBENCH_API_KEY` is set
+  and would take precedence over it.
 
 ### Changes that alter results without raising
 

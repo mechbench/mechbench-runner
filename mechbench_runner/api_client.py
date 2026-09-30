@@ -195,6 +195,7 @@ class ApiClient:
             timeout=httpx.Timeout(30.0),
         )
         self.claim_tokens: dict[str, str] = {}
+        self.deprecation: str | None = None
 
     def close(self) -> None:
         self._client.close()
@@ -233,6 +234,9 @@ class ApiClient:
         res = self._client.get(
             "/jobs/next", params={"capabilities": capabilities or self.CAPABILITIES},
             headers=headers)
+        warned = res.headers.get("x-mechbench-deprecation")
+        if warned:
+            self.deprecation = warned
         if res.status_code == 204:
             return None
         self._raise_for_status(res)
@@ -241,6 +245,12 @@ class ApiClient:
         if tok and job.get("id"):
             self.claim_tokens[str(job["id"])] = str(tok)
         return job
+
+    def job_credentials(self, job_id: str) -> dict[str, Any]:
+        res = self._client.post(f"/jobs/{job_id}/credentials",
+                                headers=self._job_headers(job_id))
+        self._raise_for_status(res)
+        return res.json()
 
     def live_leased(self) -> list[dict[str, Any]]:
         res = self._client.get("/live-runs/leased")

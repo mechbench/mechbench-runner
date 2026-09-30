@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -111,8 +112,19 @@ def _login_with_token(config: Config, token: str, name: str | None) -> int:
         f"Connected as \"{runner.get('name')}\" ({runner.get('id')}).\n"
         f"Credentials written to {path} (mode 0600)."
     )
+    _warn_env_key()
     _offer_service()
     return 0
+
+
+def _warn_env_key() -> None:
+    if os.environ.get("MECHBENCH_API_KEY"):
+        print(
+            "\nMECHBENCH_API_KEY is set in this environment, and a process that "
+            "sees it uses it instead of this runner's key. Unset it wherever "
+            "`mechbench run` starts, so the runner claims with its own key.",
+            file=sys.stderr,
+        )
 
 
 def _offer_service() -> None:
@@ -337,5 +349,6 @@ def _store_and_finish(config: Config, answer: dict) -> int:
             f"at {existing.api_url}."
         )
     print(f"Credentials written to {path} (mode 0600).")
+    _warn_env_key()
     _offer_service()
     return 0
