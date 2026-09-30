@@ -17,6 +17,7 @@ class StoredCredentials:
     runner_id: str | None = None
     name: str | None = None
     registered_at: str | None = None
+    cli_key: str | None = None
 
 
 def load(path: Path | None = None) -> StoredCredentials | None:
@@ -44,6 +45,7 @@ def load(path: Path | None = None) -> StoredCredentials | None:
         runner_id=_opt_str(table.get("id")),
         name=_opt_str(table.get("name")),
         registered_at=_opt_str(table.get("registered_at")),
+        cli_key=_opt_str(table.get("cli_key")),
     )
 
 
@@ -75,7 +77,8 @@ def clear(path: Path | None = None) -> bool:
 def _render(creds: StoredCredentials) -> str:
     lines = [
         "# mechbench credentials, written by `mechbench login`.",
-        "# Holds a durable API key: keep this file mode 0600.",
+        "# Holds durable API keys: keep this file mode 0600. api_key is the",
+        "# runner's own and acts only as the runner; cli_key is the verbs'.",
         "",
         f"[{TABLE}]",
         f"api_url = {_toml_str(creds.api_url)}",
@@ -85,6 +88,7 @@ def _render(creds: StoredCredentials) -> str:
         ("id", creds.runner_id),
         ("name", creds.name),
         ("registered_at", creds.registered_at),
+        ("cli_key", creds.cli_key),
     ):
         if value:
             lines.append(f"{key} = {_toml_str(value)}")

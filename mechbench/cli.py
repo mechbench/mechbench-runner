@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from mechbench_runner.cli_key import for_verbs
 from mechbench_runner.config import Config
 
 SERVICE_COMMANDS = {
@@ -416,17 +417,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "cancel":
         from mechbench_runner import bench_cmd
 
-        return bench_cmd.cancel(config, args.jobs, args.reason)
+        return bench_cmd.cancel(for_verbs(config), args.jobs, args.reason)
 
     if getattr(args, "noun", None):
         from mechbench_runner import verbs_cli
 
-        return verbs_cli.main(config, args)
+        return verbs_cli.main(for_verbs(config), args)
 
     if args.cmd == "runs":
         from mechbench_runner import bench_cmd
 
-        return bench_cmd.runs(config, label=args.label,
+        return bench_cmd.runs(for_verbs(config), label=args.label,
                               label_contains=args.label_contains,
                               protocol=args.protocol, project=args.project,
                               owner=args.owner, limit=args.limit, as_json=args.as_json)
@@ -434,18 +435,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "label":
         from mechbench_runner import bench_cmd
 
-        return bench_cmd.label_run(config, args.run, None if args.clear else args.text)
+        return bench_cmd.label_run(for_verbs(config), args.run, None if args.clear else args.text)
 
     if args.cmd == "delete":
         from mechbench_runner import bench_cmd
 
-        return bench_cmd.delete(config, args.target, args.prefix, args.yes,
+        return bench_cmd.delete(for_verbs(config), args.target, args.prefix, args.yes,
                                 args.acknowledge)
 
     if args.cmd == "history":
         from mechbench_runner import bench_cmd
 
-        return bench_cmd.history(config, args.kind, args.id)
+        return bench_cmd.history(for_verbs(config), args.kind, args.id)
 
     if args.cmd in {"run", "watch", "result"}:
         if args.cmd == "run" and args.protocol is None and (
@@ -457,6 +458,8 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         if args.cmd != "run" or args.protocol is not None:
             from mechbench_runner import bench_cmd
+
+            config = for_verbs(config)
 
             if args.cmd == "run":
                 return bench_cmd.run(config, args.protocol, args.bind,

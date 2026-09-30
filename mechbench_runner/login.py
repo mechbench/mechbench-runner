@@ -94,6 +94,7 @@ def _login_with_token(config: Config, token: str, name: str | None) -> int:
         StoredCredentials(
             api_url=config.api_base_url,
             api_key=result["apiKey"],
+            cli_key=result.get("cliKey"),
             runner_id=runner.get("id"),
             name=runner.get("name"),
             registered_at=datetime.now(UTC)
@@ -333,6 +334,7 @@ def _store_and_finish(config: Config, answer: dict) -> int:
         StoredCredentials(
             api_url=config.api_base_url,
             api_key=answer["apiKey"],
+            cli_key=answer.get("cliKey"),
             runner_id=runner.get("id"),
             name=runner.get("name"),
             registered_at=datetime.now(UTC)

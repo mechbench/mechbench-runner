@@ -293,8 +293,9 @@ def push_consent(visibility: str | None, draft: bool) -> str:
     if draft:
         return f"a draft: usable by you at once, shown to no one else (the extension is {vis})"
     if vis == "private":
-        return "verification queued; verified, it stays private: shown to you only"
-    return f"verification queued; verified, it is shown to {who} ({vis})"
+        return "checks queued; checked, it stays private: shown to you only"
+    return (f"checks queued; checked, it runs on your own runners, and it is shown "
+            f"to {who} ({vis}) once a person has reviewed it and it is verified")
 
 
 def body_of(manifest: Mapping[str, Any], sdist_ref: str) -> dict[str, Any]:
@@ -439,11 +440,11 @@ EXTENSION = Noun(
             "extension",
             "push",
             "Build its sdist, store it by hash, compile its declarations and push "
-            "them as a version; without draft, ask for it to be verified.",
+            "them as a version; without draft, queue its checks.",
             "PUT /extensions/:owner/:project/:name",
             (
                 DIR,
-                Arg("draft", "Push a draft, usable by you at once, and verify nothing.", type="bool"),
+                Arg("draft", "Push a draft, usable by you at once, and check nothing.", type="bool"),
                 PYTHON,
             ),
             extension_push,
@@ -453,8 +454,9 @@ EXTENSION = Noun(
         Verb(
             "extension",
             "verify",
-            "Ask for a version to be verified: queues a job on your runner, and says "
-            "what it waits for.",
+            "Queue a version's checks: a job on your runner that makes it checked "
+            "when it passes (verified takes a person's review), and says what it "
+            "waits for.",
             "POST /extensions/:owner/:project/extensions/:ref/verify",
             (VERSIONED,),
             lambda ctx, a: ctx.api("POST", version_route(a["address"], True) + "/verify")[0],
@@ -469,7 +471,7 @@ EXTENSION = Noun(
             (
                 Arg("owner", "Only this handle's."),
                 Arg("state", "Only versions in this state.",
-                    choices=("draft", "pending", "verified", "withdrawn")),
+                    choices=("draft", "pending", "checked", "verified", "withdrawn")),
                 Arg("reads", "Only those with an op that takes this kind."),
                 Arg("emits", "Only those with an op that gives this kind."),
                 SEARCH,

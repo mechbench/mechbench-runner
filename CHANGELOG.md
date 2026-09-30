@@ -50,13 +50,26 @@ with both headings.
   for is named in the log, and the nodes that call it fail as before.
   Against an API that still puts `integrations` in the claim, those
   are taken out of the claim into the holder.
-- **The runner's key acts only as its runner.** The CLI verbs
-  (`mechbench protocol list` and the rest) refused with `KEY_SCOPE`
-  on the stored runner key now say to set `MECHBENCH_API_KEY` to an
-  API key of yours. A runner claiming with a hand-minted user key logs
+- **The runner's key acts only as its runner, and the verbs call with
+  a second key.** `mechbench login` stores two keys in
+  `~/.mechbench/config.toml`: `api_key`, the runner's own, which the
+  service claims with, and `cli_key`, a user-scoped key named
+  `cli on <runner name>` that enrollment mints for the person who
+  enrolled the machine, which the verbs (`mechbench protocol list`,
+  `mechbench support list`, `run <protocol>`, `runs`, `cancel` and the
+  rest) call with. `MECHBENCH_API_KEY` still overrides both. A machine
+  enrolled before this release holds only the runner key: its first
+  verb asks the API for its CLI key with the runner key
+  (`POST /runners/me/cli-key`, once per runner), stores it, and says so
+  in one line. Should that key have been issued already and not be
+  stored, the verb says to run `mechbench login`. A runner claiming with a hand-minted user key logs
   the API's deprecation line once; `mechbench login` registers the
   machine with a runner key, and warns when `MECHBENCH_API_KEY` is set
   and would take precedence over it.
+
+- **`extension list --state` takes `checked`**, and `extension push`
+  and `extension verify` say they queue the version's checks, which make
+  it `checked`; `verified` takes a person's review.
 
 ### Changes that alter results without raising
 

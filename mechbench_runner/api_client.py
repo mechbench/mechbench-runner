@@ -215,6 +215,11 @@ class ApiClient:
         self._raise_for_status(res)
         return res.json()
 
+    def request_cli_key(self) -> dict[str, Any]:
+        res = self._client.post("/runners/me/cli-key")
+        self._raise_for_status(res)
+        return res.json()
+
     def fetch_policy(self) -> dict[str, Any]:
         res = self._client.get("/runners/me/policy")
         self._raise_for_status(res)
