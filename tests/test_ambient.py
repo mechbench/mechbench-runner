@@ -127,7 +127,8 @@ class TestNodeWatch:
         canaries = iter([{"memcopy": 1.0, "matmul": 0.98}, {"memcopy": 0.7, "matmul": 0.99}])
         w = NodeWatch(set(bearing), lambda n, f: reports.append((n, f)),
                       baseline=lambda: {"memcopy": {"seconds": 1}, "matmul": {"seconds": 1}},
-                      canary=lambda base: next(canaries), sampler=FakeSampler)
+                      canary=lambda base: next(canaries), sampler=FakeSampler,
+                      settle=lambda: 0)
         return w, reports
 
     def test_compute_s_span_gets_both_canaries_and_the_counters(self):
@@ -173,6 +174,87 @@ class TestNodeWatch:
         ]}}
         assert model_bearing(spec) == {"cap"}
         assert model_bearing({}) == set()
+
+
+class SlowRelease:
+    def __init__(self, release_s: float = 0.3, held: int = 8 * GB) -> None:
+        self.now = 0.0
+        self.release_s = release_s
+        self.held = held
+        self.cleared = 0
+
+    def clock(self) -> float:
+        return self.now
+
+    def sleep(self, s: float) -> None:
+        self.now += s
+
+    def clear(self) -> None:
+        self.cleared += 1
+
+    def read(self) -> int:
+        if self.now < 0:
+            return 0
+        left = max(0.0, 1.0 - self.now / self.release_s)
+        return int(self.held * left)
+
+    def canary(self, _base) -> dict[str, float]:
+        ratio = 0.02 if self.read() > 0 else 1.0
+        return {"memcopy": ratio, "matmul": ratio}
+
+    def watch(self, reports: list, settle) -> NodeWatch:
+        return NodeWatch({"lora"}, lambda n, f: reports.append((n, f)),
+                         baseline=lambda: {"memcopy": {"seconds": 1}, "matmul": {"seconds": 1}},
+                         canary=self.canary, sampler=FakeSampler, settle=settle)
+
+
+class TestSettle:
+    def test_a_node_whose_release_is_slow_does_not_fail_quiet_on_it(self):
+        fake = SlowRelease(release_s=0.3)
+        fake.now = -1.0
+        reports: list = []
+        w = fake.watch(reports, lambda: ambient.settle(
+            fake.clear, fake.read, clock=fake.clock, sleep=fake.sleep))
+        w.start("lora")
+        fake.now = 0.0
+        w.span("lora", {"compute_seconds": 12.0})
+        [(nid, fields)] = reports
+        assert nid == "lora"
+        assert fields["quiet"] is True, fields["ambient"]["reasons"]
+        assert fields["ambient"]["canary_after"] == 1.0
+        assert 300 <= fields["ambient"]["canary_after_delay_ms"] <= 350
+        assert fake.cleared >= 1
+
+    def test_without_the_settle_the_release_reads_as_a_loud_machine(self):
+        fake = SlowRelease(release_s=0.3)
+        fake.now = -1.0
+        reports: list = []
+        w = fake.watch(reports, lambda: 0)
+        w.start("lora")
+        fake.now = 0.0
+        w.span("lora", {"compute_seconds": 12.0})
+        [(_nid, fields)] = reports
+        assert fields["quiet"] is False
+        assert fields["ambient"]["canary_after"] == 0.02
+
+    def test_the_settle_is_bounded(self):
+        fake = SlowRelease(release_s=60.0)
+        ms = ambient.settle(fake.clear, fake.read, clock=fake.clock, sleep=fake.sleep)
+        assert 1000 <= ms <= 1050
+
+    def test_memory_that_is_already_still_settles_at_once(self):
+        fake = SlowRelease(release_s=0.3)
+        fake.now = 5.0
+        ms = ambient.settle(fake.clear, fake.read, clock=fake.clock, sleep=fake.sleep)
+        assert ms <= 30
+
+    def test_without_mlx_the_settle_is_a_no_op(self, monkeypatch):
+        monkeypatch.setattr(ambient, "_mlx", lambda: (None, None))
+        assert ambient.settle() <= 5
+
+    def test_the_delay_is_in_the_ambient_and_not_a_reason(self):
+        out, quiet = ambient.ambient({"thermal": {"worst": "nominal"}}, None, None, 240)
+        assert out["canary_after_delay_ms"] == 240 and quiet
 
 
 class TestCanary:

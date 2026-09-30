@@ -26,11 +26,12 @@ from .project import PROJECT, project_id
 from .protocol import PROTOCOL, split_version
 from .run import RUN, job_of
 from .runner import RUNNER
+from .support import SUPPORT
 from .thread import THREAD
 
 NOUNS: tuple[Noun, ...] = (
     OBJECT, PROTOCOL, RUN, MODEL, ARTICLE, DATASET, PROJECT, THREAD, OP, EXTENSION, POLICY,
-    RUNNER,
+    RUNNER, SUPPORT,
 )
 
 

@@ -75,7 +75,8 @@ def _inputs(pairs: list[str] | None) -> dict[str, Any]:
 def run(config: Config, protocol: str, binds: list[str] | None,
         budget: float | None, wait: bool, *,
         params: list[str] | None = None, inputs: list[str] | None = None,
-        keep: str | None = None, label: str | None = None) -> int:
+        keep: str | None = None, label: str | None = None,
+        runner: str | None = None) -> int:
     if binds:
         print("run: --bind is the legacy binding, which is no longer read; "
               "bind a param with --param NAME=VALUE and an input with "
@@ -85,10 +86,15 @@ def run(config: Config, protocol: str, binds: list[str] | None,
     declared_params = _params(params)
     declared_inputs = _inputs(inputs)
     try:
-        out = bench.launch(
-            protocol, budget=budget,
-            params=declared_params or None, inputs=declared_inputs or None,
-            keep=keep, label=label)
+        if runner is None:
+            out = bench.launch(
+                protocol, budget=budget,
+                params=declared_params or None, inputs=declared_inputs or None,
+                keep=keep, label=label)
+        else:
+            out = _launch_on(config, protocol, {
+                "params": declared_params, "inputs": declared_inputs or None,
+                "keep": keep, "budget": budget, "label": label, "runner": runner})
     except bench.BenchError as e:
         print(f"run failed: {e}", file=sys.stderr)
         return 1
@@ -102,15 +108,33 @@ def run(config: Config, protocol: str, binds: list[str] | None,
                "inputs": declared_inputs, "budget_usd": budget,
                **({"keep": keep} if keep else {}),
                **({"label": label} if label else {}),
+               **({"runner": runner} if runner else {}),
                "run": run_id, "job": job})
     print(job, flush=True)
     detail = f"  run {run_id} · {protocol}" + (f" · {label}" if label else "")
     if budget is not None:
         detail += f" · cap ${budget}"
+    if runner:
+        detail += f" · on runner {runner}"
     print(detail, file=sys.stderr, flush=True)
     if wait:
         return watch(config, [job])
     return 0
+
+
+def _launch_on(config: Config, protocol: str, a: dict[str, Any]) -> dict[str, Any]:
+    from .verbs import Ctx, refusal
+    from .verbs.run import run_launch
+
+    try:
+        return run_launch(Ctx(config), {"protocol": protocol, **a})
+    except Exception as e:
+        body = refusal(e)
+        if body is None:
+            raise
+        raise bench.BenchError(
+            f"POST /protocols/{protocol}/runs -> {body.get('status')}: "
+            f"{body.get('error') or body.get('code') or ''}") from e
 
 
 def cancel(config: Config, jobs: list[str], reason: str = "") -> int:

@@ -38,7 +38,25 @@ def job_of(ctx: Ctx, run: str) -> str:
     return str(job)
 
 
+def run_body(a: dict) -> dict[str, Any]:
+    body: dict[str, Any] = {"params": dict(a.get("params") or {})}
+    if a.get("inputs") is not None:
+        body["inputs"] = {name: ({"$ref": {"bench": v}} if isinstance(v, str) else v)
+                          for name, v in a["inputs"].items()}
+    if a.get("keep") is not None:
+        body["keep"] = a["keep"]
+    if a.get("budget") is not None:
+        body["budgetUsd"] = a["budget"]
+    if a.get("label") is not None:
+        body["label"] = a["label"]
+    if a.get("runner") is not None:
+        body["runner"] = a["runner"]
+    return body
+
+
 def run_launch(ctx: Ctx, a: dict) -> Any:
+    if a.get("runner") is not None:
+        return ctx.api("POST", f"/protocols/{a['protocol']}/runs", body=run_body(a))[0]
     return ctx.bench().launch(
         a["protocol"],
         params=a.get("params"),
@@ -82,21 +100,18 @@ def run_result(ctx: Ctx, a: dict) -> Any:
 
 
 def run_check(ctx: Ctx, a: dict) -> Any:
-    body: dict[str, Any] = {"params": dict(a.get("params") or {})}
-    if a.get("inputs") is not None:
-        body["inputs"] = {name: ({"$ref": {"bench": v}} if isinstance(v, str) else v)
-                          for name, v in a["inputs"].items()}
-    if a.get("keep") is not None:
-        body["keep"] = a["keep"]
-    if a.get("budget") is not None:
-        body["budgetUsd"] = a["budget"]
-    return ctx.api("POST", f"/protocols/{a['protocol']}/check", body=body)[0]
+    return ctx.api("POST", f"/protocols/{a['protocol']}/check", body=run_body(a))[0]
 
 
 def run_cancel(ctx: Ctx, a: dict) -> Any:
     return ctx.bench().cancel(job_of(ctx, a["id"]), reason=a.get("reason") or "")
 
 
+RUNNER = Arg(
+    "runner",
+    "The runner that runs it, by id or name (`mechbench runners`); it waits "
+    "for that one, and no other claims it.",
+)
 RUN_ID = Arg("id", "The run's id, or its job's (j_…).", required=True, positional=True)
 
 RUN = Noun(
@@ -215,6 +230,7 @@ RUN = Noun(
                 Arg("keep", "all, or outputs alone.", choices=("all", "outputs")),
                 Arg("budget", "Spend cap, USD.", type="float"),
                 Arg("label", "What the run is for, one line."),
+                RUNNER,
             ),
             run_launch,
             effect="spend",
@@ -290,6 +306,7 @@ RUN = Noun(
                 Arg("keep", "all, or outputs alone.", choices=("all", "outputs")),
                 Arg("budget", "Each run's spend cap, USD.", type="float"),
                 Arg("label", "What the runs are for, one line; every run carries it."),
+                RUNNER,
                 Arg(
                     "wait",
                     "Wait until every run finishes, then their summaries.",

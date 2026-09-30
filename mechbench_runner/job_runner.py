@@ -241,7 +241,9 @@ class JobRunner:
         except ImportError:
             compute_version = ""
         self.state = RunnerState(version=runner_version, api_url=config.api_base_url,
-                                 compute_version=compute_version)
+                                 compute_version=compute_version,
+                                 runner_id=config.runner_id,
+                                 runner_name=config.runner_name)
         self.state.limits_snapshot = self._limiter.snapshot
         self._control = ControlServer(self.state)
         self._channel = LiveChannel(config, self.state)

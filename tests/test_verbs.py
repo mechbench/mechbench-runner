@@ -122,6 +122,7 @@ IDS = {
     "project": "proj_1",
     "thread": "thr_1",
     "policy": "pol_1",
+    "support": "sup_1",
 }
 SAMPLES = {
     ("op", "address"): "geometry/align",

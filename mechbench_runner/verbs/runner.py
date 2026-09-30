@@ -4,7 +4,7 @@ import json
 import pathlib
 from typing import Any
 
-from .core import Arg, Ctx, Noun, Verb, VerbError
+from .core import LIMIT, OFFSET, SEARCH, Arg, Ctx, Noun, Verb, VerbError, paged
 
 
 def runner_calibrate(ctx: Ctx, a: dict) -> Any:
@@ -29,11 +29,40 @@ def runner_calibrate(ctx: Ctx, a: dict) -> Any:
     return out
 
 
+def runner_list(ctx: Ctx, a: dict) -> Any:
+    rows = ctx.get("/runners")
+    rows = [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+    if not a.get("signed_out"):
+        rows = [r for r in rows if not r.get("signedOut")]
+    want = str(a.get("search") or "").lower()
+    if want:
+        rows = [r for r in rows
+                if any(want in str(r.get(k) or "").lower() for k in ("id", "name", "hostname"))]
+    return paged(rows, a)
+
+
 RUNNER = Noun(
     "runner",
-    "A machine that claims jobs and runs them; the verbs here measure the one the "
-    "command runs on.",
+    "A machine that claims jobs and runs them: list names them (a run pins one by "
+    "id), calibrate measures the one the command runs on.",
     (
+        Verb(
+            "runner",
+            "list",
+            "The runners you can reach, with the id a run pins with `--runner`: "
+            "whether each is connected, what it is doing, its version.",
+            "GET /runners",
+            (
+                Arg("signed_out", "Signed-out runners too.", type="bool"),
+                SEARCH,
+                LIMIT,
+                OFFSET,
+            ),
+            runner_list,
+            "list",
+            ("id", "name", "hostname", "connected", "phase", "runnerVersion", "lastSeenAt"),
+            effect="read",
+        ),
         Verb(
             "runner",
             "calibrate",
@@ -57,8 +86,7 @@ RUNNER = Noun(
         ),
     ),
     absent={
-        "list": "the machines page lists runners (GET /runners)",
-        "read": "the machines page reads each runner from its listing (GET /runners)",
+        "read": "`runner list` has each runner whole; the machines page shows one",
         "create": "a runner is registered from its own machine by `mechbench login`",
         "update": "renamed and paused on the machines page (PATCH /runners/:id)",
         "delete": "signed out on the machines page, or by `mechbench logout` on the machine",

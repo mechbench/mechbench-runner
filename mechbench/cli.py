@@ -142,6 +142,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_p.add_argument("--budget", type=float, metavar="USD",
                        help="Spend cap for the run; required for endpoint models.")
+    run_p.add_argument(
+        "--runner",
+        metavar="ID|NAME",
+        help="The runner that runs it (`mechbench runners` lists yours); it "
+             "waits for that one, and no other claims it.",
+    )
     run_p.add_argument("--wait", action="store_true",
                        help="After queuing, watch to a terminal state and "
                             "exit non-zero on failure.")
@@ -444,8 +450,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd in {"run", "watch", "result"}:
         if args.cmd == "run" and args.protocol is None and (
                 args.bind or args.param or args.input or args.keep
-                or args.budget is not None or args.wait or args.label):
-            print("run: --param/--input/--keep/--budget/--label/--wait need a PROTOCOL "
+                or args.budget is not None or args.wait or args.label
+                or args.runner):
+            print("run: --param/--input/--keep/--budget/--label/--runner/--wait need a PROTOCOL "
                   "to launch; a bare `run` is the runner loop.", file=sys.stderr)
             return 2
         if args.cmd != "run" or args.protocol is not None:
@@ -455,7 +462,8 @@ def main(argv: list[str] | None = None) -> int:
                 return bench_cmd.run(config, args.protocol, args.bind,
                                      args.budget, args.wait,
                                      params=args.param, inputs=args.input,
-                                     keep=args.keep, label=args.label)
+                                     keep=args.keep, label=args.label,
+                                     runner=args.runner)
             if args.cmd == "watch":
                 return bench_cmd.watch(config, args.jobs)
             return bench_cmd.result(config, args.spec, args.fmt, args.out,
@@ -563,6 +571,10 @@ def _render(data: dict) -> str:
         f"runner   v{data.get('runner_version')}{compute_note} "
         f"pid {data.get('pid')}, up {up / 60:.0f}m{whose}"
     )
+    if data.get("runner_id"):
+        name = data.get("runner_name")
+        lines.append(f"id       {data['runner_id']}{f' ({name})' if name else ''}"
+                     f"  pin a run here: --runner {data['runner_id']}")
     return "\n".join(lines)
 
 

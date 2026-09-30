@@ -50,8 +50,11 @@ class RunnerState:
     limits_snapshot = None
 
     def __init__(self, *, version: str, api_url: str,
-                 compute_version: str = "") -> None:
+                 compute_version: str = "", runner_id: str | None = None,
+                 runner_name: str | None = None) -> None:
         self._lock = threading.Lock()
+        self._runner_id = runner_id
+        self._runner_name = runner_name
         self._phase = "starting"
         self._compute_version = compute_version
         self._job: JobView | None = None
@@ -87,6 +90,8 @@ class RunnerState:
                 "failed": self._failed,
                 "uptime_seconds": round(time.time() - self._started_at, 3),
                 "runner_version": self._version,
+                "runner_id": self._runner_id,
+                "runner_name": self._runner_name,
                 "compute_version": self._compute_version,
                 "api_url": self._api_url,
                 "pid": os.getpid(),

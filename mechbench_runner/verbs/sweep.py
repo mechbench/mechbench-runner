@@ -10,7 +10,8 @@ from .core import Ctx, VerbError
 from .run_diff import read_json
 
 TERMINAL = ("done", "done_with_missing", "failed", "cancelled", "interrupted")
-BODY_KEYS = ("params", "inputs", "members", "grid", "label", "keep", "budgetUsd")
+BODY_KEYS = ("params", "inputs", "members", "grid", "label", "keep", "budgetUsd",
+             "runner")
 
 
 def as_ref(v: Any) -> Any:
@@ -128,6 +129,9 @@ def sweep_body(a: Mapping[str, Any]) -> dict[str, Any]:
         out["keep"] = keep
     if budget is not None:
         out["budgetUsd"] = budget
+    runner = a.get("runner") or body.get("runner")
+    if runner:
+        out["runner"] = runner
     return out
 
 

@@ -149,9 +149,9 @@ argument, in about 26 KB.
 | run | **list**(label?, label_contains?, status?, protocol?, project?, sweep?, owner?, search?, limit?, offset?, full?) | read | `GET /runs` | `run(verb="list")` | `mechbench run list` |
 | run | **jobs**(status?, protocol?, sweep?, order?, owner?, search?, limit?, offset?) | read | `GET /jobs` | `run(verb="jobs")` | `mechbench run jobs` |
 | run | **read**(id, full?) | read | `GET /runs/:id` | `run(verb="read")` | `mechbench run read` |
-| run | **launch**(protocol, params?, inputs?, keep?, budget?, label?) | spend * | `POST /protocols/:id/runs` | `run(verb="launch")` | `mechbench run launch` |
+| run | **launch**(protocol, params?, inputs?, keep?, budget?, label?, runner?) | spend * | `POST /protocols/:id/runs` | `run(verb="launch")` | `mechbench run launch` |
 | run | **check**(protocol, params?, inputs?, keep?, budget?) | read | `POST /protocols/:id/check` | `run(verb="check")` | `mechbench run check` |
-| run | **sweep**(protocol, file?, members?, grid?, grid_inputs?, params?, inputs?, keep?, budget?, label?, wait?, timeout?) | spend * | `POST /protocols/:id/sweeps` | `run(verb="sweep")` | `mechbench run sweep` |
+| run | **sweep**(protocol, file?, members?, grid?, grid_inputs?, params?, inputs?, keep?, budget?, label?, runner?, wait?, timeout?) | spend * | `POST /protocols/:id/sweeps` | `run(verb="sweep")` | `mechbench run sweep` |
 | run | **update**(id, label?, clear?) | draft | `PATCH /runs/:id` | `run(verb="update")` | `mechbench run update` |
 | run | **watch**(id, timeout?) | read | `GET /runs/:id` | `run(verb="watch")` | `mechbench run watch` |
 | run | **result**(id, node, full?) | read | `GET /objects/:path` | `run(verb="result")` | `mechbench run result` |
@@ -222,13 +222,22 @@ argument, in about 26 KB.
 | policy | **apply**(runner, policy, yes?) | outward when yes=true * | `PUT /runners/:id/policy` | `policy(verb="apply")` | `mechbench policy apply` |
 | policy | delete | — | — | — | — (runners reference a policy by id and version; put them under another (`policy apply`) instead) |
 | policy | history | — | — | — | — (`policy read` carries every version, newest first) |
+| runner | **list**(signed_out?, search?, limit?, offset?) | read | `GET /runners` | `runner(verb="list")` | `mechbench runner list` |
 | runner | **calibrate**(model?, repeats?, out?, push?, into?) | draft | — (on the caller's machine) | `runner(verb="calibrate")` | `mechbench runner calibrate` |
-| runner | list | — | — | — | — (the machines page lists runners (GET /runners)) |
-| runner | read | — | — | — | — (the machines page reads each runner from its listing (GET /runners)) |
+| runner | read | — | — | — | — (`runner list` has each runner whole; the machines page shows one) |
 | runner | create | — | — | — | — (a runner is registered from its own machine by `mechbench login`) |
 | runner | update | — | — | — | — (renamed and paused on the machines page (PATCH /runners/:id)) |
 | runner | delete | — | — | — | — (signed out on the machines page, or by `mechbench logout` on the machine) |
 | runner | history | — | — | — | — (a runner's jobs are its history, on the jobs page) |
+| support | **list**(status?, search?, limit?, offset?) | read | `GET /support/cases` | `support(verb="list")` | `mechbench support list` |
+| support | **read**(id) | read | `GET /support/cases/:id` | `support(verb="read")` | `mechbench support read` |
+| support | **open**(subject, body) | outward * | `POST /support/cases` | `support(verb="open")` | `mechbench support open` |
+| support | **reply**(id, body) | outward * | `POST /support/cases/:id/messages` | `support(verb="reply")` | `mechbench support reply` |
+| support | **close**(id) | draft | `PATCH /support/cases/:id` | `support(verb="close")` | `mechbench support close` |
+| support | create | — | — | — | — (open is its create: a case starts with its first message) |
+| support | update | — | — | — | — (a case is its messages, which are never edited: reply adds one, close sets its status) |
+| support | delete | — | — | — | — (a case is a record of what was said to someone, kept whole) |
+| support | history | — | — | — | — (read is its history: every message and event in order) |
 
 **Effects.** What a verb does to the platform, recorded on each verb:
 
@@ -266,7 +275,7 @@ A verb marked * needs the person's consent: the platform's own agent proposes it
 - article delta, media, comments: the collaborative editor's; agents edit a whole article with `article edit`, markdown or delta, at the version they read.
 - dataset upload (`POST /datasets`, multipart): `object write` then `dataset create` names the stored object as one.
 - project transfer, members and audit: an owner's administration, in the UI.
-- runners (`GET /runners`, `PATCH`, `DELETE`, commands): the machines page; this machine's own are its command-line-only commands.
+- runner rename, pause, sign-out and commands (`PATCH /runners/:id`, `DELETE`, `POST /runners/:id/commands`): the machines page; this machine's own are its command-line-only commands.
 - spend total: no total exists on any surface yet; spend is per run (`run list`, `run read`).
 
 <!-- verbs:end -->

@@ -60,7 +60,8 @@ API_ONLY: dict[str, str] = {
         "`object write` then `dataset create` names the stored object as one"
     ),
     "project transfer, members and audit": "an owner's administration, in the UI",
-    "runners (`GET /runners`, `PATCH`, `DELETE`, commands)": (
+    "runner rename, pause, sign-out and commands (`PATCH /runners/:id`, `DELETE`, "
+    "`POST /runners/:id/commands`)": (
         "the machines page; this machine's own are its command-line-only commands"
     ),
     "spend total": (
@@ -159,7 +160,7 @@ def splice(doc: str) -> str:
 
 SUMMARY = (
     "Every noun an agent works with (objects, protocols, runs, articles, "
-    "datasets, projects, threads, ops, extensions, policies, runners) and its verbs, spelled on the command line, over MCP "
+    "datasets, projects, threads, ops, extensions, policies, runners, support cases) and its verbs, spelled on the command line, over MCP "
     "and on the API, with what each surface leaves out and why."
 )
 

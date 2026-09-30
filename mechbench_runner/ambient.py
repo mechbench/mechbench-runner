@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import gc
 import os
 import re
 import threading
+import time
 from collections.abc import Callable
 from contextlib import suppress
 from typing import Any
@@ -16,6 +18,8 @@ BIG_RSS_BYTES = 4 * 2**30
 BIG_RSS_CPU = 5.0
 CANARY_QUIET = 0.85
 INTERVAL_SECONDS = 1.0
+SETTLE_BOUND_SECONDS = 1.0
+SETTLE_POLL_SECONDS = 0.025
 
 Run = Callable[[list[str]], str]
 
@@ -203,15 +207,57 @@ class Sampler:
             }
 
 
+def _mlx() -> tuple[Callable[[], None] | None, Callable[[], int] | None]:
+    try:
+        import mlx.core as mx
+    except Exception:  # noqa: BLE001
+        return None, None
+
+    def clear() -> None:
+        gc.collect()
+        mx.synchronize()
+        mx.clear_cache()
+
+    def read() -> int:
+        return int(mx.get_active_memory()) + int(mx.get_cache_memory())
+    return clear, read
+
+
+def settle(clear: Callable[[], None] | None = None, read: Callable[[], int] | None = None, *,
+           bound: float = SETTLE_BOUND_SECONDS, poll: float = SETTLE_POLL_SECONDS,
+           clock: Callable[[], float] = time.monotonic,
+           sleep: Callable[[float], None] = time.sleep) -> int:
+    if clear is None and read is None:
+        clear, read = _mlx()
+    start = clock()
+    if clear is not None:
+        with suppress(Exception):
+            clear()
+    if read is not None:
+        with suppress(Exception):
+            first = now = last = read()
+            while clock() - start < bound:
+                sleep(poll)
+                now = read()
+                if now >= last:
+                    break
+                last = now
+            if clear is not None and now < first:
+                clear()
+    return round((clock() - start) * 1000)
+
+
 def _worst(ratios: dict[str, float] | None) -> float | None:
     return min(ratios.values()) if ratios else None
 
 
 def ambient(counters: dict[str, Any], before: dict[str, float] | None,
-            after: dict[str, float] | None) -> tuple[dict[str, Any], bool]:
+            after: dict[str, float] | None,
+            after_delay_ms: int | None = None) -> tuple[dict[str, Any], bool]:
     out: dict[str, Any] = {
         "canary_before": _worst(before),
         "canary_after": _worst(after),
+        "canary_after_delay_ms": after_delay_ms,
         "canary": {"before": before, "after": after},
         **counters,
     }
@@ -250,7 +296,8 @@ class NodeWatch:
     def __init__(self, bearing: set[str], report: Report, *,
                  baseline: Callable[[], dict[str, Any] | None] | None = None,
                  canary: Callable[[dict[str, Any] | None], dict[str, float] | None] | None = None,
-                 sampler: Callable[[], Sampler] = Sampler) -> None:
+                 sampler: Callable[[], Sampler] = Sampler,
+                 settle: Callable[[], int] = settle) -> None:
         from . import microbench
 
         self._bearing = bearing
@@ -258,6 +305,7 @@ class NodeWatch:
         self._baseline = baseline or microbench.load_baseline
         self._canary = canary or microbench.canary
         self._sampler = sampler
+        self._settle = settle
         self._open: dict[str, Any] | None = None
 
     def start(self, nid: str) -> None:
@@ -279,8 +327,11 @@ class NodeWatch:
         self._open = None
         try:
             held["sampler"].stop()
-            after = self._canary(held["baseline"]) if canary_after else None
-            amb, quiet = ambient(held["sampler"].result(), held["before"], after)
+            after = delay = None
+            if canary_after and held["baseline"] is not None:
+                delay = self._settle()
+                after = self._canary(held["baseline"])
+            amb, quiet = ambient(held["sampler"].result(), held["before"], after, delay)
         except Exception:  # noqa: BLE001
             return None
         return {"ambient": amb, "quiet": quiet}

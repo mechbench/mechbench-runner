@@ -23,6 +23,63 @@ with both headings.
 
 ---
 
+## 0.51.0 — 2026-09-30
+
+### Changes that raise
+
+- **The `support` verbs need the API's support routes** (task 000923:
+  `GET/POST /support/cases`, `GET/PATCH /support/cases/:id`,
+  `POST /support/cases/:id/messages`) and, over MCP, the API's
+  executors for them. Against an API without them every `support` verb
+  answers a 404.
+- **`--runner` needs an API that reads `runner` on a run and a sweep**
+  (mechbench-models 0.89.0's `CreateRunRequestSchema` and
+  `CreateSweepRequestSchema`) and carries it into the job's
+  requirements. An API before it refuses a pinned sweep with a 400, and
+  takes a pinned run as an unpinned one: any runner may claim it.
+
+### Changes that alter results without raising
+
+_None._ The after-canary moves later and `canary_after_delay_ms` joins
+`ambient`, which is timing reported beside a run, never inside its
+result or provenance. `quiet` after a model-bearing node reads the
+machine rather than the node's own release, so fewer nodes read
+`quiet: false`.
+
+### Other
+
+- **`support`** (task 000928), a noun in the verb registry, so the
+  command line, MCP and the API expose the same verbs: `support list
+  {status?, search?, limit?, offset?}` (`GET /support/cases`; prints id,
+  status, subject, requester, age of the last inbound message, plan),
+  `support read {id}` (`GET /support/cases/:id`; the command line prints
+  every message and event in order with who, when and which way it came,
+  and the attachments), `support open {subject, body}` (outward),
+  `support reply {id, body}` (outward: on a case with a mail thread it
+  goes out as mail in that thread), `support close {id}` (`PATCH` with
+  `status: closed`). Every write sends `via: "cli"`. A `body` of `-` is
+  read from stdin. `create`, `update`, `delete` and `history` are absent
+  with their reasons.
+- **A run names its runner** (task 000933). `mechbench run PROTOCOL
+  --runner ID|NAME`, `run launch --runner` and `run sweep --runner` (or
+  `runner` in the sweep file) send `runner` in the request; placement
+  hands the job to that runner alone. A pinned launch posts the run
+  itself rather than through compute's `bench.launch`, and the runs
+  history records the runner.
+- **`runner list`** (`mechbench runners`): `GET /runners` with the id a
+  run pins, name, hostname, whether connected, phase, version, last
+  seen; signed-out runners with `--signed-out`. `mechbench status`
+  prints this machine's runner id and name (`runner_id`,
+  `runner_name` in `status --json`).
+- **The canary after a model-bearing node waits for the node's memory
+  to settle** (task 000934). Before the after-canary the runner runs
+  `gc.collect()`, `mx.synchronize()` and `mx.clear_cache()`, then reads
+  MLX's active plus cache memory every 25 ms until it stops falling,
+  bounded at 1 s; without MLX it measures at once. The wait is
+  `canary_after_delay_ms` in `ambient`. 030's `lora-s20` read 0.02 of
+  the baseline because the canary ran while the training step's buffers
+  were being freed.
+
 ## 0.50.0 — 2026-09-30
 
 ### Changes that raise

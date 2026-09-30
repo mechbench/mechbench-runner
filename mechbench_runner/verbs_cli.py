@@ -74,6 +74,8 @@ def rewrite_run(argv: list[str]) -> list[str]:
         return [RUN_NOUN, *argv[1:]]
     if argv[:1] == ["calibrate"]:
         return ["runner", *argv]
+    if argv[:1] == ["runners"]:
+        return ["runner", "list", *argv[1:]]
     return argv
 
 
@@ -239,6 +241,7 @@ def render_launch(config: Config, ctx: Ctx, a: dict[str, Any]) -> int:
         inputs=inputs or None,
         keep=a.get("keep"),
         label=a.get("label"),
+        runner=a.get("runner"),
     )
 
 
@@ -268,6 +271,13 @@ def render_figure(noun_name: str) -> Render:
             print(json.dumps(out, indent=1, default=str))
         return 0
     return go
+
+
+def render_case(_c: Config, ctx: Ctx, a: dict) -> int:
+    from .verbs.support import history_lines
+
+    print("\n".join(history_lines(invoke(ctx, "support", "read", a))))
+    return 0
 
 
 def render_test(_c: Config, ctx: Ctx, a: dict) -> int:
@@ -305,6 +315,7 @@ RENDER: dict[tuple[str, str], Render] = {
        and n.name != "thread"},
     **{(n.name, "history"): render_history(n) for n in NOUNS if n.name in HISTORY_KIND},
     ("extension", "test"): render_test,
+    ("support", "read"): render_case,
 }
 
 
