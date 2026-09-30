@@ -23,6 +23,39 @@ with both headings.
 
 ---
 
+## 0.53.0 — 2026-09-30
+
+### Changes that raise
+
+- **Runners upgrade only from the signed release manifest** (task
+  000965, security review finding H6). The hourly upgrade under
+  `upgrades.compute: auto`, the `update` command from the site, and
+  `mechbench update` fetch `GET /releases/manifest` from the runner's
+  API, verify its Ed25519 signature against the release key shipped in
+  the package (`mechbench_runner/release_key.pub`), download the two
+  wheels and check their sha256, and install with `uv pip install
+  --require-hashes` (pip when uv is absent) from requirements that pin
+  every dependency to its hashes. PyPI's newest is never read. A
+  missing, unsigned or tampered manifest, a wheel whose hash differs, or
+  a manifest older than what is installed without `allow_downgrade:
+  true` installs nothing and says why in one log line. Until a manifest
+  is published, runners do not upgrade themselves.
+- **The `update` command's `args.version` must be a strict version or
+  absent**, and is carried out only when the current manifest names that
+  same runner version.
+- **`scripts/release.py` takes `--check` (the gate, no upload) or
+  `--upload` (the gate, then twine)**; with neither it prints its usage.
+  `--dry-run` is gone. The gate refuses a build whose
+  `release_key.pub` holds no key.
+
+### Changes that alter results without raising
+
+- **A failed self-check after an upgrade restores the previous
+  hash-locked install** (the requirements recorded under
+  `~/.mechbench/release/`); a runner with none recorded reinstalls its
+  earlier versions by pin, as before.
+- **`cryptography` is a new dependency**, for the signature check.
+
 ## 0.52.0 — 2026-09-30
 
 ### Changes that raise

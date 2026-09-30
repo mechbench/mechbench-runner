@@ -55,7 +55,12 @@ def check_changelog(version: str) -> str | None:
 
 
 def main() -> None:
-    dry = "--dry-run" in sys.argv
+    upload = "--upload" in sys.argv
+    if not upload and "--check" not in sys.argv:
+        print("usage: scripts/release.py --check    run the gate; upload nothing\n"
+              "       scripts/release.py --upload   run the gate, then twine upload "
+              "(the old path, until CI publishes; docs/RELEASING.md)")
+        sys.exit(2)
 
     version = re.search(
         r'^version = "([^"]+)"', (REPO / "pyproject.toml").read_text(), re.M
@@ -64,6 +69,12 @@ def main() -> None:
         die("reading version from pyproject.toml")
     ver = version.group(1)
     print(f"gating mechbench {ver}")
+
+    print("[0/5] release key")
+    key = REPO / "mechbench_runner" / "release_key.pub"
+    if b"BEGIN PUBLIC KEY" not in key.read_bytes():
+        die("release key: mechbench_runner/release_key.pub holds no public key, so "
+            "this build could never upgrade itself (docs/RELEASING.md)")
 
     print("[1/5] release notes")
     problem = check_changelog(ver)
@@ -150,8 +161,8 @@ def main() -> None:
             die("wss dial: wanted a policy rejection over real TLS", proc)
 
     print(f"\ngate PASSED for {ver}")
-    if dry:
-        print("dry run — not uploading")
+    if not upload:
+        print("--check: not uploading; dist/ holds what CI publishes")
         return
     print("uploading…")
     proc = run(["uvx", "twine", "upload", f"dist/mechbench-{ver}*"],

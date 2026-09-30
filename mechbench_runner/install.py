@@ -117,30 +117,3 @@ def _run(cmd: list[str], *, timeout: float) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603
         cmd, capture_output=True, text=True, timeout=timeout, check=False
     )
-
-
-def run_upgrade(
-    install: Installation, target: str | None = None, timeout: float = 900.0
-) -> tuple[bool, str]:
-    if install.upgrade is None:
-        return False, install.advice
-    cmd = list(install.upgrade)
-    if target and install.method == "venv":
-        cmd[-1] = f"{DIST}=={target}"
-    if target and install.method == "uv-tool":
-        cmd = [cmd[0], "tool", "install", "--reinstall", f"{DIST}=={target}"]
-    if not target and install.method == "uv-tool":
-        cmd = [cmd[0], "tool", "install", "--upgrade", "--refresh", DIST]
-    try:
-        proc = _run(cmd, timeout=timeout)
-    except (OSError, subprocess.SubprocessError) as exc:
-        return False, str(exc)
-    tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-800:]
-    if proc.returncode != 0:
-        return False, tail
-    if target and installed_versions().get(DIST) != target:
-        return False, (
-            f"{DIST} is still "
-            f"{installed_versions().get(DIST)} after upgrading; {tail}"
-        )
-    return True, tail

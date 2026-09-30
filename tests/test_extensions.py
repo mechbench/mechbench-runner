@@ -13,6 +13,8 @@ import pytest
 
 pytest.importorskip("mechbench_compute")
 
+import signed_manifest  # noqa: E402
+
 from mechbench_runner import api_client, install, paths  # noqa: E402
 from mechbench_runner import extensions as ext_mod  # noqa: E402
 from mechbench_runner import job_runner as jr  # noqa: E402
@@ -31,6 +33,7 @@ BODY = {
 }
 ADDRESS = "u_alice/lab/extensions/tiny"
 FAKE_UV = "/fake/bin/uv"
+MANIFEST = "https://api.example.test/releases/manifest"
 PY = "/fake/env/bin/python"
 
 
@@ -430,51 +433,67 @@ class TestCollect:
         assert pin_of(1) not in ext.collect(FakeApi(), BODY)
 
 
-PYPI_RUNNER = {"info": {"version": "0.48.0",
-                        "requires_dist": ["mechbench-compute>=0.165.0,<0.170",
-                                          "pytest>=8; extra == 'dev'"]}}
-PYPI_COMPUTE = {"releases": {v: [{"yanked": False}] for v in
-                             ("0.166.0", "0.167.0", "0.169.2", "0.170.0", "0.171.0rc1")}}
-
-
 class TestSelfUpgrade:
     @pytest.fixture()
-    def pypi(self, monkeypatch):
+    def served(self, monkeypatch):
         fetched: list[str] = []
 
         def fetch(url):
             fetched.append(url)
-            return PYPI_RUNNER if url.endswith("/mechbench/json") else PYPI_COMPUTE
+            return signed_manifest.signed()
 
         monkeypatch.setattr(install, "detect", lambda *a, **k: install.Installation(
             "uv-tool", [FAKE_UV, "tool", "upgrade", "mechbench"], "uv"))
         monkeypatch.setattr(install, "installed_versions", lambda: {
-            "mechbench": "0.47.0", "mechbench-compute": "0.167.0",
-            "mechbench-schema": "0.17.0"})
+            "mechbench": "0.52.0", "mechbench-compute": "0.174.0",
+            "mechbench-schema": "0.18.1"})
         return fetch, fetched
 
-    def test_auto_installs_the_newest_pair_and_asks_for_a_restart(self, uv, pypi):
-        fetch, fetched = pypi
-        ext = Extensions(python=PY, registry=FakeRegistry(), fetch_json=fetch)
+    def ext(self, fetch):
+        return Extensions(python=PY, registry=FakeRegistry(), fetch_json=fetch,
+                          get_bytes=signed_manifest.wheels, manifest_url=MANIFEST,
+                          release_key=signed_manifest.PUB)
+
+    def test_auto_installs_the_manifest_and_asks_for_a_restart(self, uv, served):
+        fetch, fetched = served
+        ext = self.ext(fetch)
         reason = ext.self_upgrade(BODY)
-        assert reason and "0.47.0 -> 0.48.0" in reason and "0.167.0 -> 0.169.2" in reason
+        assert reason and "0.52.0 -> 0.53.0" in reason
+        assert "0.174.0 -> 0.175.0" in reason
         [cmd] = uv.uv_calls()
-        assert cmd == [FAKE_UV, "pip", "install", "--python", PY,
-                       "--refresh-package", "mechbench",
-                       "--refresh-package", "mechbench-compute",
-                       "mechbench==0.48.0", "mechbench-compute==0.169.2"]
+        assert cmd[:7] == [FAKE_UV, "pip", "install", "--python", PY,
+                           "--require-hashes", "-r"]
+        assert "--hash=sha256:" + signed_manifest.sha(signed_manifest.RUNNER_WHEEL) \
+            in uv.requirements[0]
         assert uv.calls[-1][:2] == [PY, "-c"]
         assert ext.self_upgrade(BODY) is None
-        assert len(fetched) == 2
+        assert fetched == [MANIFEST]
 
-    def test_hold_does_nothing(self, uv, pypi):
-        fetch, fetched = pypi
-        ext = Extensions(python=PY, registry=FakeRegistry(), fetch_json=fetch)
-        assert ext.self_upgrade({**BODY, "upgrades": {"compute": "hold"}}) is None
+    def test_pypi_is_never_asked(self, uv, served):
+        fetch, fetched = served
+        self.ext(fetch).self_upgrade(BODY)
+        assert all("pypi.org" not in u for u in fetched)
+
+    def test_hold_does_nothing(self, uv, served):
+        fetch, fetched = served
+        held = {**BODY, "upgrades": {"compute": "hold"}}
+        assert self.ext(fetch).self_upgrade(held) is None
         assert fetched == [] and uv.calls == []
 
-    def test_a_failed_self_check_restores_the_previous_pair(self, uv, pypi, monkeypatch):
-        fetch, _ = pypi
+    def test_a_tampered_manifest_installs_nothing(self, uv, served, capsys):
+        def fetch(_url):
+            body = signed_manifest.signed()
+            body["compute"]["version"] = "0.176.0"
+            return body
+
+        assert self.ext(fetch).self_upgrade(BODY) is None
+        assert uv.calls == []
+        [line] = [ln for ln in capsys.readouterr().out.splitlines() if ln.strip()]
+        assert "does not verify" in line
+
+    def test_a_failed_self_check_restores_the_previous_pair(self, uv, served,
+                                                           monkeypatch):
+        fetch, _ = served
 
         def run(cmd, *, timeout):
             uv.calls.append(list(cmd))
@@ -482,47 +501,24 @@ class TestSelfUpgrade:
                                                "ImportError: nope")
 
         monkeypatch.setattr(install, "_run", run)
-        ext = Extensions(python=PY, registry=FakeRegistry(), fetch_json=fetch)
+        ext = self.ext(fetch)
         assert ext.self_upgrade(BODY) is None
-        assert uv.calls[-1][-2:] == ["mechbench==0.47.0", "mechbench-compute==0.167.0"]
+        assert uv.calls[-1][-2:] == ["mechbench==0.52.0", "mechbench-compute==0.174.0"]
         assert ext.self_upgrade(BODY, force=True) is None
-        assert sum(1 for c in uv.calls if "mechbench==0.48.0" in c) == 1
+        assert sum(1 for c in uv.calls if "--require-hashes" in c) == 1
 
-    def test_the_loop_restarts_after_an_upgrade(self, uv, pypi, make_runner,
+    def test_the_loop_restarts_after_an_upgrade(self, uv, served, make_runner,
                                                monkeypatch):
-        fetch, _ = pypi
+        fetch, _ = served
         monkeypatch.setattr(install, "detect", lambda *a, **k: install.Installation(
             "uv-tool", [FAKE_UV], "uv"))
         api = FakeApi([job([])])
         monkeypatch.setattr(jr, "ApiClient", lambda *_a, **_k: api)
         r = make_runner(FakeRegistry())
-        r._extensions.fetch_json = fetch
+        r._extensions = self.ext(fetch)
         assert r.run() == EXIT_RESTART
-        assert r.handled == []
-        assert any("mechbench==0.48.0" in c for c in uv.uv_calls())
 
-
-@pytest.mark.skipif(shutil.which("uv") is None, reason="uv is not installed")
-def test_the_real_uv_installs_the_fixture_wheel_into_a_scratch_env(
-        tmp_path, holder, monkeypatch):
-    real_uv = shutil.which("uv")
-    venv = tmp_path / "env"
-    subprocess.run([real_uv, "venv", "-q", str(venv)], check=True)
-    python = str(venv / "bin" / "python")
-
-    def run(cmd, *, timeout):
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                              check=False)
-
-    monkeypatch.setattr(install, "_run", run)
-    monkeypatch.setattr(install, "find_executable", lambda _n: real_uv)
-    wheel = tiny_wheel()
-    lock = b"# resolved against compute; no dependencies\n"
-    it = item(wheel, lock=lock)
-    api = FakeApi(blobs={it["package"]["wheel"]: wheel, it["package"]["lock"]: lock})
-    out = Extensions(python=python, registry=FakeRegistry()).install(
-        api, job([it]), holder, "m1")
-    assert out.ok, api.released
-    probe = subprocess.run([python, "-c", "import tinyext; print(tinyext.X)"],
-                           capture_output=True, text=True, check=True)
-    assert probe.stdout.strip() == "1"
+    def test_the_runner_asks_its_own_api(self, make_runner):
+        r = make_runner(FakeRegistry())
+        fresh = jr.JobRunner(r.config)
+        assert fresh._extensions.manifest_url == "http://127.0.0.1:1/releases/manifest"

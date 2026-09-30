@@ -1,0 +1,78 @@
+name: release
+# A tag v<version> pushed from main, naming pyproject.toml's version,
+# runs the release gate and publishes to PyPI through trusted publishing
+# (OIDC; no token exists). docs/RELEASING.md has the whole path.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    # Apple Silicon: the gate installs mechbench-compute, which pulls mlx.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: The tag names pyproject's version and sits on main
+        run: |
+          v=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "${GITHUB_REF_NAME}" != "v${v}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not name pyproject's version ${v}"; exit 1
+          fi
+          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main \
+            || { echo "${GITHUB_SHA} is not on main"; exit 1; }
+      - uses: astral-sh/setup-uv@v6
+      - run: pip install -e . pytest
+      - name: The release gate
+        run: python scripts/release.py --check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: gate
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/mechbench/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # The manifest follows once PyPI serves the files, from
+  # mechbench-api's publish-release-manifest workflow (the PM runs it).
+  # To have it follow automatically, uncomment this job and add the
+  # secret MECHBENCH_API_DISPATCH_TOKEN (a fine-grained PAT with
+  # Actions: write on mechbench/mechbench-api).
+  #
+  # manifest:
+  #   needs: publish
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Wait for PyPI to serve the wheel, then dispatch
+  #       env:
+  #         GH_TOKEN: ${{ secrets.MECHBENCH_API_DISPATCH_TOKEN }}
+  #       run: |
+  #         v="${GITHUB_REF_NAME#v}"
+  #         for i in $(seq 1 30); do
+  #           curl -fsS "https://pypi.org/pypi/mechbench/${v}/json" >/dev/null && break
+  #           sleep 20
+  #         done
+  #         compute=$(curl -fsS https://api.mechbench.ai/releases/manifest \
+  #           | python3 -c "import json,sys; print(json.load(sys.stdin)['compute']['version'])")
+  #         gh workflow run publish-release-manifest.yml --repo mechbench/mechbench-api \
+  #           -f runner="${v}" -f compute="${compute}"

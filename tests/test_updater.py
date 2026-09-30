@@ -3,7 +3,20 @@ from __future__ import annotations
 import pytest
 
 from mechbench_runner import install as install_mod
-from mechbench_runner import updater
+from mechbench_runner import release_manifest, updater
+from mechbench_runner.release_manifest import Upgrade
+
+NOTHING = Upgrade(True, False, "")
+MOVED = Upgrade(True, True, "upgraded", ("0.1.0", "0.10.0"), ("0.2.0", "0.11.0"))
+
+
+def manifest_gives(monkeypatch, result, asked=None):
+    def upgrade(python, url, *, requested=None, say=print, **_kw):
+        if asked is not None:
+            asked.append((url, requested))
+        return result
+
+    monkeypatch.setattr(release_manifest, "upgrade", upgrade)
 
 
 @pytest.fixture()
@@ -57,13 +70,42 @@ class TestRefusals:
         assert updater.load(state) is None
 
 
+class TestRequested:
+    def _venv(self, monkeypatch):
+        monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
+                            install_mod.Installation("venv", ["true"], "x"))
+        monkeypatch.setattr(updater, "_reexec", lambda say: True)
+
+    def test_the_request_is_checked_against_the_manifest(self, state, monkeypatch):
+        self._venv(monkeypatch)
+        asked: list = []
+        manifest_gives(monkeypatch, MOVED, asked)
+        updater.request("0.2.0", "0.1.0", state)
+        assert updater.take_pending_step(path=state) is True
+        [(url, requested)] = asked
+        assert url.endswith("/releases/manifest") and requested == "0.2.0"
+        st = updater.load(state)
+        assert (st.stage, st.previous, st.previous_compute) == ("verify", "0.1.0",
+                                                                 "0.10.0")
+
+    def test_a_request_the_manifest_does_not_name_installs_nothing(
+            self, state, monkeypatch, capsys):
+        self._venv(monkeypatch)
+        manifest_gives(monkeypatch, Upgrade(False, False, "the manifest names 0.3.0"))
+        updater.request("0.2.0", "0.1.0", state)
+        assert updater.take_pending_step(path=state) is False
+        assert updater.load(state) is None
+        assert "names 0.3.0" in capsys.readouterr().out
+
+
 class TestVerifyAndRollback:
     def _installed(self, monkeypatch, ok: bool):
         monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
                             install_mod.Installation("venv", ["true"], "x"))
         calls: list[str] = []
-        monkeypatch.setattr(install_mod, "run_upgrade",
-                            lambda w, t=None: (calls.append(t or ""), (True, ""))[1])
+        monkeypatch.setattr(release_manifest, "restore_previous",
+                            lambda py, prev, say=print:
+                            (calls.append(prev[0]), True)[1])
         monkeypatch.setattr(updater, "_self_check",
                             lambda: [] if ok else ["import failed: boom"])
         return calls
@@ -119,7 +161,7 @@ class TestManualUpdate:
                             lambda: service.ServiceStatus(False, False, False, None, "not installed"))
         monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
                             install_mod.Installation("venv", ["true"], "x"))
-        monkeypatch.setattr(install_mod, "run_upgrade", lambda w, t=None: (True, ""))
+        manifest_gives(monkeypatch, NOTHING)
         monkeypatch.setattr(install_mod, "installed_versions",
                             lambda: {"mechbench": "0.2.2"})
         assert updater.update_now() == 0
@@ -138,7 +180,7 @@ class TestManualUpdate:
                {"mechbench": "0.2.2", "mechbench-compute": "0.11.1"}]
         monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
                             install_mod.Installation("venv", ["true"], "x"))
-        monkeypatch.setattr(install_mod, "run_upgrade", lambda w, t=None: (True, ""))
+        manifest_gives(monkeypatch, MOVED)
         monkeypatch.setattr(install_mod, "installed_versions", lambda: seq.pop(0) if seq else seq0)
         seq0 = {"mechbench": "0.2.2", "mechbench-compute": "0.11.1"}
         updater.update_now()
@@ -165,7 +207,7 @@ class TestStaleServiceRestart:
         kicked = self._quiet(monkeypatch, "0.5.4")
         monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
                             install_mod.Installation("uv-tool", ["true"], "x"))
-        monkeypatch.setattr(install_mod, "run_upgrade", lambda w, t=None: (True, ""))
+        manifest_gives(monkeypatch, NOTHING)
         monkeypatch.setattr(install_mod, "installed_versions",
                             lambda: {install_mod.DIST: "0.5.6"})
         updater.update_now()
@@ -176,7 +218,7 @@ class TestStaleServiceRestart:
         kicked = self._quiet(monkeypatch, "0.5.6")
         monkeypatch.setattr(install_mod, "detect", lambda prefix=None:
                             install_mod.Installation("uv-tool", ["true"], "x"))
-        monkeypatch.setattr(install_mod, "run_upgrade", lambda w, t=None: (True, ""))
+        manifest_gives(monkeypatch, NOTHING)
         monkeypatch.setattr(install_mod, "installed_versions",
                             lambda: {install_mod.DIST: "0.5.6"})
         updater.update_now()

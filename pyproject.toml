@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mechbench"
-version = "0.52.0"
+version = "0.53.0"
 description = "The mechbench runner: claims jobs from mechbench-api, executes protocols against mechbench-compute, and emits results; the command line for the platform's verbs."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -31,6 +31,7 @@ dependencies = [
     "httpx>=0.27,<1",
     "websockets>=13,<16",
     "pydantic>=2.7,<3",
+    "cryptography>=42,<52",
 ]
 
 [project.optional-dependencies]
@@ -50,7 +51,7 @@ mechbench = "mechbench.cli:main"
 include = ["mechbench", "mechbench_runner*"]
 
 [tool.setuptools.package-data]
-mechbench_runner = ["policy_cases.json"]
+mechbench_runner = ["policy_cases.json", "release_key.pub"]
 
 [tool.ruff]
 line-length = 88

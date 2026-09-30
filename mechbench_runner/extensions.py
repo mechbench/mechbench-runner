@@ -20,7 +20,7 @@ from typing import Any
 import httpx
 
 from . import install as install_mod
-from . import paths
+from . import paths, release_manifest
 from .api_client import ApiError, installed_path
 from .confine import under
 from .policy import PolicyHolder, _release, policy_admits
@@ -31,9 +31,8 @@ GC_EVERY_SECONDS = 3600.0
 UPGRADE_EVERY_SECONDS = 3600.0
 UV_TIMEOUT_SECONDS = 900.0
 
-PYPI = "https://pypi.org/pypi"
-RUNNER_DIST = "mechbench"
-COMPUTE_DIST = "mechbench-compute"
+RUNNER_DIST = release_manifest.RUNNER_DIST
+COMPUTE_DIST = release_manifest.COMPUTE_DIST
 
 
 class InstallError(Exception):
@@ -188,12 +187,18 @@ class Extensions:
                  registry: Any = None,
                  wall: Callable[[], float] = time.time,
                  clock: Callable[[], float] = time.monotonic,
-                 fetch_json: Callable[[str], Any] | None = None) -> None:
+                 fetch_json: Callable[[str], Any] | None = None,
+                 get_bytes: Callable[[str], bytes] | None = None,
+                 manifest_url: str | None = None,
+                 release_key: Any = None) -> None:
         self.python = python or sys.executable
         self.registry = registry or ComputeRegistry()
         self.wall = wall
         self.clock = clock
-        self.fetch_json = fetch_json or _fetch_json
+        self.fetch_json = fetch_json or release_manifest.fetch_json
+        self.get_bytes = get_bytes or release_manifest._get_bytes  # noqa: SLF001
+        self.manifest_url = manifest_url
+        self.release_key = release_key
         self._last_gc: float | None = None
         self._last_upgrade: float | None = None
         self._report_route = True
@@ -464,6 +469,8 @@ class Extensions:
                 and now - self._last_upgrade < UPGRADE_EVERY_SECONDS):
             return None
         self._last_upgrade = now
+        if self.manifest_url is None:
+            return None
         where = install_mod.detect()
         if where.method == "source":
             if not self._told_source:
@@ -471,40 +478,26 @@ class Extensions:
                       "checkout; it does not upgrade itself")
                 self._told_source = True
             return None
+        result = release_manifest.upgrade(
+            self.python, self.manifest_url, fetch=self.fetch_json,
+            get_bytes=self.get_bytes, key=self.release_key, skip=self._bad_upgrade,
+            say=lambda m: print(f"[runner] {m}", flush=True))
+        if not result.changed:
+            if result.message:
+                print(f"[runner] {result.message}", flush=True)
+            return None
         try:
-            target = self.newest()
-        except Exception as exc:  # noqa: BLE001
-            print(f"[runner] could not read PyPI for upgrades ({exc})")
-            return None
-        if target is None or target == self._bad_upgrade:
-            return None
-        have = install_mod.installed_versions()
-        runner_v, compute_v = target
-        if not (_newer(runner_v, have.get(RUNNER_DIST))
-                or _newer(compute_v, have.get(COMPUTE_DIST))):
-            return None
-        previous = (have.get(RUNNER_DIST), have.get(COMPUTE_DIST))
-        pins = [f"{RUNNER_DIST}=={runner_v}", f"{COMPUTE_DIST}=={compute_v}"]
-        refresh = ["--refresh-package", RUNNER_DIST, "--refresh-package", COMPUTE_DIST]
-        try:
-            self._uv_run(["install", "--python", self.python, *refresh, *pins])
             self._self_check()
         except InstallError as exc:
-            self._bad_upgrade = target
-            print(f"[runner] upgrade to {RUNNER_DIST} {runner_v}, {COMPUTE_DIST} "
-                  f"{compute_v} failed ({exc}); "
-                  f"staying on {previous[0]}, {previous[1]}",
+            self._bad_upgrade = result.target
+            previous = result.previous
+            print(f"[runner] {result.message}, but {exc}; restoring "
+                  f"{RUNNER_DIST} {previous[0]}, {COMPUTE_DIST} {previous[1]}",
                   flush=True)
-            if all(previous) and "(absent)" not in previous:
-                try:
-                    self._uv_run(["install", "--python", self.python,
-                                  f"{RUNNER_DIST}=={previous[0]}",
-                                  f"{COMPUTE_DIST}=={previous[1]}"])
-                except InstallError as exc2:
-                    print(f"[runner] could not restore the previous versions ({exc2})")
+            release_manifest.restore_previous(
+                self.python, previous, say=lambda m: print(f"[runner] {m}", flush=True))
             return None
-        reason = (f"upgraded {RUNNER_DIST} {previous[0]} -> {runner_v}, "
-                  f"{COMPUTE_DIST} {previous[1]} -> {compute_v} under upgrades: auto")
+        reason = f"{result.message} under upgrades: auto"
         print(f"[runner] {reason}", flush=True)
         return reason
 
@@ -519,43 +512,6 @@ class Extensions:
             tail = ((proc.stderr or "") + (proc.stdout or "")).strip()
             raise InstallError(f"the new versions do not import: {tail[-300:]}")
 
-    def newest(self) -> tuple[str, str] | None:
-        from packaging.requirements import Requirement
-        from packaging.version import InvalidVersion, Version
-
-        runner = self.fetch_json(f"{PYPI}/{RUNNER_DIST}/json")
-        runner_v = str(runner["info"]["version"])
-        spec = None
-        for line in runner["info"].get("requires_dist") or []:
-            req = Requirement(line)
-            if req.name == COMPUTE_DIST and req.marker is None:
-                spec = req.specifier
-        compute = self.fetch_json(f"{PYPI}/{COMPUTE_DIST}/json")
-        candidates: list[Version] = []
-        for text, files in (compute.get("releases") or {}).items():
-            try:
-                v = Version(text)
-            except InvalidVersion:
-                continue
-            if v.is_prerelease or not files or all(f.get("yanked") for f in files):
-                continue
-            if spec is None or spec.contains(v):
-                candidates.append(v)
-        if not candidates:
-            return None
-        return runner_v, str(max(candidates))
-
-
-def _newer(candidate: str, have: str | None) -> bool:
-    from packaging.version import InvalidVersion, Version
-
-    if not have or have == "(absent)":
-        return False
-    try:
-        return Version(candidate) > Version(have.split("+", 1)[0])
-    except InvalidVersion:
-        return False
-
 
 def _norm(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
@@ -565,7 +521,3 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _fetch_json(url: str) -> Any:
-    res = httpx.get(url, timeout=httpx.Timeout(15.0), follow_redirects=True)
-    res.raise_for_status()
-    return res.json()

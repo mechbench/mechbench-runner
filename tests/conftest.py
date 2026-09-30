@@ -61,6 +61,7 @@ def _fenced_machine(monkeypatch, tmp_path):
 
     real_httpx_request = api_client.httpx.request
     real_httpx_post = api_client.httpx.post
+    real_httpx_get = api_client.httpx.get
 
     def fenced_request(method, url, *a, **kw):
         if not _local(str(url)):
@@ -73,4 +74,10 @@ def _fenced_machine(monkeypatch, tmp_path):
         return real_httpx_post(url, *a, **kw)
 
     monkeypatch.setattr(api_client.httpx, "request", fenced_request)
+    def fenced_get(url, *a, **kw):
+        if not _local(str(url)):
+            raise LiveSystemTouchedError(f"HTTP to a non-local host from a test: {url}")
+        return real_httpx_get(url, *a, **kw)
+
     monkeypatch.setattr(api_client.httpx, "post", fenced_post)
+    monkeypatch.setattr(api_client.httpx, "get", fenced_get)

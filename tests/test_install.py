@@ -39,22 +39,6 @@ class TestVersions:
         assert set(m.installed_versions().values()) == {"(absent)"}
 
 
-class TestRunUpgrade:
-    def test_it_refuses_when_there_is_no_command(self):
-        i = m.Installation("unknown", None, "do it yourself")
-        ok, msg = m.run_upgrade(i)
-        assert ok is False and msg == "do it yourself"
-
-    def test_a_missing_binary_is_reported_not_raised(self, monkeypatch):
-        def gone(cmd, **_kw):
-            raise FileNotFoundError(cmd[0])
-
-        monkeypatch.setattr(m, "_run", gone)
-        i = m.Installation("venv", ["/definitely/not/here"], "x")
-        ok, msg = m.run_upgrade(i)
-        assert ok is False and msg
-
-
 class TestFindingInstallers:
     def test_path_is_tried_first(self, monkeypatch):
         monkeypatch.setattr(m.shutil, "which", lambda n: "/from/path/" + n)
@@ -80,53 +64,3 @@ class TestFindingInstallers:
         assert i.method == "uv-tool"
         assert i.upgradable is False
         assert "uv tool upgrade" in i.advice
-
-
-class TestSuccessIsMeasuredNotAssumed:
-    def _proc(self, monkeypatch, code=0):
-        import subprocess
-
-        monkeypatch.setattr(
-            m, "_run",
-            lambda cmd, **k: subprocess.CompletedProcess(cmd, code, "Nothing to upgrade", ""),
-        )
-
-    def test_unchanged_version_is_a_failure(self, monkeypatch):
-        self._proc(monkeypatch)
-        monkeypatch.setattr(m, "installed_versions", lambda: {m.DIST: "0.2.0"})
-        ok, msg = m.run_upgrade(m.Installation("venv", ["true"], "x"), "0.2.1")
-        assert ok is False
-        assert "still 0.2.0" in msg
-
-    def test_the_target_landing_is_success(self, monkeypatch):
-        self._proc(monkeypatch)
-        monkeypatch.setattr(m, "installed_versions", lambda: {m.DIST: "0.2.1"})
-        ok, _ = m.run_upgrade(m.Installation("venv", ["true"], "x"), "0.2.1")
-        assert ok is True
-
-    def test_no_target_reinstalls_the_whole_env(self, monkeypatch):
-        seen: list[list[str]] = []
-        import subprocess
-
-        monkeypatch.setattr(
-            m, "_run",
-            lambda cmd, **k: (seen.append(cmd),
-                              subprocess.CompletedProcess(cmd, 0, "", ""))[1],
-        )
-        monkeypatch.setattr(m, "installed_versions", lambda: {m.DIST: "0.5.3"})
-        m.run_upgrade(m.Installation("uv-tool", ["/bin/uv", "tool", "upgrade", m.DIST], "x"))
-        assert seen[0] == ["/bin/uv", "tool", "install", "--upgrade", "--refresh", m.DIST]
-
-    def test_uv_is_asked_for_the_exact_version(self, monkeypatch):
-        seen: list[list[str]] = []
-        import subprocess
-
-        monkeypatch.setattr(
-            m, "_run",
-            lambda cmd, **k: (seen.append(cmd),
-                              subprocess.CompletedProcess(cmd, 0, "", ""))[1],
-        )
-        monkeypatch.setattr(m, "installed_versions", lambda: {m.DIST: "0.2.1"})
-        m.run_upgrade(m.Installation("uv-tool", ["/bin/uv", "tool", "upgrade", m.DIST], "x"), "0.2.1")
-        assert seen[0] == ["/bin/uv", "tool", "install", "--reinstall",
-                           f"{m.DIST}==0.2.1"]

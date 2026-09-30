@@ -20,6 +20,7 @@ from typing import Any
 from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 from mechbench_schema import dump_canonical
 
+from . import release_manifest
 from . import supervisor as supervisor_mod
 from .ambient import NodeWatch, model_bearing
 from .api_client import ApiClient, ApiError
@@ -263,7 +264,8 @@ class JobRunner:
                               lambda: self._watchdog.stamp())
         self._channel.on_live = self._live.offer
         self._policy = PolicyHolder()
-        self._extensions = Extensions()
+        self._extensions = Extensions(
+            manifest_url=release_manifest.manifest_url(config.api_base_url))
         self._restart_pending: str | None = None
         self._channel.on_policy = self._on_policy
         self._watchdog = Watchdog(

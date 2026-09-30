@@ -139,14 +139,24 @@ class Supervisor:
             updater.clear()
             return False
 
-        print(f"[supervisor] upgrading {st.previous} -> {st.target}")
-        ok, tail = install_mod.run_upgrade(where, st.target)
-        if not ok:
-            print(f"[supervisor] upgrade failed: {tail[:300]}")
+        if st.stage == "verify":
+            return True
+
+        from . import release_manifest
+
+        st.attempts += 1
+        st.save()
+        result = release_manifest.upgrade(
+            sys.executable, updater.manifest_url(), requested=st.target or None,
+            say=lambda m: print(f"[supervisor] {m}"))
+        if not result.changed:
+            print(f"[supervisor] {result.message or 'already on the release manifest'}"
+                  "; nothing installed")
             updater.clear()
             return False
 
         st.stage = "verify"
+        st.previous, st.previous_compute = (v or "" for v in result.previous)
         st.save()
         print(f"[supervisor] now on {install_mod.installed_versions()}")
         return True
@@ -160,18 +170,16 @@ class Supervisor:
         updater.clear()
 
     def _roll_back(self) -> bool:
-        from . import install as install_mod
-        from . import updater
+        from . import release_manifest, updater
 
         st = updater.load()
         updater.clear()
         if st is None or not st.previous:
             return False
         print(f"[supervisor] rolling back to {st.previous}")
-        ok, tail = install_mod.run_upgrade(install_mod.detect(), st.previous)
-        if not ok:
-            print(f"[supervisor] rollback failed: {tail[:200]}")
-        return ok
+        return release_manifest.restore_previous(
+            sys.executable, (st.previous, st.previous_compute or None),
+            say=lambda m: print(f"[supervisor] {m}"))
 
     def _stop_child(self, why: str) -> None:
         child = self._child

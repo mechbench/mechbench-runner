@@ -259,3 +259,34 @@ class TestResilience:
         state.job_claimed("job_11", "layer_ablation", None)
         assert ch.connected is False
         ch.stop()
+
+
+class TestUpdateCommand:
+    def _channel(self, monkeypatch, tmp_path):
+        from mechbench_runner import install, updater
+
+        monkeypatch.setattr(install, "detect", lambda *a, **k: install.Installation(
+            "venv", ["true"], "x"))
+        config = Config(api_base_url="http://127.0.0.1:1", api_key="mbk_x",
+                        poll_interval_seconds=0.01, warm_model_id=None)
+        state = RunnerState(version="0.53.0", api_url="http://127.0.0.1:1")
+        return LiveChannel(config, state), updater
+
+    def test_a_version_that_is_not_strict_is_refused(self, monkeypatch, tmp_path):
+        ch, updater = self._channel(monkeypatch, tmp_path)
+        for bad in ("latest", "0.60.0+evil", "v0.60.0", "0.60.0 ", "", 60):
+            ack = ch._accept_update({"args": {"version": bad}})
+            assert ack["ok"] is False and "strict version" in ack["error"]
+        assert updater.load() is None
+
+    def test_no_version_means_the_current_manifest(self, monkeypatch, tmp_path):
+        ch, updater = self._channel(monkeypatch, tmp_path)
+        ack = ch._accept_update({"args": {}})
+        assert ack["ok"] is True and ack["state"]["updating_to"] == "manifest"
+        assert updater.load().target == ""
+
+    def test_a_strict_version_is_recorded_for_the_manifest_check(
+            self, monkeypatch, tmp_path):
+        ch, updater = self._channel(monkeypatch, tmp_path)
+        assert ch._accept_update({"args": {"version": "0.60.0"}})["ok"] is True
+        assert updater.load().target == "0.60.0"

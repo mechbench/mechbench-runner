@@ -58,7 +58,10 @@ and is controlled from the website.
 mechbench update
 ```
 
-Upgrades and restarts the service. **Re-running the install command does
+Installs the versions the platform's signed release manifest names
+(`GET /releases/manifest`), every package pinned to its sha256, and
+restarts the service; it never takes PyPI's newest.
+**Re-running the install command does
 not upgrade anything** — `uv tool install` treats an already-installed
 tool as nothing to do and reports that in a way that reads like success,
 so a machine can sit on an old version while looking freshly installed.

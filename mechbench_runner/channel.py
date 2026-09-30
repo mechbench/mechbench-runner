@@ -288,9 +288,11 @@ class LiveChannel:
 
     def _accept_update(self, frame: dict[str, Any]) -> dict[str, Any]:
         target = (frame.get("args") or {}).get("version")
-        if not isinstance(target, str) or not target:
+        if target is not None and not _strict_version(target):
             return {"v": PROTOCOL_VERSION, "type": "ack", "ok": False,
-                    "error": "update needs args.version"}
+                    "error": "update's args.version must be a strict version "
+                             "(the release manifest's runner version) or absent"}
+        target = target or ""
 
         snap = self.state.snapshot()
         if snap.get("job") is not None:
@@ -311,14 +313,27 @@ class LiveChannel:
             current = ""
         updater.request(target, current)
         self.state.set_phase("updating")
-        self.state.request_exit(EXIT_RESTART, f"update to {target}")
+        self.state.request_exit(EXIT_RESTART,
+                                f"update to {target or 'the release manifest'}")
         return {"v": PROTOCOL_VERSION, "type": "ack", "ok": True,
-                "state": {"updating_to": target, "from": current}}
+                "state": {"updating_to": target or "manifest", "from": current}}
 
     def _remember(self, cmd_id: str, ack: dict[str, Any]) -> None:
         self._applied[cmd_id] = ack
         while len(self._applied) > COMMAND_MEMORY:
             self._applied.popitem(last=False)
+
+
+def _strict_version(text: Any) -> bool:
+    from packaging.version import InvalidVersion, Version
+
+    if not isinstance(text, str) or not text:
+        return False
+    try:
+        v = Version(text)
+    except InvalidVersion:
+        return False
+    return v.local is None and str(v) == text
 
 
 def _offer(queue: asyncio.Queue[dict[str, Any]], frame: dict[str, Any]) -> None:

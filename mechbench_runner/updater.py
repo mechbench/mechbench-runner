@@ -6,6 +6,7 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from . import release_manifest
 from .paths import mechbench_dir
 
 MAX_ATTEMPTS = 2
@@ -22,6 +23,7 @@ class UpdateState:
     previous: str
     attempts: int = 0
     error: str | None = None
+    previous_compute: str = ""
 
     def save(self, path: Path | None = None) -> None:
         p = path or state_path()
@@ -45,6 +47,7 @@ def load(path: Path | None = None) -> UpdateState | None:
             previous=str(data.get("previous") or ""),
             attempts=int(data.get("attempts") or 0),
             error=data.get("error"),
+            previous_compute=str(data.get("previous_compute") or ""),
         )
     except (TypeError, ValueError):
         return None
@@ -87,15 +90,18 @@ def take_pending_step(
             clear(path)
             return False
         st.attempts += 1
-        st.stage = "verify"
         st.save(path)
-        say(f"upgrading {st.previous} -> {st.target} via {where.method}")
-        ok, tail = install_mod.run_upgrade(where, st.target)
-        if not ok:
-            st.stage = "rollback"
-            st.error = tail[-300:]
-            st.save(path)
-            say(f"upgrade failed; rolling back to {st.previous}")
+        say(f"upgrading from {st.previous} to the release manifest's versions "
+            f"via {where.method}")
+        result = release_manifest.upgrade(
+            sys.executable, manifest_url(), requested=st.target or None, say=say)
+        if not result.changed:
+            say(result.message or "already on the release manifest's versions")
+            clear(path)
+            return False
+        st.stage = "verify"
+        st.previous, st.previous_compute = (v or "" for v in result.previous)
+        st.save(path)
         return _reexec(say)
 
     if st.stage == "verify":
@@ -107,8 +113,10 @@ def take_pending_step(
         st.stage = "rollback"
         st.error = "; ".join(problems)[:300]
         st.save(path)
-        say(f"{st.target} does not work here ({st.error}); rolling back")
-        install_mod.run_upgrade(where, st.previous)
+        say(f"{st.target or 'the new version'} does not work here ({st.error}); "
+            "rolling back")
+        release_manifest.restore_previous(
+            sys.executable, (st.previous, st.previous_compute), say=say)
         return _reexec(say)
 
     if st.stage == "rollback":
@@ -122,6 +130,16 @@ def take_pending_step(
 
     clear(path)
     return False
+
+
+def manifest_url() -> str:
+    from .config import DEFAULT_API_URL, Config
+
+    try:
+        base = Config.from_env().api_base_url
+    except Exception:  # noqa: BLE001
+        base = DEFAULT_API_URL
+    return release_manifest.manifest_url(base)
 
 
 def _self_check() -> list[str]:
@@ -166,12 +184,12 @@ def update_now(report=None) -> int:
         return 1
 
     before = install_mod.installed_versions()
-    say(f"upgrading via {where.method}…")
-    ok, tail = install_mod.run_upgrade(where)
+    say(f"upgrading to the release manifest's versions via {where.method}…")
+    result = release_manifest.upgrade(sys.executable, manifest_url(), say=say)
     after = install_mod.installed_versions()
 
-    if not ok:
-        say(f"upgrade failed: {tail}")
+    if not result.ok:
+        say(f"upgrade failed: {result.message}")
         return 1
 
     changed = {k: (before[k], v) for k, v in after.items() if before.get(k) != v}

@@ -24,3 +24,10 @@ def test_third_party_dependencies_are_capped_and_our_own_are_floor_only():
             assert "<" not in req, req
         else:
             assert "<" in req, req
+
+
+def test_the_release_key_ships_in_the_wheel():
+    root = Path(__file__).resolve().parent.parent
+    data = tomllib.loads((root / "pyproject.toml").read_text())["tool"]["setuptools"]
+    assert "release_key.pub" in data["package-data"]["mechbench_runner"]
+    assert (root / "mechbench_runner" / "release_key.pub").exists()
