@@ -4,10 +4,11 @@
 # single-use registration token minted at https://mechbench.ai/download
 # (it starts with mbr_ and can be used once; nothing else in this file is secret).
 #
-# Assumes it runs as the instance's normal user with sudo available. If Enverge
-# runs startup scripts as root, the runner would be installed for root, which
-# is not what we want; in that case log in over SSH and run the same lines as
-# the normal user.
+# Enverge runs startup scripts as the `user` account in a login shell (not root),
+# caps them at one hour, and keeps their output at /var/log/enverge/startup.log
+# (enverge.ai/docs, written for their Linux boxes; the Mac product is newer than
+# the docs). Everything below fits well inside the hour: the install takes a few
+# minutes, the first calibration a few more (it pulls Gemma 4 E2B, ~10 GB).
 
 MECHBENCH_TOKEN="mbr_PASTE_THE_TOKEN_HERE"
 RUNNER_NAME="enverge-m5-ultra"
