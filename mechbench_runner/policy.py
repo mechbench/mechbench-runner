@@ -42,6 +42,11 @@ def _entry_matches(entry: Mapping[str, Any], ext: Mapping[str, Any]) -> bool:
     return not (name is not _ABSENT and name != ext.get("name", _ABSENT))
 
 
+def checked_only_reason(name: str) -> str:
+    return (f"{name} is checked, not verified: it runs only on its author's "
+            f"own runners.")
+
+
 def policy_admits(policy: Mapping[str, Any], extension: Mapping[str, Any],
                   context: Mapping[str, Any]) -> Admit:
     ext = extension
@@ -51,6 +56,7 @@ def policy_admits(policy: Mapping[str, Any], extension: Mapping[str, Any],
         return _refuse(
             f"{name} is withdrawn, and a withdrawn version is never installed.")
     verified = state == "verified"
+    vetted = verified or state == "checked"
     rules = policy["extensions"]
     level = rules["install"]
     if level == "locked":
@@ -59,20 +65,25 @@ def policy_admits(policy: Mapping[str, Any], extension: Mapping[str, Any],
         if context["jobCreatorId"] != context["runnerOwnerId"]:
             return _refuse(
                 "Under mine, a runner installs only for its owner's own jobs.")
-        if not verified and ext["owner"] != context["jobCreatorId"]:
+        own = ext["owner"] == context["jobCreatorId"]
+        if not own and not (verified and ext.get("party") == "first"):
+            if state == "checked":
+                return _refuse(checked_only_reason(name))
             return _refuse(
-                f"Under mine, {name} must be verified or your own draft; "
-                f"it is {state}.")
+                f"Under mine, {name} must be your own or the platform's own "
+                f"verified extension; it is another author's {state} version.")
     if level == "verified" and not verified:
+        if state == "checked":
+            return _refuse(checked_only_reason(name))
         return _refuse(f"Under verified, {name} must be verified; it is {state}.")
     if level == "allowlist":
         matches = [e for e in rules.get("allow") or [] if _entry_matches(e, ext)]
         if not matches:
             return _refuse(f"{name} is not on the policy's allowlist.")
-        if not verified and not any(
+        if not vetted and not any(
                 e.get("owner", _ABSENT) == ext["owner"] for e in matches):
             return _refuse(
-                f"{name} is {state}, and an unverified extension installs only "
+                f"{name} is {state}, and an unchecked extension installs only "
                 f"when its owner is listed.")
     needs = ext.get("needs") or []
     network = next((n for n in needs if n.startswith("network:")), None)

@@ -23,6 +23,26 @@ with both headings.
 
 ---
 
+## Unreleased
+
+### Changes that raise
+
+- **The install policy's twin follows the extension trust model**
+  (task 000961, security review finding H2). A version the
+  verification job passed is now `checked`; `verified` means a person
+  and the platform's reviewer read the code. Under `mine` a runner
+  installs its owner's own extensions in any state and the platform's
+  own (`party: first`) verified ones, and no other author's; under
+  `verified`, verified versions only; under `allowlist`, checked or
+  verified versions an entry matches, a draft only when an entry names
+  its owner. A checked version refused on another person's runner says
+  "is checked, not verified: it runs only on its author's own
+  runners." The vendored `policy_cases.json` is the models copy.
+
+### Changes that alter results without raising
+
+_None._
+
 ## 0.53.0 — 2026-09-30
 
 ### Changes that raise

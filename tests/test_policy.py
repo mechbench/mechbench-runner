@@ -42,7 +42,7 @@ def test_the_vendored_cases_are_the_models_copy():
 
 
 def test_there_are_cases():
-    assert len(CASES) >= 31
+    assert len(CASES) >= 45
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c["name"])
@@ -96,8 +96,8 @@ def claim(version: int = 1, install=None, **extra) -> dict:
     return job
 
 
-EXT = {"name": "bob/tools", "owner": "u_bob", "state": "verified",
-       "visibility": "public", "needs": []}
+EXT = {"name": "mechbench/tools", "owner": "u_platform", "state": "verified",
+       "visibility": "public", "needs": [], "party": "first"}
 
 
 class TestTheHeldCopy:
@@ -269,8 +269,20 @@ class TestTheDoubleCheck:
         holder.start(api)
         draft = {**EXT, "state": "draft"}
         admits = check_installs(api, holder, claim(1, install=[draft]))
-        assert admits == [Admit(False, "Under mine, bob/tools must be verified or "
-                                       "your own draft; it is draft.")]
+        assert admits == [Admit(False, "Under mine, mechbench/tools must be your own "
+                                       "or the platform's own verified extension; "
+                                       "it is another author's draft version.")]
+
+    def test_a_checked_install_by_another_author_is_released(self, holder):
+        api = FakeApi(("pol_personal", 1, PERSONAL))
+        holder.start(api)
+        checked = {**EXT, "name": "bob/tools", "owner": "u_bob", "state": "checked",
+                   "party": "third"}
+        admits = check_installs(api, holder, claim(1, install=[checked]))
+        reason = ("bob/tools is checked, not verified: it runs only on its "
+                  "author's own runners.")
+        assert admits == [Admit(False, reason)]
+        assert api.released == [("j_1", POLICY_MISMATCH, reason)]
 
     def test_no_held_policy_installs_nothing(self, holder):
         api = FakeApi(("pol_personal", 1, PERSONAL))

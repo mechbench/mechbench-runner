@@ -180,10 +180,10 @@
       "jobCreatorId": "u_alice"
     },
     "ok": false,
-    "reason": "Under mine, carol/tools must be verified or your own draft; it is draft."
+    "reason": "Under mine, carol/tools must be your own or the platform's own verified extension; it is another author's draft version."
   },
   {
-    "name": "mine: someone else's verified extension for the owner's job",
+    "name": "mine: another author's verified extension is refused (only the platform's own)",
     "policy": {
       "extensions": {
         "install": "mine",
@@ -210,7 +210,8 @@
       "runnerOwnerId": "u_alice",
       "jobCreatorId": "u_alice"
     },
-    "ok": true
+    "ok": false,
+    "reason": "Under mine, carol/tools must be your own or the platform's own verified extension; it is another author's verified version."
   },
   {
     "name": "mine: another person's job",
@@ -532,7 +533,7 @@
       "jobCreatorId": "u_alice"
     },
     "ok": false,
-    "reason": "carol/tools is draft, and an unverified extension installs only when its owner is listed."
+    "reason": "carol/tools is draft, and an unchecked extension installs only when its owner is listed."
   },
   {
     "name": "allowlist: a listed org's verified extension",
@@ -603,7 +604,7 @@
       "jobCreatorId": "u_alice"
     },
     "ok": false,
-    "reason": "carol/tools is draft, and an unverified extension installs only when its owner is listed."
+    "reason": "carol/tools is draft, and an unchecked extension installs only when its owner is listed."
   },
   {
     "name": "allowlist: an entry naming owner and extension, draft",
@@ -1003,5 +1004,458 @@
       "jobCreatorId": "u_alice"
     },
     "ok": true
+  },
+  {
+    "name": "mine: the owner's own checked version",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "alice/interp-extras",
+      "owner": "u_alice",
+      "state": "checked",
+      "visibility": "private",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": true
+  },
+  {
+    "name": "mine: the platform's own verified extension",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "mechbench/interp-extras",
+      "owner": "u_platform",
+      "state": "verified",
+      "visibility": "public",
+      "needs": [],
+      "party": "first"
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": true
+  },
+  {
+    "name": "mine: the platform's own checked version is not verified",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "mechbench/interp-extras",
+      "owner": "u_platform",
+      "state": "checked",
+      "visibility": "private",
+      "needs": [],
+      "party": "first"
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "mechbench/interp-extras is checked, not verified: it runs only on its author's own runners."
+  },
+  {
+    "name": "mine: the platform's own draft",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "mechbench/interp-extras",
+      "owner": "u_platform",
+      "state": "draft",
+      "visibility": "private",
+      "needs": [],
+      "party": "first"
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "Under mine, mechbench/interp-extras must be your own or the platform's own verified extension; it is another author's draft version."
+  },
+  {
+    "name": "mine: another author's checked version runs only on their runners",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "checked",
+      "visibility": "org",
+      "needs": [],
+      "org": "o_lab"
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "carol/tools is checked, not verified: it runs only on its author's own runners."
+  },
+  {
+    "name": "mine: party first names no owner, verified by another author is not first party",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "verified",
+      "visibility": "public",
+      "needs": [],
+      "party": "third"
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "Under mine, carol/tools must be your own or the platform's own verified extension; it is another author's verified version."
+  },
+  {
+    "name": "verified: a checked version is refused",
+    "policy": {
+      "extensions": {
+        "install": "verified",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "checked",
+      "visibility": "private",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "carol/tools is checked, not verified: it runs only on its author's own runners."
+  },
+  {
+    "name": "verified: the owner's own checked version is refused too",
+    "policy": {
+      "extensions": {
+        "install": "verified",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "alice/interp-extras",
+      "owner": "u_alice",
+      "state": "checked",
+      "visibility": "private",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "alice/interp-extras is checked, not verified: it runs only on its author's own runners."
+  },
+  {
+    "name": "verified: the platform's own verified extension",
+    "policy": {
+      "extensions": {
+        "install": "verified",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "mechbench/interp-extras",
+      "owner": "u_platform",
+      "state": "verified",
+      "visibility": "public",
+      "needs": [],
+      "party": "first"
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_bob"
+    },
+    "ok": true
+  },
+  {
+    "name": "allowlist: a listed owner's checked version",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {
+            "owner": "u_carol"
+          }
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "checked",
+      "visibility": "private",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_bob"
+    },
+    "ok": true
+  },
+  {
+    "name": "allowlist: a listed extension, checked, owner not listed",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {
+            "extension": "carol/tools"
+          }
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "checked",
+      "visibility": "private",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": true
+  },
+  {
+    "name": "allowlist: a listed org's checked version",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {
+            "org": "o_lab"
+          }
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "checked",
+      "visibility": "private",
+      "needs": [],
+      "org": "o_lab"
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": true
+  },
+  {
+    "name": "allowlist: a listed extension, pending, owner not listed",
+    "policy": {
+      "extensions": {
+        "install": "allowlist",
+        "allow": [
+          {
+            "extension": "carol/tools"
+          }
+        ],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "carol/tools",
+      "owner": "u_carol",
+      "state": "pending",
+      "visibility": "private",
+      "needs": []
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "carol/tools is pending, and an unchecked extension installs only when its owner is listed."
+  },
+  {
+    "name": "network none refuses a checked version's network need under mine",
+    "policy": {
+      "extensions": {
+        "install": "mine",
+        "allow": [],
+        "network": "none",
+        "require_approved": false
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "pools": []
+    },
+    "extension": {
+      "name": "alice/interp-extras",
+      "owner": "u_alice",
+      "state": "checked",
+      "visibility": "private",
+      "needs": [
+        "network:api.example.com"
+      ]
+    },
+    "context": {
+      "runnerOwnerId": "u_alice",
+      "jobCreatorId": "u_alice"
+    },
+    "ok": false,
+    "reason": "The policy allows no network, and alice/interp-extras declares network:api.example.com."
   }
 ]
