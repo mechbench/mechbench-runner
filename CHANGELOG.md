@@ -23,6 +23,80 @@ with both headings.
 
 ---
 
+## 0.50.0 — 2026-09-30
+
+### Changes that raise
+
+- **The LaunchAgent's plist gains `LimitLoadToSessionType: [Aqua,
+  Background]`**, and `install-service` bootstraps it into `gui/<uid>`
+  when a login session exists and into `user/<uid>` when there is none
+  (SSH on a machine nobody has logged in to); `bootout`, `status`,
+  `kickstart` and `restart` find the domain it is loaded in. A plist
+  written by an older runner keeps working in `gui/`; re-run
+  `mechbench install-service` to take the new one.
+- **The API must accept `span` on `PATCH /jobs/:id/progress`**
+  (mechbench-api a32cbd6). An API before it refuses the report with a
+  400; the runner logs "span report failed" and carries on.
+
+### Changes that alter results without raising
+
+_None._ Spans, the canary and the counters are timing, reported beside
+a run and never inside its result or provenance.
+
+### Other
+
+- **Runner identity** (task 000876). `advertise()`, sent at
+  registration, in `hello` and on every claim, adds `chip`
+  (`sysctl machdep.cpu.brand_string`), `gpu_cores` (`ioreg`
+  `gpu-core-count`, else `system_profiler`), `os` (`macOS 27.0
+  (26A428)`), `python`, `stack` (`mlx`, `mlx_lm`, `mlx_vlm`, `torch`
+  from `importlib.metadata`, null when absent), `backends` (compute's
+  `backends.available()`), `architectures` and `architecture_levels`
+  (compute's `local_architectures()`), asked once per process
+  (`mechbench_runner.identity`). mechbench-models 0.83.0 names them and
+  places on `architecture` and `backend`.
+- **`mechbench calibrate`** (`runner calibrate`, task 000887), a local
+  verb of the new `runner` noun. It times the two micro-benchmarks
+  (`memcopy`: a 256 MiB float32 read and write; `matmul`: 4096³ in
+  bf16), then for a model (default Gemma 4 E2B when it is cached):
+  `load` cold (the weights evicted from the page cache with
+  `msync(MS_INVALIDATE)`, residency checked with `mincore`) and warm,
+  `forward` at n=128, b=1, `capture` at k=4 layers (interleaved with the
+  forwards, the added seconds), and one LoRA `lora_step` (rank 8, q and
+  v). Each is a median over `--repeats` (default 10; loads 3) after an
+  untimed warm-up, with the interquartile range in seconds and MLX's peak
+  memory. It answers a `platform/calibration` collection as compute
+  0.171.0 declares it (`records/record` on an older compute): items
+  `{id, chip, stack, model, dtype, primitive, shape, shape_key, seconds,
+  bytes_per_second?, peak_memory_bytes, repeats, spread,
+  warmup_seconds}`, header `{machine, stack_components, taken_at,
+  quiet, ambient}`; `stack` is `sha256:` over the sorted stack
+  components. `--out FILE` writes it, `--push --into OWNER/PROJECT`
+  stores it at `<owner>/<project>/calibration/<chip>-<stack12>`. The
+  micro-benchmarks are kept as `~/.mechbench/calibration/baseline.json`.
+- **The canary and the counters** (task 000889). Before and after every
+  model-bearing node (its requirements' class is `mlx-local`) the runner
+  times both micro-benchmarks for about 300 ms and records each as a
+  ratio to the baseline; a thread samples, once a second, the thermal
+  state (`NSProcessInfo` when PyObjC is there, else `pmset -g therm`),
+  GPU utilization (`ioreg`), memory (`memory_pressure`, `sysctl
+  vm.swapusage`, `vm_stat`), the load average, the top three processes
+  and the deny-list (`mds_stores`, `backupd`, `photoanalysisd`,
+  `mediaanalysisd` busy, or anything over 4 GB resident and busy), and
+  power (`pmset -g batt`, low power mode). The span gets `ambient`
+  (`canary_before`, `canary_after`, `canary`, `samples`, `thermal`,
+  `gpu_utilization`, `memory`, `load`, `top`, `busy`, `power`,
+  `reasons`) and `quiet` (canaries at or above 0.85, thermal nominal,
+  nothing on the deny-list busy, low power off). The runner takes
+  compute's span through `on_node_span` (compute 0.171.0) and sends it
+  whole, ambient added, as `span` on a progress report; with an older
+  compute it sends the ambient alone when the node is done.
+- **macOS service** (task 000912): checked on macOS 27.0 (26A428). The
+  plist lints; under `ProcessType Standard` launchd spawns the agent as
+  `daemon (3)` and a CPU loop runs as fast as in a terminal, under
+  `Background` 3.4× slower. The README gives the steps for a fresh
+  dedicated machine.
+
 ## 0.49.0 — 2026-09-29
 
 ### Changes that raise

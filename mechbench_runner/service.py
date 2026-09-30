@@ -69,6 +69,7 @@ def launchd_plist() -> dict[str, object]:
         "ThrottleInterval": THROTTLE_SECONDS,
         "ExitTimeOut": STOP_TIMEOUT_SECONDS,
         "ProcessType": "Standard",
+        "LimitLoadToSessionType": ["Aqua", "Background"],
         "StandardOutPath": str(boot_log()),
         "StandardErrorPath": str(boot_log()),
         "WorkingDirectory": str(Path.home()),
@@ -105,8 +106,9 @@ def install() -> ServiceStatus:
 
     if is_macos():
         path.write_bytes(plistlib.dumps(launchd_plist()))
-        _run(["launchctl", "bootout", _domain(), str(path)], check=False)
-        result = _run(["launchctl", "bootstrap", _domain(), str(path)], check=False)
+        for domain in _domains():
+            _run(["launchctl", "bootout", domain, str(path)], check=False)
+        result = _run(["launchctl", "bootstrap", _session_domain(), str(path)], check=False)
         if result.returncode != 0:
             result = _run(["launchctl", "load", "-w", str(path)], check=False)
         if result.returncode != 0:
@@ -139,7 +141,8 @@ def _settled_status(attempts: int = 10, pause: float = 0.3) -> ServiceStatus:
 def uninstall() -> ServiceStatus:
     path = unit_path()
     if is_macos():
-        _run(["launchctl", "bootout", _domain(), str(path)], check=False)
+        for domain in _domains():
+            _run(["launchctl", "bootout", domain, str(path)], check=False)
         _run(["launchctl", "unload", "-w", str(path)], check=False)
     else:
         _run(["systemctl", "--user", "disable", "--now", UNIT_NAME], check=False)
@@ -257,8 +260,20 @@ def restart(*, settle: float = 60.0) -> ServiceStatus:
                          f"{settle:.0f}s — check `mechbench logs`")
 
 
+def _domains() -> list[str]:
+    return [f"gui/{os.getuid()}", f"user/{os.getuid()}"]
+
+
+def _session_domain() -> str:
+    gui, user = _domains()
+    return gui if _run(["launchctl", "print", gui], check=False).returncode == 0 else user
+
+
 def _domain() -> str:
-    return f"gui/{os.getuid()}"
+    for domain in _domains():
+        if _run(["launchctl", "print", f"{domain}/{LABEL}"], check=False).returncode == 0:
+            return domain
+    return _session_domain()
 
 
 def _run(cmd: list[str], *, check: bool,

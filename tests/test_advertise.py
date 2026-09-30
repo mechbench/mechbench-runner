@@ -30,8 +30,12 @@ class TestAdvertise:
     def test_it_says_what_the_matcher_reads(self, tmp_path):
         from mechbench_compute import __version__
         caps = advertise(tmp_path / "none.json")
-        assert set(caps) == {"classes", "compute", "installs", "installed",
-                             "accelerator", "memory_gb"}
+        assert {"classes", "compute", "installs", "installed", "accelerator",
+                "memory_gb"} <= set(caps)
+        assert set(caps) - {"classes", "compute", "installs", "installed",
+                            "accelerator", "memory_gb"} <= {
+            "chip", "gpu_cores", "os", "python", "stack", "backends",
+            "architectures", "architecture_levels"}
         assert caps["classes"] == ["mlx-local", "pure", "remote"]
         assert caps["compute"] == __version__
         assert caps["installs"] is True

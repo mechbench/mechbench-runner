@@ -203,7 +203,8 @@ def argv_of(noun: str, v: Verb, args: dict[str, Any]) -> list[str]:
 
 OWN_WAY = {("run", "watch"), ("run", "result")}
 
-ON_THIS_MACHINE = {("extension", "new"), ("extension", "test"), ("extension", "push")}
+ON_THIS_MACHINE = {("extension", "new"), ("extension", "test"), ("extension", "push"),
+                   ("runner", "calibrate")}
 CASES = [(n.name, v.name) for n in NOUNS for v in n.verbs
          if (n.name, v.name) not in ON_THIS_MACHINE]
 

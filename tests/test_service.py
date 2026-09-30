@@ -158,3 +158,49 @@ class TestInstallReportsSettledState:
         monkeypatch.setattr(service, "status", st)
         service._settled_status(attempts=9, pause=0)  # noqa: SLF001
         assert len(calls) == 1
+
+
+class TestTahoe:
+    @pytest.mark.skipif(sys.platform != "darwin", reason="plutil is macOS's")
+    def test_the_plist_lints(self, tmp_path):
+        path = tmp_path / "ai.mechbench.runner.plist"
+        path.write_bytes(plistlib.dumps(service.launchd_plist()))
+        out = subprocess.run(["plutil", "-lint", str(path)], capture_output=True,
+                             text=True, check=False)
+        assert out.returncode == 0, out.stdout + out.stderr
+
+    def test_it_runs_at_the_standard_class_in_a_login_or_an_ssh_session(self):
+        spec = service.launchd_plist()
+        assert spec["ProcessType"] == "Standard"
+        assert spec["LimitLoadToSessionType"] == ["Aqua", "Background"]
+
+    def test_over_ssh_with_no_login_it_bootstraps_into_the_user_domain(
+        self, tmp_path, monkeypatch
+    ):
+        calls: list[list[str]] = []
+        gui = f"gui/{service.os.getuid()}"
+
+        def run(cmd, *, check, timeout=30):  # noqa: ARG001
+            calls.append(cmd)
+            missing = cmd[:2] == ["launchctl", "print"] and cmd[2].startswith(gui)
+            return subprocess.CompletedProcess(cmd, 113 if missing else 0, "", "")
+        monkeypatch.setattr(service, "_run", run)
+        monkeypatch.setattr(service.sys, "platform", "darwin")
+        path = tmp_path / "service.plist"
+        monkeypatch.setattr(service, "unit_path", lambda: path)
+        monkeypatch.setattr(service, "status", lambda: service.ServiceStatus(
+            True, True, True, path, "running"))
+        service.install()
+        [boot] = [c for c in calls if c[1] == "bootstrap"]
+        assert boot[2] == f"user/{service.os.getuid()}"
+        assert {c[2] for c in calls if c[1] == "bootout"} == {
+            gui, f"user/{service.os.getuid()}"}
+
+    def test_it_finds_the_domain_the_agent_is_loaded_in(self, monkeypatch):
+        uid = service.os.getuid()
+
+        def run(cmd, *, check, timeout=30):  # noqa: ARG001
+            ok = cmd[2] in (f"gui/{uid}", f"user/{uid}/{service.LABEL}")
+            return subprocess.CompletedProcess(cmd, 0 if ok else 113, "", "")
+        monkeypatch.setattr(service, "_run", run)
+        assert service._domain() == f"user/{uid}"

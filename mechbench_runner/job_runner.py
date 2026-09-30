@@ -21,14 +21,15 @@ from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 from mechbench_schema import dump_canonical
 
 from . import supervisor as supervisor_mod
+from .ambient import NodeWatch, model_bearing
 from .api_client import ApiClient, ApiError
-from .live import PURE, LiveHost
 from .channel import LiveChannel
 from .config import Config
 from .control import ControlServer, RunnerState, probe, socket_path
-from .machine import default_name
 from .exits import EXIT_CRASH, EXIT_OK, EXIT_RESTART
 from .extensions import Extensions
+from .live import PURE, LiveHost
+from .machine import default_name
 from .paths import limits_path, spool_dir
 from .policy import PolicyHolder, check_installs
 from .spend import SharedLimiter, SpendLedger
@@ -205,6 +206,7 @@ class JobRunner:
         self._transport_interrupts: dict[str, int] = {}
         self._limiter = SharedLimiter(limits_path())
         self._spend: SpendLedger | None = None
+        self._watch: NodeWatch | None = None
         hooks = dict(
             on_download=self._announce_download,
             on_download_bytes=self._announce_download_bytes,
@@ -214,9 +216,15 @@ class JobRunner:
             on_node_done=self._spool_node_done,
             limiter=self._limiter,
         )
-        try:
-            self._executor = ProtocolExecutor(on_node_kept=self._spool_node_kept, **hooks)
-        except TypeError:
+        self._executor = None
+        for extra in ({"on_node_kept": self._spool_node_kept, "on_node_span": self._node_span},
+                      {"on_node_kept": self._spool_node_kept}):
+            try:
+                self._executor = ProtocolExecutor(**extra, **hooks)
+                break
+            except TypeError:
+                continue
+        if self._executor is None:
             try:
                 self._executor = ProtocolExecutor(**hooks)
             except TypeError:
@@ -682,6 +690,16 @@ class JobRunner:
         promoted = False
         reported_node = -1
 
+        def report_span(nid: str, fields: dict[str, Any]) -> None:
+            try:
+                done, total = self._last_scalar
+                api.report_progress(job_id, max(done, 0), max(total, 1),
+                                    span={"node": nid, **fields})
+            except Exception as e:  # noqa: BLE001
+                print(f"[runner] span report failed ({e}); continuing")
+
+        self._watch = NodeWatch(model_bearing(spec_dict), report_span)
+
         def on_progress(done: int, total: int,
                         node: dict | None = None) -> None:
             nonlocal promoted, reported_node
@@ -736,6 +754,9 @@ class JobRunner:
                           _claim_token_of(api, job_id), missing)
             self._deliver(api, job_id, cbor_bytes, digest, missing)
         finally:
+            if self._watch is not None:
+                self._watch.close(canary_after=False)
+                self._watch = None
             if self._spend is not None and self._spend.spent_usd > 0:
                 with suppress(Exception):
                     api.report_progress(job_id, *self._last_scalar or (0, 1),
@@ -764,6 +785,12 @@ class JobRunner:
         if self._spool is not None:
             with suppress(Exception):
                 self._spool.node_start(nid, fingerprint)
+        if self._watch is not None:
+            self._watch.start(nid)
+
+    def _node_span(self, nid: str, span: dict[str, Any]) -> None:
+        if self._watch is not None:
+            self._watch.span(nid, dict(span))
 
     def _spool_item(self, nid: str, key: str, item) -> None:
         if self._spool is None:
@@ -788,6 +815,8 @@ class JobRunner:
         if self._spool is not None:
             with suppress(Exception):
                 self._spool.node_done(nid, path, fingerprint)
+        if self._watch is not None:
+            self._watch.done(nid)
 
     def _spool_node_kept(self, nid: str, fingerprint: str, result) -> None:
         if self._spool is None:

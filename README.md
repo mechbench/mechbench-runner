@@ -94,6 +94,89 @@ Python interpreter, which Ned Deily signs as CPython's macOS release
 manager. Turning it off in Login Items & Extensions stops the runner;
 `mechbench doctor` reports it if that happens.
 
+### A dedicated machine (a rented Mac Studio)
+
+The steps for a fresh Mac that runs nothing but the runner, reached over
+SSH. Checked on macOS 27.0 (26A428), the home machine, which is newer
+than the Tahoe (26.x) the rented Studios run; nothing below changed
+between them.
+
+1. **Check the OS and the chip.** `sw_vers` and `sysctl -n
+   machdep.cpu.brand_string`. Apple Silicon is required.
+2. **Keep it awake and bring it back after a power cut.** The runner
+   holds the machine awake only while a job runs; an idle machine that
+   sleeps stops claiming.
+
+   ```bash
+   sudo pmset -a sleep 0 disksleep 0 autorestart 1
+   ```
+
+3. **Log the runner's user in automatically.** A LaunchAgent starts when
+   its user's session does, so after a reboot nothing runs until someone
+   logs in. With FileVault off (`fdesetup status`), turn on automatic
+   login for the user in System Settings → Users & Groups, or
+   `sudo sysadminctl -autologin set -userName "$USER" -password -`.
+4. **Install and sign in.** No browser is needed: mint a single-use
+   token at [mechbench.ai/download](https://mechbench.ai/download).
+
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   uv tool install --managed-python mechbench
+   mechbench login --token mbr_…
+   mechbench install-service
+   ```
+
+5. **Check the service and its class.**
+
+   ```bash
+   mechbench service-status
+   launchctl print gui/$(id -u)/ai.mechbench.runner | grep -E 'state =|spawn type'
+   ```
+
+   Expect `state = running` and `spawn type = daemon (3)`, which is
+   `ProcessType Standard`. `background (5)` is the class that ran jobs
+   1.8× slower; measured again on macOS 27, a CPU loop under it
+   took 3.4× as long as under Standard, and Standard matched a terminal.
+   Over SSH with nobody logged in there is no `gui/` domain: the agent is
+   bootstrapped into `user/<uid>` instead (its plist allows both session
+   types), and `launchctl print user/$(id -u)/ai.mechbench.runner` shows
+   it. It moves to `gui/` at the next login.
+6. **Keep the weights and `~/.mechbench` out of Desktop, Documents and
+   Downloads.** macOS asks the person at the screen before a background
+   process reads those, and on a headless box nobody answers. The
+   Hugging Face cache (`~/.cache/huggingface`) and `~/.mechbench` are in
+   the home directory proper, which needs no permission.
+7. **Calibrate** (`mechbench calibrate`, below), then reboot
+   (`sudo reboot`) and check that `mechbench service-status` says
+   running without anyone logging in by hand.
+
+Restart it with `mechbench restart` (a `launchctl kickstart`), never by
+killing the process: the `run` child and the supervisor go together.
+Upgrades follow the runner's policy (`upgrades.compute`), or
+`mechbench update` by hand.
+
+### Calibrating a machine
+
+```bash
+mechbench calibrate                                   # micro-benchmarks, and Gemma 4 E2B if it is cached
+mechbench calibrate --model mlx-community/gemma-4-e2b-it-bf16 --out cal.json
+mechbench calibrate --push --into benji/lab           # stores it at benji/lab/calibration/<chip>-<fingerprint>
+```
+
+`calibrate` is `mechbench runner calibrate`. It times two
+micro-benchmarks that contain none of our code (a 256 MiB memory copy
+and a 4096² bf16 matmul), then, for a model: `load` with the weights
+evicted from the page cache (cold) and cached (warm), one `forward` at
+128 tokens, the added cost of `capture` at four layers, and one LoRA
+`lora_step`. Each is repeated; the answer is the median, the spread
+(interquartile range over the median) and the peak memory, with the
+warm-up reported apart. It answers a calibration collection, one record
+per (chip, stack fingerprint, model, dtype, primitive, shape), whose
+header carries the machine, the stack and its fingerprint, and the
+ambient load while it ran. The micro-benchmarks are kept in
+`~/.mechbench/calibration/baseline.json`: the idle baseline the canary
+compares against before and after each model-bearing node of every job.
+
 ### From a checkout
 
 ```bash
@@ -128,6 +211,7 @@ MCP and the command line.
 | `mechbench op` | list, read, next |
 | `mechbench extension` | new, test, push, verify, list, read, history, withdraw, visibility |
 | `mechbench policy` | list, read, create, update, apply |
+| `mechbench runner` | calibrate |
 
 An extension's loop, from nothing to a verified version:
 

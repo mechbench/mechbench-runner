@@ -164,6 +164,8 @@ def _hardware() -> tuple[str, int]:
 
 
 def advertise(installed: Path | None = None) -> dict[str, Any]:
+    from .identity import identity
+
     accelerator, memory_gb = _hardware()
     return {
         "classes": list(CLASSES),
@@ -172,6 +174,7 @@ def advertise(installed: Path | None = None) -> dict[str, Any]:
         "installed": _installed_hashes(installed),
         "accelerator": accelerator,
         "memory_gb": memory_gb,
+        **identity(),
     }
 
 
@@ -257,7 +260,8 @@ class ApiClient:
                         status: str | None = None,
                         node: dict | None = None,
                         resumed_from: dict | None = None,
-                        spent_usd: float | None = None) -> None:
+                        spent_usd: float | None = None,
+                        span: dict | None = None) -> None:
         body: dict[str, object] = {"num": num, "den": den}
         if unit is not None:
             body["unit"] = unit
@@ -269,6 +273,8 @@ class ApiClient:
             body["resumedFrom"] = resumed_from
         if spent_usd is not None:
             body["spentUsd"] = round(float(spent_usd), 6)
+        if span is not None:
+            body["span"] = span
         res = self._client.patch(f"/jobs/{job_id}/progress", json=body,
                                  headers=self._job_headers(job_id))
         self._raise_for_status(res)

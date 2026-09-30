@@ -222,6 +222,13 @@ argument, in about 26 KB.
 | policy | **apply**(runner, policy, yes?) | outward when yes=true * | `PUT /runners/:id/policy` | `policy(verb="apply")` | `mechbench policy apply` |
 | policy | delete | — | — | — | — (runners reference a policy by id and version; put them under another (`policy apply`) instead) |
 | policy | history | — | — | — | — (`policy read` carries every version, newest first) |
+| runner | **calibrate**(model?, repeats?, out?, push?, into?) | draft | — (on the caller's machine) | `runner(verb="calibrate")` | `mechbench runner calibrate` |
+| runner | list | — | — | — | — (the machines page lists runners (GET /runners)) |
+| runner | read | — | — | — | — (the machines page reads each runner from its listing (GET /runners)) |
+| runner | create | — | — | — | — (a runner is registered from its own machine by `mechbench login`) |
+| runner | update | — | — | — | — (renamed and paused on the machines page (PATCH /runners/:id)) |
+| runner | delete | — | — | — | — (signed out on the machines page, or by `mechbench logout` on the machine) |
+| runner | history | — | — | — | — (a runner's jobs are its history, on the jobs page) |
 
 **Effects.** What a verb does to the platform, recorded on each verb:
 

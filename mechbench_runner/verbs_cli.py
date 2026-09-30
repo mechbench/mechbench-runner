@@ -72,6 +72,8 @@ def rewrite_run(argv: list[str]) -> list[str]:
     verbs = {v.name for v in noun("run").verbs}
     if len(argv) >= 2 and argv[0] == "run" and argv[1] in verbs:
         return [RUN_NOUN, *argv[1:]]
+    if argv[:1] == ["calibrate"]:
+        return ["runner", *argv]
     return argv
 
 

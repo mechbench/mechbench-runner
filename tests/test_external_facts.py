@@ -81,7 +81,7 @@ class TestLaunchd:
         monkeypatch.setattr(service, "serving_pid",
                             lambda: pids.pop(0) if len(pids) > 1 else pids[0])
         service.restart(settle=5)
-        cmd, timeout = calls[0]
+        cmd, timeout = next(c for c in calls if c[0][1] != "print")
         assert cmd[:3] == ["launchctl", "kickstart", "-k"]
         assert timeout > 30
 
