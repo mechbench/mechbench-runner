@@ -98,25 +98,28 @@ the downloaded files and the manifest's sha256.
    mechbench-compute. Recommended: Deployment branches and tags →
    Selected → tag pattern `v*`; Required reviewers → yourself, if you
    want to approve each publish.
-4. **The release key.** On your machine, in a directory outside every
-   repository:
+4. **The release key** (done 2026-09-30, fingerprint
+   `sha256:86a25d4dc32f5bdf597d30ca9621acd2`). In mechbench-infra:
 
    ```bash
-   uv run --with cryptography python -c "import os; from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey as K; from cryptography.hazmat.primitives import serialization as s; os.umask(0o077); k = K.generate(); open('release_key.pem', 'wb').write(k.private_bytes(s.Encoding.PEM, s.PrivateFormat.PKCS8, s.NoEncryption())); open('release_key.pub', 'wb').write(k.public_key().public_bytes(s.Encoding.PEM, s.PublicFormat.SubjectPublicKeyInfo))"
+   npm run release-key -- mint    # Benji: the pair under ~/.config/mechbench/release-key/, never overwritten
+   npm run release-key -- place   # the PM: the private half into mechbench-api's `release` environment as
+                                  # MECHBENCH_RELEASE_KEY and into Secrets Manager `mechbench-release-key` (escrow);
+                                  # the public half into mechbench_runner/release_key.pub and RELEASE_PUBLIC_KEY
+                                  # in mechbench-api's src/lib/release_manifest.ts, to review and commit
+   npm run release-key -- show    # the public half and its fingerprint
    ```
 
-   - `release_key.pub` is public: hand it to Claude, who commits it as
-     `mechbench-runner/mechbench_runner/release_key.pub` and as
-     `RELEASE_PUBLIC_KEY` in mechbench-api's `src/lib/release_manifest.ts`.
-     The runner's gate refuses to release a build without it.
-   - `release_key.pem` is the private half. Create mechbench-api →
-     Settings → Environments → New environment `release` (Required
-     reviewers → yourself, recommended), then store it there:
-     `gh secret set MECHBENCH_RELEASE_KEY --repo mechbench/mechbench-api --env release < release_key.pem`.
-     Put a copy in the password manager and delete the file.
-5. **The API key the manifest workflow posts with.** Mint an API key on
-   your (platform admin) account named `release manifest`, and store it:
-   `gh secret set MECHBENCH_RELEASE_API_KEY --repo mechbench/mechbench-api --env release`.
+   The private half is never printed. The runner's gate refuses to
+   release a build whose `release_key.pub` is empty.
+5. **The API key the manifest workflow posts with** (done 2026-09-30).
+   `POST /releases/manifest` is a platform-administration route, so the
+   key must be a user-scoped (whole-account) key of a platform admin,
+   minted in the app (a key cannot mint keys). Put it in mechbench-api's
+   `.env.local` as `MECHBENCH_RELEASE_API_KEY`; the PM sets the secret from
+   the file without printing it:
+   `sed -n 's/^MECHBENCH_RELEASE_API_KEY=//p' .env.local | gh secret set MECHBENCH_RELEASE_API_KEY --repo mechbench/mechbench-api --env release`.
+   A narrower `release` scope is task 000973.
 6. **After the first CI publish of each package works,** delete the PyPI
    API token twine used (pypi.org → Account settings → API tokens) and
    remove it from this Mac (`~/.pypirc`, or the keyring entry).
@@ -128,16 +131,24 @@ the downloaded files and the manifest's sha256.
 
 ## The changeover
 
-1. Benji generates the key (step 4 above); Claude commits the public
-   half to the runner and the API and deploys the API.
-2. 0.53.0 is released the old way, `scripts/release.py --upload`, once.
-3. The first manifest is published for 0.53.0 and the compute of the
-   day (the `release` environment's secrets must exist by then).
+1. ~~Benji generates the key (step 4 above); Claude commits the public
+   half to the runner and the API and deploys the API.~~ Done 2026-09-30
+   (API release 202609302114-fe05e59).
+2. ~~0.53.0 is released the old way, `scripts/release.py --upload`, once.~~
+   Done 2026-09-30.
+3. ~~The first manifest is published for 0.53.0 and the compute of the
+   day.~~ Done 2026-09-30: `rel_yrws9fmz65v4t64a7c1t`, runner 0.53.0 +
+   compute 0.174.0, 78 locked dependencies; the prod runner reads it
+   (`mechbench update` → "already on 0.53.0").
 4. Runners before 0.53.0 still pick PyPI's newest on their own hourly
    check, which brings them to 0.53.0 or later; from 0.53.0 on they
    follow only the manifest.
-5. Every release after that goes through the tag. The `--upload` path
-   is removed in the first of them.
+5. Every release after that goes through the tag, once steps 1–3 of the
+   one-time setup (PyPI 2FA, the trusted publishers, the `pypi`
+   environments) are done. The `--upload` path is removed in the first
+   of them; until then a release still goes `scripts/release.py --upload`
+   and then `gh workflow run publish-release-manifest.yml --repo
+   mechbench/mechbench-api -f runner=X -f compute=Y`.
 
 ## Rotating the key
 
