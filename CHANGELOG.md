@@ -25,6 +25,10 @@ with both headings.
 
 ## Unreleased
 
+_None yet._
+
+## 0.57.0 — 2026-10-01
+
 ### Changes that raise
 
 - **A live run's runner claims nothing within 30 s of a try or event,
