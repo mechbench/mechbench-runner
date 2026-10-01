@@ -95,6 +95,10 @@ class Ctx:
         with self._client(self.config) as api:
             return api.put_bytes(path, data, kind=kind)
 
+    def fetch_by_hash(self, ref: str) -> bytes:
+        with self._client(self.config) as api:
+            return api.fetch_by_hash(ref)
+
     def bench(self) -> Any:
         from mechbench_compute import bench
 

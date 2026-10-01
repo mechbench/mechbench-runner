@@ -274,9 +274,9 @@ def render_figure(noun_name: str) -> Render:
 
 
 def render_case(_c: Config, ctx: Ctx, a: dict) -> int:
-    from .verbs.support import history_lines
+    from .verbs.case import history_lines
 
-    print("\n".join(history_lines(invoke(ctx, "support", "read", a))))
+    print("\n".join(history_lines(invoke(ctx, "case", "read", a))))
     return 0
 
 
@@ -315,7 +315,7 @@ RENDER: dict[tuple[str, str], Render] = {
        and n.name != "thread"},
     **{(n.name, "history"): render_history(n) for n in NOUNS if n.name in HISTORY_KIND},
     ("extension", "test"): render_test,
-    ("support", "read"): render_case,
+    ("case", "read"): render_case,
 }
 
 

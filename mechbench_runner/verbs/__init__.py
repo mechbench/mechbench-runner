@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from .article import ARTICLE
+from .case import CASE
 from .core import (
     CONSENT,
     EFFECTS,
@@ -26,12 +27,11 @@ from .project import PROJECT, project_id
 from .protocol import PROTOCOL, split_version
 from .run import RUN, job_of
 from .runner import RUNNER
-from .support import SUPPORT
 from .thread import THREAD
 
 NOUNS: tuple[Noun, ...] = (
     OBJECT, PROTOCOL, RUN, MODEL, ARTICLE, DATASET, PROJECT, THREAD, OP, EXTENSION, POLICY,
-    RUNNER, SUPPORT,
+    RUNNER, CASE,
 )
 
 

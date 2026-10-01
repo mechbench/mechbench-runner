@@ -124,7 +124,7 @@ IDS = {
     "project": "proj_1",
     "thread": "thr_1",
     "policy": "pol_1",
-    "support": "sup_1",
+    "case": "cas_1",
 }
 SAMPLES = {
     ("op", "address"): "geometry/align",
@@ -138,6 +138,9 @@ SAMPLES = {
     ("extension", "org"): "acme",
     ("policy", "runner"): "rnr_1",
     ("policy", "policy"): "pol_1",
+    ("extension", "where"): "x/net.py:42",
+    ("case", "to"): "me",
+    ("case", "assignee"): "me",
 }
 
 
@@ -212,7 +215,7 @@ def argv_of(noun: str, v: Verb, args: dict[str, Any]) -> list[str]:
 OWN_WAY = {("run", "watch"), ("run", "result")}
 
 ON_THIS_MACHINE = {("extension", "new"), ("extension", "test"), ("extension", "push"),
-                   ("runner", "calibrate")}
+                   ("extension", "fetch"), ("runner", "calibrate")}
 CASES = [(n.name, v.name) for n in NOUNS for v in n.verbs
          if (n.name, v.name) not in ON_THIS_MACHINE]
 

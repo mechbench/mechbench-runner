@@ -23,6 +23,54 @@ with both headings.
 
 ---
 
+## Unreleased
+
+### Changes that raise
+
+- **The `case` verbs replace `support …`, with no alias** (docs/CASES.md;
+  000985). `case list [--kind support|submission] [--status
+  open|waiting|answered|closed|all] [--assignee <handle>|me] [--search]
+  [--limit] [--offset]` reads `GET /cases`; `case read <id>` prints the
+  case and its timeline, internal notes marked `## internal note` and
+  events between the messages; `case reply <id> --body` is an external
+  message and `case note <id> --body` an internal one (both `POST
+  /cases/:id/messages` with `visibility`); `case assign <id> [--to
+  <handle>|me|none]` (`POST /cases/:id/assign`; no `--to` is you, a
+  handle is looked up with `GET /admin/users`, `none` takes everyone
+  off); `case close <id> [--outcome]` (`POST /cases/:id/close`).
+  `support list/read/open/reply/close` are gone: a support case opens by
+  mail or in the app.
+- **`extension submit <addr@n>`** asks the platform to verify a checked
+  version (`POST …/submit`), opening a submission case.
+- **`extension fetch <addr@n> --to DIR`** reads the version, takes its
+  sdist's `~hash/sha256:…` from the package, downloads it through
+  `GET /objects/~hash/…`, refuses it unless its sha256 is that hash
+  (nothing is written then), and unpacks it into DIR, which must be
+  empty or absent, refusing the whole sdist when any member is a link or
+  a device or its path is absolute or leaves DIR. It prints the hash and
+  the files written. Nothing in it is run.
+- **`extension flag <addr@n> --code --severity notice|warning|blocker
+  --summary [--where path:line] [--details]`** raises a flag with source
+  `review` (`POST …/flags`); a `--where` that is not `path:line` or
+  `path:line-line` is refused before any call.
+- **`extension reject <addr@n> --reason`** rejects a submitted version
+  (`POST …/reject`).
+
+### Changes that alter results without raising
+
+- `extension read` adds `inReview` ("in review since <date> (case <id>,
+  <status>)") when the version has an open submission case.
+- `extension review`'s help says what the reviewer is now: it asks the
+  platform's reviewer agent for a report, when one is configured, and a
+  person decides. `extension verify`'s says a person at the platform
+  read the code and verified it, and that the submission case closes
+  `verified`.
+- The `mechbench-verified` policy option's description reads models
+  0.102.0's words: "a person at the platform read the code and verified
+  it".
+
+---
+
 ## 0.54.0 — 2026-09-30
 
 ### Changes that raise

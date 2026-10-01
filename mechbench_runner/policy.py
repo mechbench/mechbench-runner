@@ -51,7 +51,7 @@ ADMIT_OPTIONS = (
     PolicyOption("mine and my org's approved", "Extensions in your own projects, and the "
                  "versions your org's admins approved.", ("own", "approved"), ("user", "org")),
     PolicyOption("mechbench-verified", "Extensions in your own projects, and any version "
-                 "the platform verified: a person and its reviewer read the code.",
+                 "the platform verified: a person at the platform read the code and verified it.",
                  ("own", "verified"), ("user", "org")),
     PolicyOption("nothing (locked)", "No extensions: core operations only.", (),
                  ("user", "org")),

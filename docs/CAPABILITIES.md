@@ -207,10 +207,14 @@ argument, in about 26 KB.
 | extension | **test**(dir, model?, python?) | read | — (on the caller's machine) | `extension(verb="test")` | `mechbench extension test` |
 | extension | **push**(dir, draft?, python?) | outward * | `PUT /extensions/:owner/:project/:name` | `extension(verb="push")` | `mechbench extension push` |
 | extension | **check**(address) | draft | `POST /extensions/:owner/:project/extensions/:ref/check` | `extension(verb="check")` | `mechbench extension check` |
+| extension | **submit**(address) | draft | `POST /extensions/:owner/:project/extensions/:ref/submit` | `extension(verb="submit")` | `mechbench extension submit` |
 | extension | **review**(address, org?) | spend * | `POST /extensions/:owner/:project/extensions/:ref/review` | `extension(verb="review")` | `mechbench extension review` |
+| extension | **fetch**(address, to) | read | — (on the caller's machine) | `extension(verb="fetch")` | `mechbench extension fetch` |
+| extension | **flag**(address, code, severity, summary, where?, details?) | draft | `POST /extensions/:owner/:project/extensions/:ref/flags` | `extension(verb="flag")` | `mechbench extension flag` |
 | extension | **approve**(address, org, note?, override?) | outward * | `POST /extensions/:owner/:project/extensions/:ref/approve` | `extension(verb="approve")` | `mechbench extension approve` |
 | extension | **revoke**(address, org) | draft | `POST /extensions/:owner/:project/extensions/:ref/revoke` | `extension(verb="revoke")` | `mechbench extension revoke` |
 | extension | **verify**(address, override?) | outward * | `POST /extensions/:owner/:project/extensions/:ref/verify` | `extension(verb="verify")` | `mechbench extension verify` |
+| extension | **reject**(address, reason) | draft | `POST /extensions/:owner/:project/extensions/:ref/reject` | `extension(verb="reject")` | `mechbench extension reject` |
 | extension | **list**(owner?, state?, reads?, emits?, search?, limit?, offset?) | read | `GET /extensions` | `extension(verb="list")` | `mechbench extension list` |
 | extension | **read**(address) | read | `GET /extensions/:owner/:project/extensions/:ref` | `extension(verb="read")` | `mechbench extension read` |
 | extension | **history**(address) | read | `GET /extensions/:owner/:project/extensions/:ref` | `extension(verb="history")` | `mechbench extension history` |
@@ -233,15 +237,16 @@ argument, in about 26 KB.
 | runner | update | — | — | — | — (renamed and paused on the machines page (PATCH /runners/:id)) |
 | runner | delete | — | — | — | — (signed out on the machines page, or by `mechbench logout` on the machine) |
 | runner | history | — | — | — | — (a runner's jobs are its history, on the jobs page) |
-| support | **list**(status?, search?, limit?, offset?) | read | `GET /support/cases` | `support(verb="list")` | `mechbench support list` |
-| support | **read**(id) | read | `GET /support/cases/:id` | `support(verb="read")` | `mechbench support read` |
-| support | **open**(subject, body) | outward * | `POST /support/cases` | `support(verb="open")` | `mechbench support open` |
-| support | **reply**(id, body) | outward * | `POST /support/cases/:id/messages` | `support(verb="reply")` | `mechbench support reply` |
-| support | **close**(id) | draft | `PATCH /support/cases/:id` | `support(verb="close")` | `mechbench support close` |
-| support | create | — | — | — | — (open is its create: a case starts with its first message) |
-| support | update | — | — | — | — (a case is its messages, which are never edited: reply adds one, close sets its status) |
-| support | delete | — | — | — | — (a case is a record of what was said to someone, kept whole) |
-| support | history | — | — | — | — (read is its history: every message and event in order) |
+| case | **list**(kind?, status?, assignee?, search?, limit?, offset?) | read | `GET /cases` | `case(verb="list")` | `mechbench case list` |
+| case | **read**(id) | read | `GET /cases/:id` | `case(verb="read")` | `mechbench case read` |
+| case | **reply**(id, body) | outward * | `POST /cases/:id/messages` | `case(verb="reply")` | `mechbench case reply` |
+| case | **note**(id, body) | draft | `POST /cases/:id/messages` | `case(verb="note")` | `mechbench case note` |
+| case | **assign**(id, to?) | draft | `POST /cases/:id/assign` | `case(verb="assign")` | `mechbench case assign` |
+| case | **close**(id, outcome?) | draft | `POST /cases/:id/close` | `case(verb="close")` | `mechbench case close` |
+| case | create | — | — | — | — (a support case opens by mail or in the app; a submission by extension submit) |
+| case | update | — | — | — | — (a case is its messages, which are never edited: reply and note add one, assign and close set its fields) |
+| case | delete | — | — | — | — (a case is a record of what was said to someone, kept whole) |
+| case | history | — | — | — | — (read is its history: every message and event in order) |
 
 **Effects.** What a verb does to the platform, recorded on each verb:
 

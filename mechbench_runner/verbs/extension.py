@@ -27,6 +27,9 @@ from .core import (
     paged,
     unwrap,
 )
+from .fetch import fetch
+
+FLAG_WHERE = re.compile(r"[^\s:/][^:\n]*:[1-9]\d*(?:-[1-9]\d*)?")
 
 GROUP = "mechbench.extensions"
 NAME = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
@@ -386,7 +389,11 @@ def extension_read(ctx: Ctx, a: dict) -> Any:
     got = ctx.get(version_route(a["address"]))
     if not isinstance(got, Mapping):
         return got
-    return {**got, "approvals": approvals_of(got), "approved": approved_words(got)}
+    out = {**got, "approvals": approvals_of(got), "approved": approved_words(got)}
+    sub = got.get("submission")
+    if isinstance(sub, Mapping) and sub.get("openedAt"):
+        out["inReview"] = f"in review since {sub['openedAt']} (case {sub.get('id')}, {sub.get('status')})"
+    return out
 
 
 def org_id_of(ctx: Ctx, handle: str) -> str:
@@ -424,6 +431,19 @@ def extension_review(ctx: Ctx, a: dict) -> Any:
 def extension_verify(ctx: Ctx, a: dict) -> Any:
     body = {"override": a["override"]} if a.get("override") else {}
     return ctx.api("POST", version_route(a["address"], True) + "/verify", body=body)[0]
+
+
+def extension_flag(ctx: Ctx, a: dict) -> Any:
+    where = a.get("where")
+    if where and not FLAG_WHERE.fullmatch(str(where)):
+        raise VerbError(f"where {where!r} is path:line or path:line-line, the path relative to the sdist")
+    body: dict[str, Any] = {
+        "code": a["code"], "severity": a["severity"], "summary": a["summary"], "source": "review",
+    }
+    for k in ("where", "details"):
+        if a.get(k):
+            body[k] = a[k]
+    return ctx.api("POST", version_route(a["address"], True) + "/flags", body=body)[0]
 
 
 def extension_history(ctx: Ctx, a: dict) -> Any:
@@ -526,16 +546,55 @@ EXTENSION = Noun(
         ),
         Verb(
             "extension",
+            "submit",
+            "Ask the platform to verify a checked version: it opens a submission case, "
+            "and a person at the platform reads the code and decides. One open case per "
+            "version.",
+            "POST /extensions/:owner/:project/extensions/:ref/submit",
+            (VERSIONED,),
+            lambda ctx, a: ctx.api("POST", version_route(a["address"], True) + "/submit", body={})[0],
+            effect="draft",
+        ),
+        Verb(
+            "extension",
             "review",
-            "Ask the platform's reviewer to read a version's code and report what it "
-            "reaches (network, files, subprocesses, credentials). With org, an admin "
-            "of that org asks, on the org's own provider credential and budget, and "
-            "the report is the org's to read before approving; without, a site admin "
-            "asks, on the platform's.",
+            "Ask the platform's reviewer agent for a report, when one is configured; "
+            "a person decides. With org, an admin of that org asks, on the org's own "
+            "provider credential and budget; without, a site admin asks, on the "
+            "platform's.",
             "POST /extensions/:owner/:project/extensions/:ref/review",
             (VERSIONED, Arg("org", "The org's handle: review for that org (you are its admin).")),
             extension_review,
             effect="spend",
+        ),
+        Verb(
+            "extension",
+            "fetch",
+            "Download a version's sdist by the hash its manifest names, check the hash, "
+            "and unpack it into a directory to read. Nothing in it is run.",
+            "",
+            (VERSIONED, Arg("to", "The directory to unpack into.", required=True, local=True)),
+            lambda ctx, a: fetch(ctx, version_route(a["address"], True), a["to"]),
+            "read",
+            effect="read",
+            local=True,
+        ),
+        Verb(
+            "extension",
+            "flag",
+            "Raise a flag on a version: what was found, how serious, and where in the "
+            "source. A blocker stops approval and verification unless overridden.",
+            "POST /extensions/:owner/:project/extensions/:ref/flags",
+            (
+                VERSIONED,
+                Arg("code", "The flag's code: lowercase words joined by hyphens.", required=True),
+                Arg("severity", "How serious.", required=True, choices=("notice", "warning", "blocker")),
+                Arg("summary", "One sentence: what was found.", required=True),
+                Arg("where", "Where in the source: path:line or path:line-line."),
+                Arg("details", "More, as text."),
+            ),
+            extension_flag,
+            effect="draft",
         ),
         Verb(
             "extension",
@@ -567,13 +626,26 @@ EXTENSION = Noun(
         Verb(
             "extension",
             "verify",
-            "A site admin's approval for the platform: a reviewed, checked version "
-            "becomes verified, installable wherever a policy admits verified. A "
-            "blocker flag needs override.",
+            "Verify a checked version for the platform: a person at the platform read "
+            "the code and verified it. It becomes verified, installable wherever a policy "
+            "admits verified, and its submission case closes verified. A blocker flag "
+            "needs override.",
             "POST /extensions/:owner/:project/extensions/:ref/verify",
             (VERSIONED, Arg("override", "Why you verify over a blocker flag.")),
             extension_verify,
             effect="outward",
+        ),
+        Verb(
+            "extension",
+            "reject",
+            "Reject a submitted version: it stays checked, its submission case closes "
+            "rejected, and the author is sent the reason with the flags.",
+            "POST /extensions/:owner/:project/extensions/:ref/reject",
+            (VERSIONED, Arg("reason", "Why, for the author: what to change.", required=True)),
+            lambda ctx, a: ctx.api(
+                "POST", version_route(a["address"], True) + "/reject", body={"reason": a["reason"]}
+            )[0],
+            effect="draft",
         ),
         Verb(
             "extension",

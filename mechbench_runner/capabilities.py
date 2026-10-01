@@ -160,7 +160,7 @@ def splice(doc: str) -> str:
 
 SUMMARY = (
     "Every noun an agent works with (objects, protocols, runs, articles, "
-    "datasets, projects, threads, ops, extensions, policies, runners, support cases) and its verbs, spelled on the command line, over MCP "
+    "datasets, projects, threads, ops, extensions, policies, runners, cases) and its verbs, spelled on the command line, over MCP "
     "and on the API, with what each surface leaves out and why."
 )
 

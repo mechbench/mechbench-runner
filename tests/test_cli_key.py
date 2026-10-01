@@ -57,8 +57,8 @@ class TestTwoKeys:
                 return [], {}
 
         config = cli_key.for_verbs(Config.from_env())
-        ns = argparse.Namespace(noun="support", verb="list", as_json=True)
-        for name in ("status", "all", "limit", "offset", "search"):
+        ns = argparse.Namespace(noun="case", verb="list", as_json=True)
+        for name in ("kind", "status", "assignee", "limit", "offset", "search"):
             setattr(ns, name, None)
         verbs_cli.main(config, ns, Ctx(config, client=Fake))
         assert seen == [CLI_KEY]
