@@ -23,6 +23,26 @@ with both headings.
 
 ---
 
+## Unreleased
+
+### Changes that raise
+
+- **New verbs: `observability traces <id>` and `observability errors`**
+  (docs/ANALYTICS.md §11.3; site admins only, as the API answers anyone
+  else 404). `traces` reads `GET /admin/observability/traces/:id` and
+  prints the transaction (method, route, status, duration, outcome; then
+  origin, type, time, user, actor kind and surface, key, instance,
+  release), the spans as an indented tree (name, type/subtype, duration,
+  outcome), the errors, and the links (visit, visitor, user, entities).
+  `errors [--since] [--search] [--limit] [--offset]` lists
+  `GET /admin/observability/errors` as error groups (fingerprint, type,
+  code, count, lastSeenAt, lastRoute, lastTraceId), paged by
+  `X-Next-Offset`. The registry matches mechbench-models 0.103.0.
+
+### Changes that alter results without raising
+
+_None._
+
 ## 0.55.0 — 2026-09-30
 
 ### Changes that raise

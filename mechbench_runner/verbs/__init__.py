@@ -21,6 +21,7 @@ from .dataset import DATASET
 from .extension import EXTENSION
 from .model import MODEL
 from .object import OBJECT
+from .observability import OBSERVABILITY
 from .op import OP
 from .policy import POLICY
 from .project import PROJECT, project_id
@@ -31,7 +32,7 @@ from .thread import THREAD
 
 NOUNS: tuple[Noun, ...] = (
     OBJECT, PROTOCOL, RUN, MODEL, ARTICLE, DATASET, PROJECT, THREAD, OP, EXTENSION, POLICY,
-    RUNNER, CASE,
+    RUNNER, CASE, OBSERVABILITY,
 )
 
 

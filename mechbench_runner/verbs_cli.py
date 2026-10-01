@@ -280,6 +280,13 @@ def render_case(_c: Config, ctx: Ctx, a: dict) -> int:
     return 0
 
 
+def render_trace(_c: Config, ctx: Ctx, a: dict) -> int:
+    from .verbs.observability import trace_lines
+
+    print("\n".join(trace_lines(invoke(ctx, "observability", "traces", a))))
+    return 0
+
+
 def render_test(_c: Config, ctx: Ctx, a: dict) -> int:
     out = invoke(ctx, "extension", "test", a)
     print(json.dumps(out, indent=1, default=str))
@@ -316,6 +323,7 @@ RENDER: dict[tuple[str, str], Render] = {
     **{(n.name, "history"): render_history(n) for n in NOUNS if n.name in HISTORY_KIND},
     ("extension", "test"): render_test,
     ("case", "read"): render_case,
+    ("observability", "traces"): render_trace,
 }
 
 

@@ -87,7 +87,8 @@ def rec(monkeypatch, tmp_path):
             return {"org": {"id": "org_1", "handle": route.rsplit("/", 1)[1]}}, {}
         if route in ("/objects",):
             return {"objects": [{"path": "benji/lab/x"}]}, {"x-next-offset": "3"}
-        if method == "GET" and route.count("/") == 1 and route not in ("/auth/me",):
+        listed = route.count("/") == 1 or route == "/admin/observability/errors"
+        if method == "GET" and listed and route not in ("/auth/me",):
             return [{"id": "row_1"}], {"x-next-offset": "3"}
         return dict(ANSWER), {}
 
@@ -125,6 +126,7 @@ IDS = {
     "thread": "thr_1",
     "policy": "pol_1",
     "case": "cas_1",
+    "observability": "0af7651916cd43dd8448eb211c80319c",
 }
 SAMPLES = {
     ("op", "address"): "geometry/align",

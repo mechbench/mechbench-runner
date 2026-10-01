@@ -247,6 +247,14 @@ argument, in about 26 KB.
 | case | update | — | — | — | — (a case is its messages, which are never edited: reply and note add one, assign and close set its fields) |
 | case | delete | — | — | — | — (a case is a record of what was said to someone, kept whole) |
 | case | history | — | — | — | — (read is its history: every message and event in order) |
+| observability | **traces**(id) | read | `GET /admin/observability/traces/:id` | `observability(verb="traces")` | `mechbench observability traces` |
+| observability | **errors**(since?, search?, limit?, offset?) | read | `GET /admin/observability/errors` | `observability(verb="errors")` | `mechbench observability errors` |
+| observability | list | — | — | — | — (errors lists the error groups; traces are found from a response's X-Trace-Id, an error group's last trace, or the portal's routes page) |
+| observability | read | — | — | — | — (traces reads one trace whole) |
+| observability | create | — | — | — | — (records are written by the platform as it runs, never by hand) |
+| observability | update | — | — | — | — (a record is what happened, kept as it was) |
+| observability | delete | — | — | — | — (records leave by retention: spans after 14 days, transactions and metrics after 30, errors after 90) |
+| observability | history | — | — | — | — (the records are the platform's history) |
 
 **Effects.** What a verb does to the platform, recorded on each verb:
 
