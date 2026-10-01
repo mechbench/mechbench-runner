@@ -24,7 +24,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "mechbench-compute>=0.165.0",
+    "mechbench-compute>=0.182.0",
     "packaging>=23,<27",
     "mechbench-schema>=0.17.0",
     "certifi>=2024.2",

@@ -215,7 +215,7 @@ def validate_policy_with_models(body: dict[str, Any]) -> None:
     node = shutil.which("node")
     dist = MODELS / "dist" / "index.js"
     if node is None or not dist.exists():
-        assert set(body) == {"jobs", "extensions", "upgrades", "gc"}
+        assert {"jobs", "extensions", "upgrades", "gc"} <= set(body) <= {"jobs", "extensions", "live", "upgrades", "gc"}
         return
     script = (
         f"import {{ PolicySchema }} from {json.dumps(str(dist))};"
