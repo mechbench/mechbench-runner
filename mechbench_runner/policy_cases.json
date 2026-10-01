@@ -4500,5 +4500,297 @@
     },
     "ok": false,
     "reason": "The policy admits own and verified, and acme/lab/extensions/circuits is a checked version in a project org org_acme owns, approved by org_acme."
+  },
+  {
+    "name": "live, person: no live field reads as own",
+    "why": "A person's machine holds its owner's live runs by default.",
+    "rule": "live",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "ok": true
+  },
+  {
+    "name": "live own, person: held",
+    "why": "live own with a non-empty serve is leased a live run.",
+    "rule": "live",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "live": "own"
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "ok": true
+  },
+  {
+    "name": "live none, person: refused",
+    "why": "An owner may keep live runs off a machine.",
+    "rule": "live",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "live": "none"
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy holds no live runs on this machine."
+  },
+  {
+    "name": "live own, person, paused: refused",
+    "why": "A paused machine holds no live run, whatever live says.",
+    "rule": "live",
+    "policy": {
+      "jobs": {
+        "serve": [],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "live": "own"
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy serves nobody: this machine is paused."
+  },
+  {
+    "name": "live, person, paused, no live field: refused",
+    "why": "Paused is read before live.",
+    "rule": "live",
+    "policy": {
+      "jobs": {
+        "serve": [],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "user",
+        "id": "u_ann"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy serves nobody: this machine is paused."
+  },
+  {
+    "name": "live, org: no live field reads as none",
+    "why": "An org's machine holds no live run by default.",
+    "rule": "live",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      }
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy holds no live runs on this machine."
+  },
+  {
+    "name": "live own, org: held",
+    "why": "An org may let its machine hold live runs.",
+    "rule": "live",
+    "policy": {
+      "jobs": {
+        "serve": [
+          "own"
+        ],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "live": "own"
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "ok": true
+  },
+  {
+    "name": "live own, org, paused: refused",
+    "why": "A paused org machine holds no live run.",
+    "rule": "live",
+    "policy": {
+      "jobs": {
+        "serve": [],
+        "allow": []
+      },
+      "extensions": {
+        "admit": [
+          "own"
+        ],
+        "allow": [],
+        "network": "none"
+      },
+      "upgrades": {
+        "compute": "auto"
+      },
+      "gc": {
+        "unused_days": 30
+      },
+      "live": "own"
+    },
+    "runner": {
+      "owner": {
+        "kind": "org",
+        "id": "org_acme"
+      },
+      "orgIds": [
+        "org_acme"
+      ]
+    },
+    "ok": false,
+    "reason": "The policy serves nobody: this machine is paused."
   }
 ]

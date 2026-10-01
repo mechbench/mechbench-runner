@@ -76,6 +76,8 @@ def rewrite_run(argv: list[str]) -> list[str]:
         return ["runner", *argv]
     if argv[:1] == ["runners"]:
         return ["runner", "list", *argv[1:]]
+    if argv[:1] == ["try"]:
+        return ["live", *argv]
     return argv
 
 
@@ -287,6 +289,22 @@ def render_trace(_c: Config, ctx: Ctx, a: dict) -> int:
     return 0
 
 
+def render_live_start(_c: Config, ctx: Ctx, a: dict) -> int:
+    from .verbs.live import start_lines
+
+    print("\n".join(start_lines(invoke(ctx, "live", "start", a))))
+    return 0
+
+
+def render_try(_c: Config, ctx: Ctx, a: dict) -> int:
+    from .verbs.live import try_lines
+
+    as_json = bool(a.pop("as_json", False))
+    out = invoke(ctx, "live", "try", a)
+    print(json.dumps(out, indent=1, default=str) if as_json else "\n".join(try_lines(out)))
+    return 0
+
+
 def render_test(_c: Config, ctx: Ctx, a: dict) -> int:
     out = invoke(ctx, "extension", "test", a)
     print(json.dumps(out, indent=1, default=str))
@@ -324,6 +342,8 @@ RENDER: dict[tuple[str, str], Render] = {
     ("extension", "test"): render_test,
     ("case", "read"): render_case,
     ("observability", "traces"): render_trace,
+    ("live", "start"): render_live_start,
+    ("live", "try"): render_try,
 }
 
 

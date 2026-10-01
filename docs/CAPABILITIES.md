@@ -255,6 +255,15 @@ argument, in about 26 KB.
 | observability | update | — | — | — | — (a record is what happened, kept as it was) |
 | observability | delete | — | — | — | — (records leave by retention: spans after 14 days, transactions and metrics after 30, errors after 90) |
 | observability | history | — | — | — | — (the records are the platform's history) |
+| live | **list**(search?, limit?, offset?) | read | `GET /live-runs` | `live(verb="list")` | `mechbench live list` |
+| live | **read**(id?) | read | `GET /live-runs/:id` | `live(verb="read")` | `mechbench live read` |
+| live | **start**(model, idle?, close_after?, label?) | draft | `POST /live-runs` | `live(verb="start")` | `mechbench live start` |
+| live | **try**(op, inputs?, params?, slot?, wait?, client_id?, live_run?, as_json?) | draft | `POST /live-runs/:id/tries` | `live(verb="try")` | `mechbench live try` |
+| live | **close**(live_run?) | delete * | `POST /live-runs/:id/close` | `live(verb="close")` | `mechbench live close` |
+| live | create | — | — | — | — (`start` holds a model warm, which is what creating one is) |
+| live | update | — | — | — | — (a live run changes only by its tries) |
+| live | delete | — | — | — | — (`close` ends it and deletes its scratch; its tries are kept 30 days) |
+| live | history | — | — | — | — (its tries are its history: `live read`) |
 
 **Effects.** What a verb does to the platform, recorded on each verb:
 

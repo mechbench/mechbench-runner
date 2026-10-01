@@ -264,11 +264,45 @@ class ApiClient:
 
     def live_complete(self, live_run_id: str, seq: int, *,
                       outputs: dict[str, Any] | None = None, state: Any = None,
-                      error: str | None = None) -> None:
-        body: dict[str, Any] = ({"error": error[:20_000]} if error is not None
-                                else {"outputs": outputs or {}, "state": state})
+                      error: str | None = None, refused: bool = False) -> None:
+        body: dict[str, Any]
+        if error is not None:
+            body = {"error": error[:20_000], **({"refused": True} if refused else {})}
+        else:
+            body = {"outputs": outputs or {}, **({"state": state} if state is not None else {})}
         res = self._client.post(f"/live-runs/{live_run_id}/events/{seq}/complete", json=body)
         self._raise_for_status(res)
+
+    def live_release(self, live_run_id: str, reason: str) -> None:
+        res = self._client.post(f"/live-runs/{live_run_id}/release", json={"reason": reason[:2000]})
+        self._raise_for_status(res)
+
+    def put_scratch(self, path: str, payload: Any, *, operation: Any = None,
+                    params: Any = None, timeout: float = 120.0) -> dict[str, Any]:
+        import hashlib
+        from datetime import UTC, datetime
+
+        import mechbench_schema as ms
+
+        try:
+            from . import __version__ as runner_version
+        except ImportError:
+            runner_version = "unknown"
+        prov = ms.Provenance(
+            created_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            produced_by=ms.ToolInfo(tool="mechbench-try", version=runner_version),
+            inputs=[],
+            params_fingerprint=ms.fingerprint_params(params) if params else None,
+            schema_version=ms.__version__,
+            operation=operation if isinstance(operation, str) else None,
+        )
+        body = ms.dump_canonical(ms.Emitted(provenance=prov, payload=payload).model_dump(mode="python"))
+        res = self._client.put(f"/objects/{path}", content=body,
+                               headers={"content-type": "application/cbor",
+                                        "x-content-hash": f"sha256:{hashlib.sha256(body).hexdigest()}"},
+                               timeout=httpx.Timeout(timeout))
+        self._raise_for_status(res)
+        return res.json()
 
     def report_progress(self, job_id: str, num: int, den: int, *,
                         unit: str | None = None,

@@ -19,6 +19,7 @@ from mechbench_runner.policy import (
     identity_of,
     migrate_policy,
     policy_admits,
+    policy_holds_live,
     policy_option_of,
     policy_serves,
 )
@@ -33,6 +34,7 @@ MODELS_TS = ROOT.parent / "mechbench-models" / "src" / "policy.ts"
 PERSONAL = {
     "jobs": {"serve": ["own"], "allow": []},
     "extensions": {"admit": ["own"], "allow": [], "network": "none"},
+    "live": "own",
     "upgrades": {"compute": "auto"},
     "gc": {"unused_days": 30},
 }
@@ -51,12 +53,14 @@ def test_the_vendored_cases_are_the_models_copy():
 
 def test_there_are_cases_for_both_rules():
     assert len(CASES) >= 85
-    assert {c["rule"] for c in CASES} == {"serve", "admit"}
+    assert {c["rule"] for c in CASES} == {"serve", "admit", "live"}
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c["name"])
 def test_the_twin_agrees_with_every_case(case):
-    if case["rule"] == "serve":
+    if case["rule"] == "live":
+        got = policy_holds_live(case["policy"], case["runner"])
+    elif case["rule"] == "serve":
         got = policy_serves(case["policy"], case["job"], case["runner"])
     else:
         got = policy_admits(case["policy"], case["extension"], case["job"], case["runner"])
@@ -105,6 +109,7 @@ class TestTheMigration:
             "jobs": {"serve": ["own"], "allow": []},
             "extensions": {"admit": admit, "allow": [{"owner": "u_bob"}],
                            "network": "declared"},
+            "live": "own",
             "upgrades": {"compute": "hold"},
             "gc": {"unused_days": 7},
         }

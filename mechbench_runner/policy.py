@@ -244,6 +244,7 @@ def policy_admits(policy: Mapping[str, Any], ext: Mapping[str, Any],
 PERSONAL_POLICY: dict[str, Any] = {
     "jobs": {"serve": ["own"], "allow": []},
     "extensions": {"admit": ["own"], "allow": [], "network": "none"},
+    "live": "own",
     "upgrades": {"compute": "auto"},
     "gc": {"unused_days": 30},
 }
@@ -251,7 +252,23 @@ PERSONAL_POLICY: dict[str, Any] = {
 ORG_POLICY: dict[str, Any] = {
     **PERSONAL_POLICY,
     "extensions": {"admit": ["own", "approved"], "allow": [], "network": "none"},
+    "live": "none",
 }
+
+
+def policy_live(policy: Mapping[str, Any], kind: str) -> str:
+    live = policy.get("live")
+    if live in ("own", "none"):
+        return str(live)
+    return "none" if kind == "org" else "own"
+
+
+def policy_holds_live(policy: Mapping[str, Any], runner: Mapping[str, Any]) -> Decision:
+    if not (policy.get("jobs") or {}).get("serve"):
+        return _refuse("The policy serves nobody: this machine is paused.")
+    if policy_live(policy, str(_owner(runner.get("owner")).get("kind"))) == "none":
+        return _refuse("The policy holds no live runs on this machine.")
+    return OK
 
 ORG_POLICY_ID = "pol_org"
 
@@ -309,6 +326,7 @@ def migrate_policy(old: Any) -> dict[str, Any]:
             "allow": allow[:200],
             "network": network if network in ("none", "declared") else "none",
         },
+        "live": "own",
         "upgrades": {"compute": compute if compute in ("auto", "hold") else "auto"},
         "gc": {"unused_days": days if days_ok else 30},
     }

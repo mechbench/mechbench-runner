@@ -23,6 +23,53 @@ with both headings.
 
 ---
 
+## Unreleased
+
+### Changes that raise
+
+- **A live run's runner claims nothing within 30 s of a try or event,
+  and otherwise only `pure` jobs, and only while its model is warm**
+  (`holding` now means warm). A live run released for idleness
+  restricts nothing: the runner claims any job its policy serves, where
+  before it claimed only `pure` jobs for as long as the live run stayed
+  open. Extension upkeep and restarts still wait while any live run is
+  attached.
+- **A lease the runner's own policy refuses is given back**: before
+  loading the model the runner checks its copy of the policy (`live`,
+  and a non-empty `serve`; refreshed once on a disagreement), and when
+  it still says no it reports `refused` with the reason and calls
+  `POST /live-runs/:id/release`.
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
+- **An open live run and `try`.** `LiveHost` attaches an open live run
+  (`form: "open"`), loads its model and warms it with one throwaway
+  forward pass (`logits/read`) before saying `ready`. A `try` event runs
+  through compute's `run_try` on the warm model: `~scratch/<this
+  id>/t<seq>` inputs come from an in-memory cache of the last 16 results
+  (others go to the Resolver), tokens stream over the `stream` frame, a
+  result over the inline limit (the attach's `limits.inlineBytes`, 256
+  KB by default) is written to `~scratch/<id>/t<seq>` with provenance
+  `inputs: []` and `produced_by` `mechbench-try`, and the step completes
+  with the answer's fields (`refused` when compute refused it).
+- **New verbs: `live list`, `live read`, `live start --model …
+  [--idle 15m] [--close-after 1d] [--label …]`, `live try <op> [--in
+  port=path|json] [--set k=v] [--slot …] [--wait …] [--json]` and `live
+  close`**; `mechbench try …` is `live try …`. `start` prints the id
+  and makes it this machine's current live run (`~/.mechbench/live.json`),
+  which `try` and `close` use when `--live-run` is not given. `try`
+  prints the try's lines and where its result is; `--json` prints the
+  whole answer. The registry matches mechbench-models 0.103.22.
+- The policy twin has `live` (`policy_holds_live`, `policy_live`) and
+  the shared cases' `live` rule; `migrate_policy` gives an old body
+  `live: own`.
+
+---
+
 ## 0.56.0 — 2026-09-30
 
 ### Changes that raise

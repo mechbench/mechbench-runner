@@ -19,6 +19,7 @@ from .core import (
 )
 from .dataset import DATASET
 from .extension import EXTENSION
+from .live import LIVE
 from .model import MODEL
 from .object import OBJECT
 from .observability import OBSERVABILITY
@@ -32,7 +33,7 @@ from .thread import THREAD
 
 NOUNS: tuple[Noun, ...] = (
     OBJECT, PROTOCOL, RUN, MODEL, ARTICLE, DATASET, PROJECT, THREAD, OP, EXTENSION, POLICY,
-    RUNNER, CASE, OBSERVABILITY,
+    RUNNER, CASE, OBSERVABILITY, LIVE,
 )
 
 

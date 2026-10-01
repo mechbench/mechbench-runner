@@ -120,3 +120,17 @@ def test_a_policy_frame_marks_the_copy_stale_and_wakes_the_loop(runner):
     runner._on_policy({"id": "pol_personal", "version": 2})
     assert runner._policy.stale
     assert runner._live.wake.is_set()
+
+
+def test_a_live_runs_runner_claims_nothing_after_a_try_then_only_pure_jobs(runner, monkeypatch):
+    fake = FakeApi([_job(1)], served=[1])
+    asked: list[tuple] = []
+    real = fake.claim_next_job
+    fake.claim_next_job = lambda *a: asked.append(a) or real(*a)
+    monkeypatch.setattr(jr, "ApiClient", lambda *_a, **_k: fake)
+    answers = iter([jr.NOTHING, jr.NOTHING, jr.PURE, jr.PURE])
+    monkeypatch.setattr(runner._live, "claims", lambda: next(answers))
+    monkeypatch.setattr(runner._live, "quiet_for", lambda: 0.0)
+    runner.run()
+    assert asked == [("pure",), ("pure",)]
+    assert runner.handled == ["j_1"]

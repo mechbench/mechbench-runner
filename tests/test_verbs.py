@@ -127,6 +127,7 @@ IDS = {
     "policy": "pol_1",
     "case": "cas_1",
     "observability": "0af7651916cd43dd8448eb211c80319c",
+    "live": "live_1",
 }
 SAMPLES = {
     ("op", "address"): "geometry/align",
@@ -143,6 +144,8 @@ SAMPLES = {
     ("extension", "where"): "x/net.py:42",
     ("case", "to"): "me",
     ("case", "assignee"): "me",
+    ("live", "idle"): "15m",
+    ("live", "close_after"): "1d",
 }
 
 

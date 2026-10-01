@@ -31,10 +31,10 @@ from .control import ControlServer, RunnerState, probe, socket_path
 from .exits import EXIT_CRASH, EXIT_OK, EXIT_RESTART
 from .extensions import Extensions
 from .job_credentials import HELD as HELD_CREDENTIALS
-from .live import PURE, LiveHost
+from .live import NOTHING, PURE, LiveHost
 from .machine import default_name
 from .paths import limits_path, spool_dir
-from .policy import PolicyHolder, check_claim
+from .policy import PolicyHolder, check_claim, policy_holds_live
 from .spend import SharedLimiter, SpendLedger
 from .spool import JobSpool, adopt_legacy, job_dir, make_job_dir
 from .verification import VERIFICATION, Verification
@@ -263,7 +263,8 @@ class JobRunner:
         self._control = ControlServer(self.state)
         self._channel = LiveChannel(config, self.state)
         self._live = LiveHost(self._executor, self._channel.send_live,
-                              lambda: self._watchdog.stamp())
+                              lambda: self._watchdog.stamp(),
+                              may_hold=lambda api: self._may_hold_live(api))
         self._channel.on_live = self._live.offer
         self._policy = PolicyHolder()
         self._extensions = Extensions(
@@ -275,6 +276,26 @@ class JobRunner:
             on_stall=self._announce_stall,
             exit_code=EXIT_CRASH,
         )
+
+    def _may_hold_live(self, api: ApiClient) -> str | None:
+        for attempt in range(2):
+            held = self._policy.held
+            if held is None:
+                return None
+            try:
+                why = policy_holds_live(held.body, self._policy.identity(api))
+            except Exception as exc:  # noqa: BLE001
+                print(f"[runner] could not check the policy for a live run ({exc})")
+                return None
+            if why.ok:
+                return None
+            if attempt == 0:
+                try:
+                    self._policy.refresh(api)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[runner] could not refresh the policy ({exc})")
+                    return why.reason
+        return why.reason
 
     def _on_policy(self, ref: Any) -> None:
         if self._policy.note(ref):
@@ -368,7 +389,7 @@ class JobRunner:
                     self._stop_channel()
                     return EXIT_OK
                 self._live.serve(api)
-                if not self._live.holding:
+                if not self._live.attached:
                     if self._restart_pending is None:
                         self._restart_pending = self._between_jobs(api)
                     if self._restart_pending is not None:
@@ -377,8 +398,13 @@ class JobRunner:
                 elif self._restart_pending is not None:
                     self._sleep(self.config.poll_interval_seconds)
                     continue
+                claims = self._live.claims()
+                if claims == NOTHING:
+                    self._sleep(min(self.config.poll_interval_seconds,
+                                    max(self._live.quiet_for(), 0.5)))
+                    continue
                 try:
-                    job = (api.claim_next_job(PURE) if self._live.holding
+                    job = (api.claim_next_job(PURE) if claims == PURE
                            else api.claim_next_job())
                     self._warn_deprecated(api)
                 except ApiError as e:
