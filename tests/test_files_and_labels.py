@@ -131,6 +131,41 @@ class TestPush:
         )
         assert "push refused (LEGACY_DATAFLOW)" in capsys.readouterr().err
 
+    def test_a_refused_body_prints_each_issue_with_its_path(
+        self, fake, monkeypatch, capsys
+    ):
+        def refuse(file, into, **k):
+            raise BenchError(
+                "400",
+                status=400,
+                body={
+                    "code": "BAD_REQUEST",
+                    "error": "invalid request body",
+                    "issues": [
+                        {
+                            "code": "custom",
+                            "path": ["protocol", "inputs", 0, "name"],
+                            "message": "input 'leaders' at inputs[0] has the name "
+                            "of param 'leaders' at params[2]: params and inputs "
+                            "share one set of names",
+                        },
+                        {"code": "custom", "path": [], "message": "no outputs"},
+                    ],
+                },
+            )
+
+        fake(push_protocol=refuse)
+        assert (
+            _cli(["protocol", "push", "x.json", "--into", "benji/lab"], monkeypatch)
+            == 1
+        )
+        assert capsys.readouterr().err.splitlines() == [
+            "push refused (BAD_REQUEST): invalid request body",
+            "  protocol.inputs[0].name: input 'leaders' at inputs[0] has the name "
+            "of param 'leaders' at params[2]: params and inputs share one set of names",
+            "  no outputs",
+        ]
+
 class TestExport:
     TEXT = '{\n  "name": "draws"\n}\n'
 

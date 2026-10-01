@@ -409,9 +409,27 @@ def history(config: Config, kind: str, entity_id: str) -> int:
 def _findings(body: Any) -> None:
     found = body.get("findings") if isinstance(body, dict) else None
     for f in found or []:
-        where = f" [{f['node']}]" if f.get("node") else ""
+        place = " ".join(str(x) for x in (f.get("node"), f.get("at")) if x)
+        where = f" [{place}]" if place else ""
         print(f"  {f.get('severity', '')} {f.get('code', '')}{where}: "
               f"{f.get('message', '')}", file=sys.stderr)
+
+
+def _issue_path(path: Any) -> str:
+    out = ""
+    for key in path if isinstance(path, list) else []:
+        out += f"[{key}]" if isinstance(key, int) else (f".{key}" if out else str(key))
+    return out
+
+
+def _issues(body: Any) -> None:
+    found = body.get("issues") if isinstance(body, dict) else None
+    for i in found if isinstance(found, list) else []:
+        if not isinstance(i, dict):
+            continue
+        where = _issue_path(i.get("path"))
+        print(f"  {where + ': ' if where else ''}{i.get('message', '')}",
+              file=sys.stderr)
 
 
 def protocol_push(config: Config, file: str, into: str, org: bool) -> int:
@@ -425,6 +443,7 @@ def protocol_push(config: Config, file: str, into: str, org: bool) -> int:
         body = e.body if isinstance(e.body, dict) else {}
         print(f"push refused ({body.get('code') or e.status}): "
               f"{body.get('error') or e}", file=sys.stderr)
+        _issues(body)
         _findings(body)
         return 1
     p = out.get("protocol") or {}
