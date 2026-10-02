@@ -92,18 +92,25 @@ def _backend() -> Check:
             "pip install mechbench-compute",
         )
 
+    accelerator = backends.detect_accelerator()
+    described = backends.describe(accelerator)
+    absent = "; ".join(f"{d['name']} absent: {d['absent']}" for d in described
+                       if not d["present"])
     active = backends.active()
     if active is None:
         supported = ", ".join(b.platform_label for b in backends.BACKENDS)
         return Check(
             "compute backend", FAIL,
-            f"none available on {backends.describe_platform()}",
+            f"none available on {backends.describe_platform()} "
+            f"({accelerator}): {absent}",
             f"Supported today: {supported}. The platform-independent "
             f"half of mechbench-compute still works for reading results.",
         )
+    present = ", ".join(f"{b.label} [{_version_of(b.module)}]"
+                        for b in backends.available(accelerator))
     return Check(
         "compute backend", OK,
-        f"{active.label} [{_version_of(active.module)}]",
+        f"{present} on {accelerator}" + (f"; {absent}" if absent else ""),
     )
 
 

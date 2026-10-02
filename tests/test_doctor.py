@@ -73,11 +73,22 @@ class TestMachineChecks:
         check = doctor._backend()  # noqa: SLF001
         assert check.status == FAIL
         assert "Apple Silicon" in (check.fix or "")
+        assert "mlx absent: mlx.core is not installed" in check.detail
 
     def test_a_backend_reports_its_version(self):
         check = doctor._backend()  # noqa: SLF001
         assert check.status == OK
         assert "MLX" in check.detail
+        assert check.detail.endswith(" on metal")
+
+    def test_a_backend_for_another_accelerator_is_named_absent(self, monkeypatch):
+        from mechbench_compute import backends
+
+        monkeypatch.setattr(backends, "detect_accelerator", lambda: "cuda")
+        check = doctor._backend()  # noqa: SLF001
+        assert check.status == FAIL
+        assert ("mlx absent: it runs on metal, and this machine's accelerator "
+                "is cuda") in check.detail
 
 
 class TestAccountChecks:
