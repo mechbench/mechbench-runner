@@ -11,7 +11,7 @@ from .run_diff import read_json
 
 TERMINAL = ("done", "done_with_missing", "failed", "cancelled", "interrupted")
 BODY_KEYS = ("params", "inputs", "members", "grid", "label", "keep", "budgetUsd",
-             "runner")
+             "runner", "backend", "accelerator")
 
 
 def as_ref(v: Any) -> Any:
@@ -129,9 +129,10 @@ def sweep_body(a: Mapping[str, Any]) -> dict[str, Any]:
         out["keep"] = keep
     if budget is not None:
         out["budgetUsd"] = budget
-    runner = a.get("runner") or body.get("runner")
-    if runner:
-        out["runner"] = runner
+    for key in ("runner", "backend", "accelerator"):
+        value = a.get(key) or body.get(key)
+        if value:
+            out[key] = value
     return out
 
 

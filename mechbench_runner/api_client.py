@@ -100,16 +100,16 @@ def _compute_version() -> str:
     return str(__version__)
 
 
-CLASSES = ("mlx-local", "pure", "remote")
+CLASSES = ("local", "pure", "remote")
 
 
 def read_classes() -> list[str]:
     try:
         from mechbench_compute.backends import available
-        has_mlx = any(b.name == "mlx" for b in available())
+        has_backend = bool(available())
     except ImportError:
-        has_mlx = False
-    return [c for c in CLASSES if c != "mlx-local" or has_mlx]
+        has_backend = False
+    return [c for c in CLASSES if c != "local" or has_backend]
 
 INSTALLS = True
 
@@ -152,6 +152,21 @@ def _has_cuda() -> bool:
     return shutil.which("nvidia-smi") is not None
 
 
+def read_accelerator(info: Mapping[str, Any]) -> str:
+    try:
+        from mechbench_compute import backends
+        detect = getattr(backends, "detect_accelerator", None)
+    except ImportError:
+        detect = None
+    if detect is not None:
+        return str(detect())
+    if info.get("mlx") and info.get("chip"):
+        return "metal"
+    if _has_cuda():
+        return "cuda"
+    return "cpu"
+
+
 @functools.lru_cache(maxsize=1)
 def _hardware() -> tuple[str, int]:
     info: dict[str, Any] = {}
@@ -160,12 +175,7 @@ def _hardware() -> tuple[str, int]:
         info = hardware_class()
     except Exception:  # noqa: BLE001
         info = {}
-    if info.get("mlx") and info.get("chip"):
-        accelerator = "applegpu"
-    elif _has_cuda():
-        accelerator = "cuda"
-    else:
-        accelerator = "cpu"
+    accelerator = read_accelerator(info)
     memory = _physical_memory_gb()
     if memory is None:
         memory = float(info.get("memory_gb") or 0)

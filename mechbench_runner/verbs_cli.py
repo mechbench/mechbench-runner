@@ -244,6 +244,8 @@ def render_launch(config: Config, ctx: Ctx, a: dict[str, Any]) -> int:
         keep=a.get("keep"),
         label=a.get("label"),
         runner=a.get("runner"),
+        backend=a.get("backend"),
+        accelerator=a.get("accelerator"),
     )
 
 

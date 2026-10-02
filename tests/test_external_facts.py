@@ -140,7 +140,7 @@ class TestTheApiWire:
             seen["capabilities"] = req.url.params["capabilities"]
             return httpx.Response(204)
         assert _mock_client(handler).claim_next_job() is None
-        assert set(seen["capabilities"].split(",")) >= {"mlx-local", "pure", "remote"}
+        assert set(seen["capabilities"].split(",")) >= {"local", "pure", "remote"}
 
     def test_the_direct_completion_is_cbor_with_its_hash_in_a_header(self):
         seen: dict[str, object] = {}

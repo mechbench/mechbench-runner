@@ -55,14 +55,35 @@ def test_mechbench_run_protocol_takes_runner_and_remembers_it(api, capsys):
     assert '"runner": "rented-box"' in bench_cmd.HISTORY.read_text()
 
 
+def test_mechbench_run_protocol_names_a_backend_and_an_accelerator(api, capsys):
+    assert cli.main(["run", "prt_1", "--backend", "torch",
+                     "--accelerator", "cuda"]) == 0
+    assert api[-1] == ("POST", "/protocols/prt_1/runs",
+                       {"params": {}, "backend": "torch", "accelerator": "cuda"})
+    err = capsys.readouterr().err
+    assert "backend torch" in err and "accelerator cuda" in err
+    assert '"backend": "torch"' in bench_cmd.HISTORY.read_text()
+    invoke(Ctx(CFG), "run", "launch", {"protocol": "prt_1", "backend": "mlx"})
+    assert api[-1] == ("POST", "/protocols/prt_1/runs",
+                       {"params": {}, "backend": "mlx"})
+
+
+def test_a_backend_compute_does_not_name_is_refused_by_the_cli(api, capsys):
+    with pytest.raises(SystemExit):
+        cli.main(["run", "prt_1", "--backend", "jax"])
+    assert "invalid choice: 'jax'" in capsys.readouterr().err
+
+
 def test_a_bare_run_with_runner_is_refused(api, capsys):
     assert cli.main(["run", "--runner", "rnr_box"]) == 2
     assert "--runner" in capsys.readouterr().err
 
 
 def test_a_sweep_carries_the_runner_from_the_flag_or_its_file(tmp_path):
-    body = sweep_body({"grid": {"n": "1,2"}, "runner": "rnr_box"})
-    assert body["runner"] == "rnr_box"
+    body = sweep_body({"grid": {"n": "1,2"}, "runner": "rnr_box", "backend": "torch",
+                       "accelerator": "cuda"})
+    placed = (body["runner"], body["backend"], body["accelerator"])
+    assert placed == ("rnr_box", "torch", "cuda")
     f = tmp_path / "s.json"
     f.write_text('{"members": [{"params": {"n": 1}}], "runner": "studio"}')
     assert sweep_body({"file": str(f)})["runner"] == "studio"

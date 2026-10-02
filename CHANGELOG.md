@@ -31,12 +31,20 @@ _None._
 
 ### Changes that alter results without raising
 
-- **A runner claims `mlx-local` jobs only where compute's `mlx` backend
-  is available** (installed, and offered on this machine's
-  accelerator), in what it advertises and on every claim; a machine
-  without it claims `pure` and `remote` alone. Before, every runner
-  claimed `mlx-local` and failed the job where MLX was missing. On Apple
-  silicon with MLX the classes are unchanged.
+- **A runner claims `local` jobs, which were `mlx-local`, and only where
+  compute has a backend for them** (installed, and offered on this
+  machine's accelerator), in what it advertises and on every claim; a
+  machine without one claims `pure` and `remote` alone. Before, every
+  runner claimed `mlx-local` and failed the job where MLX was missing.
+  It advertises its backends beside them, and the API runs a `local` job
+  that names no backend on `mlx` (mechbench-models 0.103.32), so on
+  Apple silicon with MLX the jobs it takes are unchanged.
+- **The accelerator a runner advertises is the one compute detects**
+  (`backends.detect_accelerator()`: `metal`, `cuda`, `rocm`, `tpu` or
+  `cpu`); a Mac's is `metal`, which was `applegpu`. Against a compute
+  without detection it reads the hardware as before, under the new
+  names. An API before mechbench-models 0.103.32 refuses `metal` and
+  `local`: release this runner after the API that reads them.
 
 ### Other
 
@@ -46,6 +54,12 @@ _None._
   accelerator is cuda"). Against a compute without
   `backends.detect_accelerator` and `backends.describe` it says what it
   did before, with the accelerator unknown.
+- `mechbench run PROTOCOL --backend torch --accelerator cuda` (and
+  `run launch`/`run sweep` with `backend` and `accelerator`) names the
+  backend and the accelerator a run needs: they go into its job's
+  requirements, so only a runner that has them claims it, and a job no
+  runner can take says why ("laptop: it needs the torch backend, and
+  this runner has mlx"). The stored runs history records them.
 
 ## 0.57.0 — 2026-10-01
 

@@ -38,6 +38,9 @@ def job_of(ctx: Ctx, run: str) -> str:
     return str(job)
 
 
+PLACED = ("runner", "backend", "accelerator")
+
+
 def run_body(a: dict) -> dict[str, Any]:
     body: dict[str, Any] = {"params": dict(a.get("params") or {})}
     if a.get("inputs") is not None:
@@ -49,13 +52,14 @@ def run_body(a: dict) -> dict[str, Any]:
         body["budgetUsd"] = a["budget"]
     if a.get("label") is not None:
         body["label"] = a["label"]
-    if a.get("runner") is not None:
-        body["runner"] = a["runner"]
+    for key in PLACED:
+        if a.get(key) is not None:
+            body[key] = a[key]
     return body
 
 
 def run_launch(ctx: Ctx, a: dict) -> Any:
-    if a.get("runner") is not None:
+    if any(a.get(key) is not None for key in PLACED):
         return ctx.api("POST", f"/protocols/{a['protocol']}/runs", body=run_body(a))[0]
     return ctx.bench().launch(
         a["protocol"],
@@ -111,6 +115,17 @@ RUNNER = Arg(
     "runner",
     "The runner that runs it, by id or name (`mechbench runners`); it waits "
     "for that one, and no other claims it.",
+)
+BACKEND = Arg(
+    "backend",
+    "The backend it runs on: only a runner that has it claims it. A run that "
+    "names none runs a model on mlx.",
+    choices=("mlx", "torch"),
+)
+ACCELERATOR = Arg(
+    "accelerator",
+    "The accelerator it runs on: only a runner that has it claims it.",
+    choices=("metal", "cuda", "rocm", "tpu", "cpu"),
 )
 RUN_ID = Arg("id", "The run's id, or its job's (j_…).", required=True, positional=True)
 
@@ -231,6 +246,8 @@ RUN = Noun(
                 Arg("budget", "Spend cap, USD.", type="float"),
                 Arg("label", "What the run is for, one line."),
                 RUNNER,
+                BACKEND,
+                ACCELERATOR,
             ),
             run_launch,
             effect="spend",
@@ -307,6 +324,8 @@ RUN = Noun(
                 Arg("budget", "Each run's spend cap, USD.", type="float"),
                 Arg("label", "What the runs are for, one line; every run carries it."),
                 RUNNER,
+                BACKEND,
+                ACCELERATOR,
                 Arg(
                     "wait",
                     "Wait until every run finishes, then their summaries.",

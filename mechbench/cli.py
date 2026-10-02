@@ -149,6 +149,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="The runner that runs it (`mechbench runners` lists yours); it "
              "waits for that one, and no other claims it.",
     )
+    run_p.add_argument(
+        "--backend",
+        choices=("mlx", "torch"),
+        help="The backend it runs on; only a runner that has it claims it. "
+             "A run that names none runs a model on mlx.",
+    )
+    run_p.add_argument(
+        "--accelerator",
+        choices=("metal", "cuda", "rocm", "tpu", "cpu"),
+        help="The accelerator it runs on; only a runner that has it claims it.",
+    )
     run_p.add_argument("--wait", action="store_true",
                        help="After queuing, watch to a terminal state and "
                             "exit non-zero on failure.")
@@ -452,9 +463,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "run" and args.protocol is None and (
                 args.bind or args.param or args.input or args.keep
                 or args.budget is not None or args.wait or args.label
-                or args.runner):
-            print("run: --param/--input/--keep/--budget/--label/--runner/--wait need a PROTOCOL "
-                  "to launch; a bare `run` is the runner loop.", file=sys.stderr)
+                or args.runner or args.backend or args.accelerator):
+            print("run: --param/--input/--keep/--budget/--label/--runner/--backend/"
+                  "--accelerator/--wait need a PROTOCOL to launch; a bare `run` is "
+                  "the runner loop.", file=sys.stderr)
             return 2
         if args.cmd != "run" or args.protocol is not None:
             from mechbench_runner import bench_cmd
@@ -466,7 +478,8 @@ def main(argv: list[str] | None = None) -> int:
                                      args.budget, args.wait,
                                      params=args.param, inputs=args.input,
                                      keep=args.keep, label=args.label,
-                                     runner=args.runner)
+                                     runner=args.runner, backend=args.backend,
+                                     accelerator=args.accelerator)
             if args.cmd == "watch":
                 return bench_cmd.watch(config, args.jobs)
             return bench_cmd.result(config, args.spec, args.fmt, args.out,

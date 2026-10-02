@@ -149,9 +149,9 @@ argument, in about 26 KB.
 | run | **list**(label?, label_contains?, status?, protocol?, project?, sweep?, owner?, search?, limit?, offset?, full?) | read | `GET /runs` | `run(verb="list")` | `mechbench run list` |
 | run | **jobs**(status?, protocol?, sweep?, order?, owner?, search?, limit?, offset?) | read | `GET /jobs` | `run(verb="jobs")` | `mechbench run jobs` |
 | run | **read**(id, full?) | read | `GET /runs/:id` | `run(verb="read")` | `mechbench run read` |
-| run | **launch**(protocol, params?, inputs?, keep?, budget?, label?, runner?) | spend * | `POST /protocols/:id/runs` | `run(verb="launch")` | `mechbench run launch` |
+| run | **launch**(protocol, params?, inputs?, keep?, budget?, label?, runner?, backend?, accelerator?) | spend * | `POST /protocols/:id/runs` | `run(verb="launch")` | `mechbench run launch` |
 | run | **check**(protocol, params?, inputs?, keep?, budget?) | read | `POST /protocols/:id/check` | `run(verb="check")` | `mechbench run check` |
-| run | **sweep**(protocol, file?, members?, grid?, grid_inputs?, params?, inputs?, keep?, budget?, label?, runner?, wait?, timeout?) | spend * | `POST /protocols/:id/sweeps` | `run(verb="sweep")` | `mechbench run sweep` |
+| run | **sweep**(protocol, file?, members?, grid?, grid_inputs?, params?, inputs?, keep?, budget?, label?, runner?, backend?, accelerator?, wait?, timeout?) | spend * | `POST /protocols/:id/sweeps` | `run(verb="sweep")` | `mechbench run sweep` |
 | run | **update**(id, label?, clear?) | draft | `PATCH /runs/:id` | `run(verb="update")` | `mechbench run update` |
 | run | **watch**(id, timeout?) | read | `GET /runs/:id` | `run(verb="watch")` | `mechbench run watch` |
 | run | **result**(id, node, full?) | read | `GET /objects/:path` | `run(verb="result")` | `mechbench run result` |

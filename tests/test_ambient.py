@@ -168,11 +168,12 @@ class TestNodeWatch:
 
     def test_model_bearing_reads_the_graph(self):
         spec = {"graph": {"nodes": [
-            {"id": "cap", "requirements": {"class": "mlx-local"}},
+            {"id": "cap", "requirements": {"class": "local"}},
+            {"id": "old", "requirements": {"class": "mlx-local"}},
             {"id": "tab", "requirements": {"class": "pure"}},
             {"id": "ask", "requirements": {"class": "remote"}},
         ]}}
-        assert model_bearing(spec) == {"cap"}
+        assert model_bearing(spec) == {"cap", "old"}
         assert model_bearing({}) == set()
 
 

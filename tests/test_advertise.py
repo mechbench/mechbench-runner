@@ -36,11 +36,11 @@ class TestAdvertise:
                             "accelerator", "memory_gb"} <= {
             "chip", "gpu_cores", "os", "python", "stack", "backends",
             "architectures", "architecture_levels"}
-        assert caps["classes"] == ["mlx-local", "pure", "remote"]
+        assert caps["classes"] == ["local", "pure", "remote"]
         assert caps["compute"] == __version__
         assert caps["installs"] is True
         assert caps["installed"] == []
-        assert caps["accelerator"] in {"applegpu", "cuda", "cpu"}
+        assert caps["accelerator"] in {"metal", "cuda", "rocm", "tpu", "cpu"}
         assert isinstance(caps["memory_gb"], int) and caps["memory_gb"] >= 0
 
     @pytest.mark.parametrize("raw", [
@@ -59,7 +59,7 @@ class TestAdvertise:
         path.write_text("{not json")
         assert advertise(path)["installed"] == []
 
-    def test_a_machine_without_mlx_claims_no_mlx_local_job(self, monkeypatch):
+    def test_a_machine_with_no_backend_claims_no_local_job(self, monkeypatch):
         from mechbench_compute import backends
 
         monkeypatch.setattr(backends, "available", lambda *a, **k: [])
@@ -75,12 +75,22 @@ class TestAdvertise:
         _client(handler).claim_next_job("pure")
         assert seen["query"] == "pure"
 
-    def test_the_accelerator_follows_the_hardware(self, monkeypatch):
+    def test_the_accelerator_is_the_one_compute_detects(self, monkeypatch):
+        from mechbench_compute import backends
+        api_client._hardware.cache_clear()
+        monkeypatch.setattr(backends, "detect_accelerator", lambda: "rocm",
+                            raising=False)
+        assert api_client._hardware()[0] == "rocm"
+        api_client._hardware.cache_clear()
+
+    def test_without_compute_s_detection_it_follows_the_hardware(self, monkeypatch):
         import mechbench_compute.seeds as seeds
+        from mechbench_compute import backends
+        monkeypatch.delattr(backends, "detect_accelerator", raising=False)
         api_client._hardware.cache_clear()
         m3 = {"mlx": "0.29.0", "chip": "Apple M3 Max", "memory_gb": 48.0}
         monkeypatch.setattr(seeds, "hardware_class", lambda: m3)
-        assert api_client._hardware()[0] == "applegpu"
+        assert api_client._hardware()[0] == "metal"
         api_client._hardware.cache_clear()
         monkeypatch.setattr(seeds, "hardware_class", lambda: {"mlx": None})
         monkeypatch.setattr(api_client, "_has_cuda", lambda: True)
@@ -101,7 +111,7 @@ class TestItIsSent:
             return httpx.Response(204)
         _client(handler).claim_next_job()
         assert json.loads(seen["caps"] or "null") == advertise()
-        assert seen["query"] == "mlx-local,pure,remote"
+        assert seen["query"] == "local,pure,remote"
 
     def test_at_registration(self, monkeypatch):
         sent: dict = {}

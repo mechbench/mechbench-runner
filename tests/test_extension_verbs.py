@@ -25,7 +25,7 @@ HASH = "sha256:" + "ab" * 32
 OPS = {
     "ops": [
         {"address": "direction/apply", "family": "direction", "leaf": "apply",
-         "summary": "Add a direction.", "requires": "mlx-local", "needs": [],
+         "summary": "Add a direction.", "requires": "local", "needs": [],
          "inputs": [{"name": "direction", "kinds": ["direction/vector"], "required": True, "many": False},
                     {"name": "records", "kinds": ["records/record"], "required": True, "many": True}],
          "output": {"kind": "records/record", "collection": True}, "source": {"kind": "core"}},

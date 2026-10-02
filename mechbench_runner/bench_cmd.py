@@ -76,7 +76,8 @@ def run(config: Config, protocol: str, binds: list[str] | None,
         budget: float | None, wait: bool, *,
         params: list[str] | None = None, inputs: list[str] | None = None,
         keep: str | None = None, label: str | None = None,
-        runner: str | None = None) -> int:
+        runner: str | None = None, backend: str | None = None,
+        accelerator: str | None = None) -> int:
     if binds:
         print("run: --bind is the legacy binding, which is no longer read; "
               "bind a param with --param NAME=VALUE and an input with "
@@ -86,7 +87,9 @@ def run(config: Config, protocol: str, binds: list[str] | None,
     declared_params = _params(params)
     declared_inputs = _inputs(inputs)
     try:
-        if runner is None:
+        placed = {k: v for k, v in (("runner", runner), ("backend", backend),
+                                    ("accelerator", accelerator)) if v}
+        if not placed:
             out = bench.launch(
                 protocol, budget=budget,
                 params=declared_params or None, inputs=declared_inputs or None,
@@ -94,7 +97,7 @@ def run(config: Config, protocol: str, binds: list[str] | None,
         else:
             out = _launch_on(config, protocol, {
                 "params": declared_params, "inputs": declared_inputs or None,
-                "keep": keep, "budget": budget, "label": label, "runner": runner})
+                "keep": keep, "budget": budget, "label": label, **placed})
     except bench.BenchError as e:
         print(f"run failed: {e}", file=sys.stderr)
         return 1
@@ -108,7 +111,7 @@ def run(config: Config, protocol: str, binds: list[str] | None,
                "inputs": declared_inputs, "budget_usd": budget,
                **({"keep": keep} if keep else {}),
                **({"label": label} if label else {}),
-               **({"runner": runner} if runner else {}),
+               **placed,
                "run": run_id, "job": job})
     print(job, flush=True)
     detail = f"  run {run_id} · {protocol}" + (f" · {label}" if label else "")
@@ -116,6 +119,10 @@ def run(config: Config, protocol: str, binds: list[str] | None,
         detail += f" · cap ${budget}"
     if runner:
         detail += f" · on runner {runner}"
+    if backend:
+        detail += f" · backend {backend}"
+    if accelerator:
+        detail += f" · accelerator {accelerator}"
     print(detail, file=sys.stderr, flush=True)
     if wait:
         return watch(config, [job])

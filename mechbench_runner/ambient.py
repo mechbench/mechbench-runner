@@ -276,6 +276,9 @@ def ambient(counters: dict[str, Any], before: dict[str, float] | None,
     return out, not reasons
 
 
+MODEL_CLASSES = ("local", "mlx-local", "cuda", "tpu")
+
+
 def model_bearing(spec: dict[str, Any]) -> set[str]:
     graph = spec.get("graph") if isinstance(spec, dict) else None
     nodes = graph.get("nodes") if isinstance(graph, dict) else None
@@ -284,7 +287,7 @@ def model_bearing(spec: dict[str, Any]) -> set[str]:
         if not isinstance(n, dict):
             continue
         req = n.get("requirements")
-        if isinstance(req, dict) and req.get("class") in ("mlx-local", "cuda", "tpu"):
+        if isinstance(req, dict) and req.get("class") in MODEL_CLASSES:
             out.add(str(n.get("id")))
     return out
 
