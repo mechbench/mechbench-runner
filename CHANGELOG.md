@@ -25,7 +25,19 @@ with both headings.
 
 ## Unreleased
 
-_None yet._
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+- **A runner claims `mlx-local` jobs only where compute's `mlx` backend
+  is available** (installed, and offered on this machine's
+  accelerator), in what it advertises and on every claim; a machine
+  without it claims `pure` and `remote` alone. Before, every runner
+  claimed `mlx-local` and failed the job where MLX was missing. On Apple
+  silicon with MLX the classes are unchanged.
+
 
 ## 0.57.0 — 2026-10-01
 

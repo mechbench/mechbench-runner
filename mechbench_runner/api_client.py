@@ -102,6 +102,15 @@ def _compute_version() -> str:
 
 CLASSES = ("mlx-local", "pure", "remote")
 
+
+def read_classes() -> list[str]:
+    try:
+        from mechbench_compute.backends import available
+        has_mlx = any(b.name == "mlx" for b in available())
+    except ImportError:
+        has_mlx = False
+    return [c for c in CLASSES if c != "mlx-local" or has_mlx]
+
 INSTALLS = True
 
 _PIN = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -168,7 +177,7 @@ def advertise(installed: Path | None = None) -> dict[str, Any]:
 
     accelerator, memory_gb = _hardware()
     return {
-        "classes": list(CLASSES),
+        "classes": read_classes(),
         "compute": _compute_version() or "unknown",
         "installs": INSTALLS,
         "installed": _installed_hashes(installed),
@@ -228,16 +237,16 @@ class ApiClient:
     def revoke_runner(self, runner_id: str) -> None:
         self._raise_for_status(self._client.delete(f"/runners/{runner_id}"))
 
-    CAPABILITIES = ",".join(CLASSES)
-
     def claim_next_job(self, capabilities: str | None = None) -> dict[str, Any] | None:
-        caps = json.dumps(advertise(), separators=(",", ":"))
+        advertised = advertise()
+        caps = json.dumps(advertised, separators=(",", ":"))
         headers = {"x-claim-token-supported": "1", "x-runner-capabilities": caps}
         version = _compute_version()
         if version:
             headers["x-compute-version"] = version
         res = self._client.get(
-            "/jobs/next", params={"capabilities": capabilities or self.CAPABILITIES},
+            "/jobs/next",
+            params={"capabilities": capabilities or ",".join(advertised["classes"])},
             headers=headers)
         warned = res.headers.get("x-mechbench-deprecation")
         if warned:

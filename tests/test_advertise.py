@@ -59,6 +59,22 @@ class TestAdvertise:
         path.write_text("{not json")
         assert advertise(path)["installed"] == []
 
+    def test_a_machine_without_mlx_claims_no_mlx_local_job(self, monkeypatch):
+        from mechbench_compute import backends
+
+        monkeypatch.setattr(backends, "available", lambda *a, **k: [])
+        assert api_client.read_classes() == ["pure", "remote"]
+        assert advertise()["classes"] == ["pure", "remote"]
+        seen: dict[str, str | None] = {}
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            seen["query"] = req.url.params.get("capabilities")
+            return httpx.Response(204)
+        _client(handler).claim_next_job()
+        assert seen["query"] == "pure,remote"
+        _client(handler).claim_next_job("pure")
+        assert seen["query"] == "pure"
+
     def test_the_accelerator_follows_the_hardware(self, monkeypatch):
         import mechbench_compute.seeds as seeds
         api_client._hardware.cache_clear()
