@@ -31,6 +31,20 @@ _None._
 
 ### Changes that alter results without raising
 
+_None._
+
+### Other
+
+_None._
+
+## 0.58.0 — 2026-10-02
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
 - **A runner claims `local` jobs, which were `mlx-local`, and only where
   compute has a backend for them** (installed, and offered on this
   machine's accelerator), in what it advertises and on every claim; a
