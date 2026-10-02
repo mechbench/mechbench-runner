@@ -87,7 +87,9 @@ class TestMachineChecks:
                             raising=False)
         check = doctor._backend()  # noqa: SLF001
         assert check.status == OK
-        assert check.detail.endswith(" on metal"), check.detail
+        assert "] on metal" in check.detail, check.detail
+        if any(b.name == "torch" for b in backends.BACKENDS):
+            assert "; torch absent: " in check.detail, check.detail
 
     def test_a_compute_without_detection_says_the_accelerator_is_unknown(
             self, monkeypatch):
