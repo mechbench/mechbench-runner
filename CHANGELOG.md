@@ -43,8 +43,9 @@ _None._
 - `mechbench doctor` names every compute backend: the ones here with
   their versions and the machine's accelerator, and each absent one with
   compute's reason ("mlx absent: it runs on metal, and this machine's
-  accelerator is cuda"). It needs the compute release that has
-  `backends.describe` and `backends.detect_accelerator`.
+  accelerator is cuda"). Against a compute without
+  `backends.detect_accelerator` and `backends.describe` it says what it
+  did before, with the accelerator unknown.
 
 ## 0.57.0 — 2026-10-01
 

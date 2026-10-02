@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from collections import namedtuple
+from types import SimpleNamespace
 
 from mechbench_runner import doctor
 from mechbench_runner.api_client import ApiError
@@ -73,22 +74,47 @@ class TestMachineChecks:
         check = doctor._backend()  # noqa: SLF001
         assert check.status == FAIL
         assert "Apple Silicon" in (check.fix or "")
-        assert "mlx absent: mlx.core is not installed" in check.detail
 
     def test_a_backend_reports_its_version(self):
         check = doctor._backend()  # noqa: SLF001
         assert check.status == OK
         assert "MLX" in check.detail
-        assert check.detail.endswith(" on metal")
 
-    def test_a_backend_for_another_accelerator_is_named_absent(self, monkeypatch):
+    def test_a_backend_reports_the_accelerator_compute_detects(self, monkeypatch):
         from mechbench_compute import backends
 
-        monkeypatch.setattr(backends, "detect_accelerator", lambda: "cuda")
+        monkeypatch.setattr(backends, "detect_accelerator", lambda: "metal",
+                            raising=False)
+        check = doctor._backend()  # noqa: SLF001
+        assert check.status == OK
+        assert check.detail.endswith(" on metal"), check.detail
+
+    def test_a_compute_without_detection_says_the_accelerator_is_unknown(
+            self, monkeypatch):
+        import mechbench_compute
+        from mechbench_compute import backends
+
+        before_the_seam = SimpleNamespace(
+            BACKENDS=backends.BACKENDS, active=backends.active,
+            available=lambda: backends.available(),
+            describe_platform=backends.describe_platform)
+        monkeypatch.setattr(mechbench_compute, "backends", before_the_seam)
+        check = doctor._backend()  # noqa: SLF001
+        assert check.status == OK
+        assert check.detail.endswith(" on an unknown accelerator"), check.detail
+
+    def test_each_absent_backend_is_named_with_compute_s_reason(self, monkeypatch):
+        from mechbench_compute import backends
+
+        absent = "it runs on metal, and this machine's accelerator is cuda"
+        monkeypatch.setattr(backends, "detect_accelerator", lambda: "cuda",
+                            raising=False)
+        monkeypatch.setattr(backends, "describe", lambda *a, **k: [
+            {"name": "mlx", "present": False, "absent": absent}], raising=False)
+        monkeypatch.setattr(backends, "active", lambda: None)
         check = doctor._backend()  # noqa: SLF001
         assert check.status == FAIL
-        assert ("mlx absent: it runs on metal, and this machine's accelerator "
-                "is cuda") in check.detail
+        assert f"(cuda): mlx absent: {absent}" in check.detail
 
 
 class TestAccountChecks:
