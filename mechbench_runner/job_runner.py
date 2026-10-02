@@ -745,7 +745,8 @@ class JobRunner:
         ])
         spec = ProtocolSpec(kind=kind, prompt=prompt, model_id=model_id,
                               extra={**spec_dict,
-                                     "resultPath": job.get("resultPath")})
+                                     "resultPath": job.get("resultPath"),
+                                     "requirements": job.get("requirements")})
         self._spend = SpendLedger(spec_dict.get("budgetUsd"))
 
         promoted = False

@@ -83,16 +83,19 @@ def stack() -> dict[str, str | None]:
 
 def backends() -> list[str]:
     try:
-        from mechbench_compute.backends import available
+        from mechbench_compute.backends import advertise
+        return [str(b) for b in advertise()["backends"]]
     except Exception:  # noqa: BLE001
         return []
-    return [b.name for b in available()]
 
 
 def architecture_levels() -> dict[str, str]:
     try:
-        from mechbench_compute.support import local_architectures
-        return {a["modelType"]: a["level"] for a in local_architectures()}
+        from mechbench_compute import support
+        levels = getattr(support, "architecture_levels", None)
+        if levels is not None:
+            return {str(k): str(v) for k, v in levels().items()}
+        return {a["modelType"]: a["level"] for a in support.local_architectures()}
     except Exception:  # noqa: BLE001
         return {}
 

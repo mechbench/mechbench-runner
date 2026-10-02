@@ -35,7 +35,18 @@ _None._
 
 ### Other
 
-_None._
+- A job's requirements reach compute: the runner hands the claimed job's
+  `requirements` to the executor (`ProtocolSpec.extra["requirements"]`),
+  which runs it on the backend they name, `mlx` when they name none
+  (compute's executor reads them from the release after 0.186.0, which
+  ignores them).
+- The runner advertises a backend only where compute's executor runs it
+  (`backends.advertise()`), claims `local` jobs only where it advertises
+  one, and advertises the architectures it loads as compute's one map of
+  model type to level across those backends (`support.architecture_levels`,
+  MLX's alone with a compute that lacks it). So a CUDA machine with the
+  torch extra claims torch jobs once its compute runs them, and never one
+  it would fail.
 
 ## 0.58.0 — 2026-10-02
 

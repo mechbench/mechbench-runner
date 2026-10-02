@@ -427,3 +427,39 @@ class TestTheJobRunnerHandsComputeWhatItNeeds:
         assert got["copy"] == {"anthropic": {"token": "sk-secret"}}
         assert got["in_spec"] is False and got["in_env"] is False
         assert got["secrets"] == {}
+
+    def test_the_requirements_the_job_was_placed_by_reach_compute(
+            self, jr, monkeypatch):
+        r = jr.JobRunner(_config())
+        got: dict[str, object] = {}
+
+        def fake_run(spec, **_kw):
+            got["requirements"] = spec.extra.get("requirements")
+            return {"protocol": "layer_ablation"}
+
+        class Api:
+            claim_tokens: dict[str, str] = {}
+
+            def job_credentials(self, _job_id):
+                return {"credentials": {}, "missing": []}
+
+            def report_progress(self, *_a, **_k):
+                return None
+
+            def declare_preparing(self, *_a, **_k):
+                return None
+
+            def report_preparing_step(self, *_a, **_k):
+                return None
+
+            def complete_job_cbor(self, *_a, **_k):
+                return None
+
+        monkeypatch.setattr(r._executor, "run", fake_run)
+        monkeypatch.setattr(r, "_hold_awake", lambda: None)
+        monkeypatch.setattr(jr, "dump_canonical", lambda _p: b"\xa0")
+        needs = {"class": "local", "backend": "torch", "accelerator": "cuda"}
+        r._handle(Api(), {"id": "j_t", "protocolKind": "layer_ablation",
+                          "spec": {"prompt": "hi", "modelId": "m@r"},
+                          "requirements": needs})
+        assert got["requirements"] == needs

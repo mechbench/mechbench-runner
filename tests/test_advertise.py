@@ -75,6 +75,35 @@ class TestAdvertise:
         _client(handler).claim_next_job("pure")
         assert seen["query"] == "pure"
 
+    def test_it_advertises_only_the_backends_compute_s_executor_runs(self, monkeypatch):
+        from mechbench_compute import backends
+
+        from mechbench_runner import identity
+
+        monkeypatch.setattr(backends, "advertise",
+                            lambda *a, **k: {"accelerator": "cuda", "backends": []})
+        assert identity.backends() == []
+        assert api_client.read_classes() == ["pure", "remote"]
+        torch = {"accelerator": "cuda", "backends": ["torch"]}
+        monkeypatch.setattr(backends, "advertise", lambda *a, **k: torch)
+        assert identity.backends() == ["torch"]
+        assert api_client.read_classes() == ["local", "pure", "remote"]
+
+    def test_the_architectures_are_compute_s_one_map_of_its_backends(
+            self, monkeypatch):
+        from mechbench_compute import support
+
+        from mechbench_runner import identity
+
+        levels = {"gemma3": "core", "llama": "core"}
+        monkeypatch.setattr(support, "architecture_levels", lambda *a, **k: levels,
+                            raising=False)
+        assert identity.architecture_levels() == levels
+        monkeypatch.delattr(support, "architecture_levels")
+        monkeypatch.setattr(support, "local_architectures",
+                            lambda *a, **k: [{"modelType": "gemma4", "level": "full"}])
+        assert identity.architecture_levels() == {"gemma4": "full"}
+
     def test_the_accelerator_is_the_one_compute_detects(self, monkeypatch):
         from mechbench_compute import backends
         api_client._hardware.cache_clear()

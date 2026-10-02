@@ -104,11 +104,9 @@ CLASSES = ("local", "pure", "remote")
 
 
 def read_classes() -> list[str]:
-    try:
-        from mechbench_compute.backends import available
-        has_backend = bool(available())
-    except ImportError:
-        has_backend = False
+    from .identity import backends
+
+    has_backend = bool(backends())
     return [c for c in CLASSES if c != "local" or has_backend]
 
 INSTALLS = True
