@@ -35,7 +35,28 @@ _None._
 
 ### Other
 
-_None._
+- **Names in a live run.** `mechbench let NAME = OP [--in …] [--set …]`
+  (the same as `try OP --as NAME`) binds a try's result to a name, and
+  a later try reads it as `--in PORT=$NAME` (quoted, so a shell leaves
+  the `$` alone) or as `{"$name": NAME}` anywhere in a `--set` value;
+  `$_` is the last try that succeeded. A try that binds a name prints
+  `as NAME: ~scratch/<id>/NAME`. `mechbench names` (`live names`) lists
+  the live run's names, each with the try it names, its kind and its
+  scratch path. The API pins each name to its value by hash before the
+  try runs, and refuses a name that is not one path segment, `t`
+  followed by digits, one the live run does not have, one whose value
+  is gone from scratch, and one a try still running is about to bind.
+- **`mechbench object copy ~scratch/<id>/NAME owner/project/path`** puts
+  a live run's scratch value in a project (`POST /objects/~copy`), as an
+  object of its own that names no inputs.
+- An empty `--in PORT=` is refused with the advice to quote a name,
+  which a shell would otherwise expand to nothing.
+- A live run's host reads a name's value from memory when the try's pin
+  is the binding the API last gave it, and an earlier try's result
+  (`t<seq>`) from memory pinned or not; any other pin goes to the
+  Resolver, which checks it.
+- `live names` and `object copy` need the API that answers
+  `GET /live-runs/:id/names` and `POST /objects/~copy`.
 
 ---
 

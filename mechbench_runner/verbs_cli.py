@@ -78,7 +78,24 @@ def rewrite_run(argv: list[str]) -> list[str]:
         return ["runner", "list", *argv[1:]]
     if argv[:1] == ["try"]:
         return ["live", *argv]
+    if argv[:1] == ["names"]:
+        return ["live", "names", *argv[1:]]
+    if argv[:1] == ["let"]:
+        return rewrite_let(argv[1:])
     return argv
+
+
+def rewrite_let(rest: list[str]) -> list[str]:
+    head = rest[0] if rest else ""
+    name, eq, op = head.partition("=")
+    tail = rest[1:]
+    if not eq and tail[:1] and tail[0].startswith("="):
+        eq, op, tail = "=", tail[0][1:], tail[1:]
+    if not op and tail:
+        op, tail = tail[0], tail[1:]
+    if not name or not eq or not op or op.startswith("-"):
+        raise SystemExit("mechbench let: write `mechbench let NAME = OPERATION [--in PORT=…] [--set NAME=…]`")
+    return ["live", "try", op, *tail, "--as", name]
 
 
 def pairs(

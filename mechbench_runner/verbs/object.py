@@ -85,6 +85,10 @@ def object_write(ctx: Ctx, a: dict) -> Any:
     return ctx.bench().emit(a["path"], payload, inputs=list(a.get("inputs") or ()))
 
 
+def object_copy(ctx: Ctx, a: dict) -> Any:
+    return ctx.api("POST", "/objects/~copy", body={"from": a["path"], "to": a["to"]})[0]
+
+
 def object_update(ctx: Ctx, a: dict) -> Any:
     body = {"visibility": a["visibility"], "prefix": bool(a.get("prefix"))}
     return ctx.api("PATCH", f"/objects/{a['path']}", body=body)[0]
@@ -184,6 +188,24 @@ OBJECT = Noun(
                 ),
             ),
             object_write,
+            effect="draft",
+        ),
+        Verb(
+            "object",
+            "copy",
+            "Copy a live run's scratch value into a project, as an object of its own: it "
+            "names no inputs, and crystallize is what gives it lineage.",
+            "POST /objects/~copy",
+            (
+                Arg(
+                    "path",
+                    "The scratch value: ~scratch/<live-run-id>/<name> (or t<seq>).",
+                    required=True,
+                    positional=True,
+                ),
+                Arg("to", "Where it goes: owner/project/path.", required=True, positional=True),
+            ),
+            object_copy,
             effect="draft",
         ),
         Verb(

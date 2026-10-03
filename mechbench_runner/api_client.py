@@ -281,7 +281,7 @@ class ApiClient:
 
     def live_complete(self, live_run_id: str, seq: int, *,
                       outputs: dict[str, Any] | None = None, state: Any = None,
-                      error: str | None = None, refused: bool = False) -> None:
+                      error: str | None = None, refused: bool = False) -> dict[str, Any]:
         body: dict[str, Any]
         if error is not None:
             body = {"error": error[:20_000], **({"refused": True} if refused else {})}
@@ -289,6 +289,11 @@ class ApiClient:
             body = {"outputs": outputs or {}, **({"state": state} if state is not None else {})}
         res = self._client.post(f"/live-runs/{live_run_id}/events/{seq}/complete", json=body)
         self._raise_for_status(res)
+        try:
+            got = res.json()
+        except ValueError:
+            return {}
+        return got if isinstance(got, dict) else {}
 
     def live_release(self, live_run_id: str, reason: str) -> None:
         res = self._client.post(f"/live-runs/{live_run_id}/release", json={"reason": reason[:2000]})

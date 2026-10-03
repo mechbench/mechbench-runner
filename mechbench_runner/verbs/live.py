@@ -43,9 +43,14 @@ def which(a: dict) -> str:
     return str(got)
 
 
-def value_of(text: Any) -> Any:
+def value_of(text: Any, port: str = "PORT") -> Any:
     if not isinstance(text, str):
         return text
+    if text == "":
+        raise VerbError(f"--in {port}= is empty: for a name, quote it ('{port}=$NAME') "
+                        "so the shell leaves the $ alone")
+    if text.startswith("$"):
+        return {"$name": text[1:]}
     if text[:1] in ("{", "[", '"'):
         try:
             return json.loads(text)
@@ -96,14 +101,26 @@ def live_try(ctx: Ctx, a: dict) -> Any:
     live_run_id = which(a)
     body: dict[str, Any] = {
         "op": a["op"],
-        "inputs": {k: value_of(v) for k, v in (a.get("inputs") or {}).items()},
+        "inputs": {k: value_of(v, k) for k, v in (a.get("inputs") or {}).items()},
         "params": dict(a.get("params") or {}),
         "clientId": a.get("client_id") or uuid.uuid4().hex,
         "wait": int(a.get("wait") or 120),
     }
     if a.get("slot"):
         body["slot"] = a["slot"]
+    if a.get("as"):
+        body["as"] = a["as"]
     return ctx.api("POST", f"/live-runs/{live_run_id}/tries", body=body)[0]
+
+
+def live_names(ctx: Ctx, a: dict) -> Any:
+    got = ctx.get(f"/live-runs/{which(a)}/names")
+    names = (got.get("names") if isinstance(got, dict) else None) or {}
+    rows = [{"name": k, **v} for k, v in sorted(names.items())]
+    want = str(a.get("search") or "").lower()
+    if want:
+        rows = [r for r in rows if any(want in str(r.get(k) or "").lower() for k in ("name", "kind"))]
+    return paged(rows, a)
 
 
 def live_close(ctx: Ctx, a: dict) -> Any:
@@ -122,7 +139,8 @@ def try_lines(answer: dict[str, Any]) -> list[str]:
     timing = answer.get("timing") or {}
     head = f"t{answer.get('seq')}  {answer.get('kind')}  {timing.get('totalMs', '?')} ms  {prov.get('hash', '')[:19]}"
     where = answer.get("address") or "inline (--json prints it)"
-    return [head, *[f"  {line}" for line in answer.get("lines") or []], f"  result: {where}"]
+    named = [f"  as {name}: {entry.get('path')}" for name, entry in (answer.get("names") or {}).items()]
+    return [head, *[f"  {line}" for line in answer.get("lines") or []], f"  result: {where}", *named]
 
 
 LIVE_RUN = Arg("live_run", "The live run (default: this machine's current one).", flag="--live-run")
@@ -131,7 +149,8 @@ LIVE = Noun(
     "live",
     "A live run: a model held warm on one of your runners, taking tries (any operation, "
     "answered in the response) until it is closed. `start` holds one and makes it this "
-    "machine's current live run; `try` runs an operation on it; `close` ends it.",
+    "machine's current live run; `try` runs an operation on it, and with `as` binds the "
+    "result to a name a later try reads as $NAME; `names` lists them; `close` ends it.",
     (
         Verb(
             "live", "list", "Your live runs, newest first.", "GET /live-runs",
@@ -164,10 +183,14 @@ LIVE = Noun(
             "POST /live-runs/:id/tries",
             (
                 Arg("op", "The operation, e.g. logits/read-layers.", required=True, positional=True),
-                Arg("inputs", "An input port, PORT=PATH (an object path, read by the Resolver) "
+                Arg("inputs", "An input port, PORT=PATH (an object path, read by the Resolver), "
+                              "PORT=$NAME (a name this live run bound; quote it from a shell) "
                               "or PORT=JSON.", type="pairs", flag="--in"),
-                Arg("params", "A param, NAME=VALUE (VALUE read as JSON when it parses).",
+                Arg("params", "A param, NAME=VALUE (VALUE read as JSON when it parses; a name "
+                              "goes in a param as {\"$name\": NAME}).",
                     type="pairs", flag="--set"),
+                Arg("as", "Bind the result to this name: one path segment, not t followed by "
+                          "digits. `mechbench let NAME = OP …` is the same."),
                 Arg("slot", "Replace a still-queued try in this slot."),
                 Arg("wait", "Seconds to wait for the answer (at most 120).", type="int"),
                 Arg("client_id", "Your own id for it: a resend is the same try.", flag="--client-id"),
@@ -176,6 +199,13 @@ LIVE = Noun(
                     flag="--json", local=True),
             ),
             live_try, effect="draft",
+        ),
+        Verb(
+            "live", "names",
+            "The names bound in a live run, each with the try whose result it names and its "
+            "scratch path. Names die with the live run; `object copy` puts a value in a project.",
+            "GET /live-runs/:id/names", (LIVE_RUN, SEARCH, LIMIT, OFFSET), live_names, "list",
+            ("name", "seq", "kind", "path"), effect="read",
         ),
         Verb(
             "live", "close", "End the live run: its model is released and its scratch deleted.",

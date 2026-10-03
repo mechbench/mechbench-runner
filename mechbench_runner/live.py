@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import queue
+import re
 import threading
 import time
 import traceback
@@ -18,6 +19,7 @@ TRY_SECONDS = 120.0
 CACHED_RESULTS = 16
 OPEN = "open"
 WARM_RECORDS = [{"id": "warm", "user": "Hello."}]
+TRY_LEAF = re.compile(r"^t\d+$")
 
 
 class Stopped(Exception):
@@ -39,12 +41,26 @@ class Session:
     inline_bytes: int = INLINE_BYTES
     try_seconds: float = TRY_SECONDS
     results: OrderedDict[str, Any] = field(default_factory=OrderedDict)
+    names: dict[str, tuple[str, str]] = field(default_factory=dict)
 
     def remember(self, name: str, value: Any) -> None:
         self.results[name] = value
         self.results.move_to_end(name)
         while len(self.results) > CACHED_RESULTS:
             self.results.popitem(last=False)
+
+    def bind(self, names: Any) -> None:
+        for name, entry in (names or {}).items():
+            if isinstance(entry, dict) and isinstance(entry.get("sha256"), str):
+                self.names[str(name)] = (entry["sha256"], f"t{entry.get('seq')}")
+
+    def recall(self, leaf: str, sha256: Any) -> tuple[bool, Any]:
+        if TRY_LEAF.match(leaf):
+            return (leaf in self.results, self.results.get(leaf))
+        bound = self.names.get(leaf)
+        if bound is None or sha256 is None or bound[0] != sha256 or bound[1] not in self.results:
+            return (False, None)
+        return (True, self.results[bound[1]])
 
 
 def _plain(value: Any) -> Any:
@@ -253,11 +269,13 @@ class LiveHost:
     def _from_cache(self, session: Session, value: Any) -> Any:
         if isinstance(value, dict):
             ref = value.get("$ref")
-            path = ref.get("bench") if isinstance(ref, dict) and len(ref) == 1 else None
+            path = ref.get("bench") if isinstance(ref, dict) and set(ref) <= {"bench", "sha256"} else None
             if isinstance(path, str) and len(value) == 1:
-                head, _, name = path.rpartition("/")
-                if head == f"~scratch/{session.id}" and name in session.results:
-                    return session.results[name]
+                head, _, leaf = path.rpartition("/")
+                if head == f"~scratch/{session.id}":
+                    hit, got = session.recall(leaf, ref.get("sha256"))
+                    if hit:
+                        return got
             return {k: self._from_cache(session, v) for k, v in value.items()}
         if isinstance(value, list):
             return [self._from_cache(session, v) for v in value]
@@ -273,7 +291,8 @@ class LiveHost:
         if not session.warm:
             self._warm(session)
         try:
-            got = run_try(self.executor, op=event.get("op"), graph=event.get("graph"),
+            got = run_try(self.executor, op=event.get("op"),
+                          graph=self._from_cache(session, event.get("graph")),
                           inputs=self._from_cache(session, event.get("inputs") or {}),
                           params=self._from_cache(session, event.get("params") or {}),
                           model=str(session.model), on_token=self._streamer(live_run_id, seq),
@@ -295,7 +314,7 @@ class LiveHost:
                                           operation=_canonical(op) if isinstance(op, str) else None,
                                           params=event.get("params") or {})
                 address = written.get("path") or f"~scratch/{live_run_id}/t{seq}"
-            api.live_complete(live_run_id, seq, outputs=_plain({
+            answered = api.live_complete(live_run_id, seq, outputs=_plain({
                 "address": address,
                 "kind": got["kind"],
                 "summary": got["summary"],
@@ -304,6 +323,8 @@ class LiveHost:
                 "runMs": round(got["seconds"] * 1000, 3),
                 "provenance": {**got["provenance"], "hash": f"sha256:{got['hash']}"},
             }))
+            if isinstance(answered, dict):
+                session.bind(answered.get("names"))
         finally:
             with self._lock:
                 self._stopping.discard(live_run_id)

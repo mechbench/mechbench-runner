@@ -125,16 +125,18 @@ RECORDS = [{"id": "a", "text": "x"}, {"id": "b", "text": "y"}]
 
 
 class TryApi(FakeApi):
-    def __init__(self, leases=()):
+    def __init__(self, leases=(), answers=None):
         super().__init__(leases)
         self.refused: list[tuple] = []
         self.written: list[tuple] = []
         self.released: list[tuple] = []
+        self.answers = answers or {}
 
     def live_complete(self, live_run_id, seq, *, outputs=None, state=None, error=None, refused=False):
         self.completed.append((live_run_id, seq, outputs, state, error))
         if refused:
             self.refused.append((seq, error))
+        return self.answers.get(seq, {"ok": True})
 
     def put_scratch(self, path, payload, *, operation=None, params=None):
         self.written.append((path, payload, operation))
@@ -226,6 +228,38 @@ def test_a_try_reads_an_earlier_try_from_memory(monkeypatch):
     host.serve(api)
     assert [c[4] for c in api.completed] == [None, None]
     assert sorted(i["id"] for i in api.completed[1][2]["result"]["items"]) == ["a", "b", "c"]
+
+
+def test_a_try_reads_a_name_from_memory_when_its_pin_is_the_binding_it_knows(monkeypatch):
+    host, _, _, _, _ = _open_host(monkeypatch)
+    bound = {"seq": 1, "path": "~scratch/live_open/acts", "sha256": "a" * 64, "kind": "records/record"}
+    api = TryApi(answers={1: {"ok": True, "names": {"acts": bound}}})
+    host.offer({"op": "attach", "liveRun": OPEN_RUN})
+    host.offer(_try(1, op="records/union", inputs={"before": RECORDS}, **{"as": "acts"}))
+    host.offer(_try(2, op="records/union",
+                    inputs={"before": {"$ref": {"bench": "~scratch/live_open/acts", "sha256": "a" * 64}},
+                            "now": [{"id": "c", "text": "z"}]}))
+    host.serve(api)
+    assert [c[4] for c in api.completed] == [None, None]
+    assert sorted(i["id"] for i in api.completed[1][2]["result"]["items"]) == ["a", "b", "c"]
+
+
+def test_a_pin_it_does_not_know_is_left_for_the_resolver(monkeypatch):
+    host, _, _, _, _ = _open_host(monkeypatch)
+    host.offer({"op": "attach", "liveRun": OPEN_RUN})
+    host.serve(TryApi())
+    session = host.sessions["live_open"]
+    session.remember("t1", RECORDS)
+    session.bind({"acts": {"seq": 1, "path": "~scratch/live_open/acts", "sha256": "a" * 64}})
+
+    def ref(path, sha=None):
+        return {"$ref": {"bench": path, **({"sha256": sha} if sha else {})}}
+
+    assert host._from_cache(session, ref("~scratch/live_open/acts", "a" * 64)) == RECORDS
+    assert host._from_cache(session, ref("~scratch/live_open/t1", "f" * 64)) == RECORDS
+    for missed in (ref("~scratch/live_open/acts", "b" * 64), ref("~scratch/live_open/acts"),
+                   ref("~scratch/live_other/acts", "a" * 64), ref("~scratch/live_open/t2", "a" * 64)):
+        assert host._from_cache(session, missed) == missed
 
 
 def test_a_refused_try_says_why_and_is_marked_refused(monkeypatch):

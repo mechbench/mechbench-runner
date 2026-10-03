@@ -131,6 +131,7 @@ argument, in about 26 KB.
 | object | **read**(path, full?) | read | `GET /objects/~meta` | `object(verb="read")` | `mechbench object read` |
 | object | **items**(path, fields?, where?, sort?, order?, offset?, limit?, lines?, chars?, count?, header?) | read | `GET /objects/~items` | `object(verb="items")` | `mechbench object items` |
 | object | **write**(path, file?, payload?, inputs?) | draft | `PUT /objects/:path` | `object(verb="write")` | `mechbench object write` |
+| object | **copy**(path, to) | draft | `POST /objects/~copy` | `object(verb="copy")` | `mechbench object copy` |
 | object | **update**(path, visibility, prefix?) | outward when visibility=org|public * | `PATCH /objects/:path` | `object(verb="update")` | `mechbench object update` |
 | object | **delete**(path, prefix?, yes?, acknowledge_citations?) | delete when yes=true * | `DELETE /objects/:path` | `object(verb="delete")` | `mechbench object delete` |
 | object | **render**(path, format?, theme?, width?, step_by?, step?, full?, link?, out?) | read | `GET /objects/~render` | `object(verb="render")` | `mechbench object render` |
@@ -264,7 +265,8 @@ argument, in about 26 KB.
 | live | **list**(search?, limit?, offset?) | read | `GET /live-runs` | `live(verb="list")` | `mechbench live list` |
 | live | **read**(id?) | read | `GET /live-runs/:id` | `live(verb="read")` | `mechbench live read` |
 | live | **start**(model, idle?, close_after?, label?) | draft | `POST /live-runs` | `live(verb="start")` | `mechbench live start` |
-| live | **try**(op, inputs?, params?, slot?, wait?, client_id?, live_run?, as_json?) | draft | `POST /live-runs/:id/tries` | `live(verb="try")` | `mechbench live try` |
+| live | **try**(op, inputs?, params?, as?, slot?, wait?, client_id?, live_run?, as_json?) | draft | `POST /live-runs/:id/tries` | `live(verb="try")` | `mechbench live try` |
+| live | **names**(live_run?, search?, limit?, offset?) | read | `GET /live-runs/:id/names` | `live(verb="names")` | `mechbench live names` |
 | live | **close**(live_run?) | delete * | `POST /live-runs/:id/close` | `live(verb="close")` | `mechbench live close` |
 | live | create | — | — | — | — (`start` holds a model warm, which is what creating one is) |
 | live | update | — | — | — | — (a live run changes only by its tries) |
