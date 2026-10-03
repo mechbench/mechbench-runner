@@ -253,9 +253,9 @@ class LiveHost:
                           inline_bytes=int(limits.get("inlineBytes") or INLINE_BYTES),
                           try_seconds=float(limits.get("trySeconds") or TRY_SECONDS))
         self.sessions[session.id] = session
+        self._warm(session, announce=False)
         if session.form == OPEN:
             self._look_for_floor(api)
-        self._warm(session, announce=False)
         if session.warm:
             self._warm_up(session)
         return True
