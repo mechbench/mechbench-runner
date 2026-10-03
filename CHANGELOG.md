@@ -35,6 +35,22 @@ _None._
 
 ### Other
 
+_None._
+
+---
+
+## 0.60.0 — 2026-10-03
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
 - `run diff` judges a comparison against a noise floor or a tolerance:
   `--noise PATH` (a `platform/noise` collection, as
   `records/measure-noise` writes it), `--tolerance` (a number, or JSON
@@ -48,6 +64,10 @@ _None._
   the comparison made here is, with the `job` and the `result` path. The
   verb's route is now `POST /runs/diff` and its effect `draft`, so MCP
   and a thread's agent run it through the API.
+- The runner needs compute 0.188.0 or later (reads behind a softcap; the
+  expression fuel refusal).
+
+---
 
 ## 0.59.0 — 2026-10-03
 
