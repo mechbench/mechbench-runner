@@ -35,7 +35,19 @@ _None._
 
 ### Other
 
-_None._
+- `run diff` judges a comparison against a noise floor or a tolerance:
+  `--noise PATH` (a `platform/noise` collection, as
+  `records/measure-noise` writes it), `--tolerance` (a number, or JSON
+  `{"abs", "rel"}` or `{"fields": …}`), `--k` and `--noise-for
+  NAME=VALUE`, passed to compute's `records/diff`, which counts each
+  numeric difference in floors and says the verdict (`within the floor`,
+  `N findings above the floor`). Without them it answers as before.
+- `run diff --into OWNER/PROJECT` keeps the comparison: it is
+  `POST /runs/diff`, a job on one of your runners whose result is kept
+  under that project, waited for (two minutes at most) and answered as
+  the comparison made here is, with the `job` and the `result` path. The
+  verb's route is now `POST /runs/diff` and its effect `draft`, so MCP
+  and a thread's agent run it through the API.
 
 ## 0.59.0 — 2026-10-03
 

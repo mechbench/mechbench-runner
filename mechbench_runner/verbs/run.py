@@ -377,8 +377,12 @@ RUN = Noun(
         Verb(
             "run",
             "diff",
-            "Compare two runs' node (or two objects) record by record, by key.",
-            "GET /objects/:path",
+            "Compare two runs' node (or two objects) record by record, by key, and "
+            "say the verdict; against a noise floor or a tolerance, a numeric "
+            "difference is a finding only past it. On the command line it compares "
+            "here; with into, and over MCP or in a thread, it is a job on one of "
+            "your runners whose result is kept (in into, else in b's project).",
+            "POST /runs/diff",
             (
                 Arg(
                     "a",
@@ -413,14 +417,42 @@ RUN = Noun(
                 ),
                 Arg("by", "Summarise numeric fields per these coordinates."),
                 Arg(
+                    "noise",
+                    "The noise floor: a platform/noise collection's path, as "
+                    "records/measure-noise writes it. A numeric difference is then "
+                    "counted in floors.",
+                ),
+                Arg(
+                    "tolerance",
+                    "How far a number may move and not be a finding: a number, "
+                    '{"abs", "rel"}, or {"fields": {pattern: …}}; it wins over the '
+                    "floor, and 0 makes every numeric difference a finding.",
+                    type="json",
+                ),
+                Arg(
+                    "k",
+                    "How many floors a difference must pass (default 1).",
+                    type="float",
+                ),
+                Arg(
+                    "noise_for",
+                    "Which of the floor's records apply, by its key fields "
+                    "(operation=text/generate, architecture=gemma4).",
+                    type="pairs",
+                ),
+                Arg(
+                    "into",
+                    "Keep the diff as a job's result under this project, "
+                    "OWNER/PROJECT.",
+                ),
+                Arg(
                     "limit", "Differing records shown (default 20; -1 all).", type="int"
                 ),
                 FULL,
             ),
             run_diff,
             "read",
-            effect="read",
-            local=True,
+            effect="draft",
         ),
         Verb(
             "run",

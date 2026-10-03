@@ -81,15 +81,21 @@ the resource's own (`displayName`, `labelContains`, `view`).
 - **History.** `history` is the lifetime's audit log, readable after
   deletion. A run's is its job's; an object's is by path (every lifetime
   that held the path) or by id.
-- **Comparing two runs runs where the command runs.** `run diff` reads
-  both results (`GET /objects/:path`, as `run result` does) and compares
-  them with mechbench-compute's `records/diff`, the operation a protocol
-  node runs, so the verb and a stored comparison cannot disagree. It is
-  not an API route because the API is one small instance and a
-  comparison holds two whole collections at once; it is not a queued job
-  because a question asked at the command line is not a result to keep.
-  A comparison that should be kept, citing both runs, is a
-  `records/diff` node whose ports reference the two results.
+- **Comparing two runs is always compute's `records/diff`.** On the
+  command line, `run diff` reads both results (`GET /objects/:path`, as
+  `run result` does) and compares them here, keeping nothing: a question
+  asked at the command line is not a result to keep. With `into`, and
+  over MCP or in a thread, where there is no machine to compare on, it is
+  `POST /runs/diff`: a job that runs `records/diff` on one of the
+  caller's runners, its result kept under `into` (else `b`'s project)
+  and citing both sides, which the verb waits for and answers as the
+  command line does. The API compares nothing itself: it is one small
+  instance, and a comparison holds two whole collections at once. Every
+  path runs the operation a protocol node runs, so the verb and a stored
+  comparison cannot disagree. `noise` names a floor (`platform/noise`,
+  which `records/measure-noise` writes) and `tolerance` an allowance
+  stated by hand; without either, nothing is assumed and the diff lists
+  what differs.
 - **Refusals are data.** An API refusal comes back to an MCP client as
   `{"error": {status, code, error, …}}`, marked as an error, and on the
   command line as exit 1 with the code on stderr; an argument the verb
@@ -155,7 +161,7 @@ argument, in about 26 KB.
 | run | **update**(id, label?, clear?) | draft | `PATCH /runs/:id` | `run(verb="update")` | `mechbench run update` |
 | run | **watch**(id, timeout?) | read | `GET /runs/:id` | `run(verb="watch")` | `mechbench run watch` |
 | run | **result**(id, node, full?) | read | `GET /objects/:path` | `run(verb="result")` | `mechbench run result` |
-| run | **diff**(a, b, node?, node_b?, key?, fields?, exclude?, include_moving?, allow?, by?, limit?, full?) | read | `GET /objects/:path` | `run(verb="diff")` | `mechbench run diff` |
+| run | **diff**(a, b, node?, node_b?, key?, fields?, exclude?, include_moving?, allow?, by?, noise?, tolerance?, k?, noise_for?, into?, limit?, full?) | draft | `POST /runs/diff` | `run(verb="diff")` | `mechbench run diff` |
 | run | **cancel**(id, reason?) | draft | `POST /jobs/:id/cancel` | `run(verb="cancel")` | `mechbench run cancel` |
 | run | **rerun**(id) | spend * | `POST /jobs/:id/rerun` | `run(verb="rerun")` | `mechbench run rerun` |
 | run | **delete**(id, yes?, acknowledge_citations?) | delete when yes=true * | `DELETE /jobs/:id` | `run(verb="delete")` | `mechbench run delete` |

@@ -146,6 +146,7 @@ SAMPLES = {
     ("case", "assignee"): "me",
     ("live", "idle"): "15m",
     ("live", "close_after"): "1d",
+    ("run", "noise_for"): {"id": "s0"},
 }
 
 
@@ -236,6 +237,8 @@ def test_the_command_line_makes_the_calls_its_arguments_name(
         args.pop("clear")
     if (noun, verb) == ("protocol", "read"):
         args.pop("format")
+    if (noun, verb) == ("run", "diff"):
+        args.pop("into")
     out = call(noun, verb, args)
     assert not (isinstance(out, dict) and "error" in out), out
     direct_calls = list(rec)
