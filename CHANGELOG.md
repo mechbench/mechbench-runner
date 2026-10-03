@@ -35,6 +35,22 @@ _None._
 
 ### Other
 
+_None._
+
+---
+
+## 0.61.0 — 2026-10-03
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
 - **Names in a live run.** `mechbench let NAME = OP [--in …] [--set …]`
   (the same as `try OP --as NAME`) binds a try's result to a name, and
   a later try reads it as `--in PORT=$NAME` (quoted, so a shell leaves
@@ -57,6 +73,10 @@ _None._
   Resolver, which checks it.
 - `live names` and `object copy` need the API that answers
   `GET /live-runs/:id/names` and `POST /objects/~copy`.
+
+---
+- The runner needs compute 0.190.0 or later (the cached model's
+  fingerprint; a try's notable line).
 
 ---
 
