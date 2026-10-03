@@ -30,8 +30,9 @@ from .confine import PathRefusedError, check_id, owner_of, remove_owned
 from .control import ControlServer, RunnerState, probe, socket_path
 from .exits import EXIT_CRASH, EXIT_OK, EXIT_RESTART
 from .extensions import Extensions
+from .identity import chip
 from .job_credentials import HELD as HELD_CREDENTIALS
-from .live import NOTHING, PURE, LiveHost
+from .live import NOTHING, PURE, LiveHost, own_floor
 from .machine import default_name
 from .paths import limits_path, spool_dir
 from .policy import PolicyHolder, check_claim, policy_holds_live
@@ -262,9 +263,12 @@ class JobRunner:
         self.state.limits_snapshot = self._limiter.snapshot
         self._control = ControlServer(self.state)
         self._channel = LiveChannel(config, self.state)
+        machine = config.runner_name or default_name()
         self._live = LiveHost(self._executor, self._channel.send_live,
                               lambda: self._watchdog.stamp(),
-                              may_hold=lambda api: self._may_hold_live(api))
+                              may_hold=lambda api: self._may_hold_live(api),
+                              machine=machine,
+                              find_floor=lambda api: own_floor(api, (machine, chip())))
         self._channel.on_live = self._live.offer
         self._policy = PolicyHolder()
         self._extensions = Extensions(

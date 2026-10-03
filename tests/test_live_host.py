@@ -310,3 +310,165 @@ def test_a_live_run_released_for_idleness_restricts_nothing(monkeypatch):
     assert host.attached and not host.holding
     assert host.claims() == ANY
     assert [f["state"] for f in sent if f["op"] == "status"][-1] == "released"
+
+
+ROWS = [{"id": i} for i in "abc"]
+OWN = {"kind": "collection", "item_kind": "platform/noise", "items": [{"id": "own"}]}
+NAMED = {"kind": "collection", "item_kind": "platform/noise", "items": [{"id": "named"}]}
+
+
+def _spied(monkeypatch, **kw):
+    real = __import__("mechbench_compute.live.run_try", fromlist=["run_try"]).run_try
+    told: list[dict] = []
+
+    def spy(executor, **k):
+        if k.get("op") == "logits/read":
+            return {}
+        told.append(k)
+        return real(executor, **k)
+
+    monkeypatch.setattr("mechbench_compute.api.run_try", spy)
+    ex = ProtocolExecutor()
+    monkeypatch.setattr(ex, "_model_loaded", lambda m: "model")
+    return LiveHost(ex, [].append, clock=Clock(), **kw), told
+
+
+def _filter(seq, where, **event):
+    return _try(seq, op="records/filter", inputs={"records": ROWS}, params={"where": where}, **event)
+
+
+def test_a_try_is_read_against_the_first_try_of_its_operation_with_one_param_changed(monkeypatch):
+    host, told = _spied(monkeypatch, machine="studio")
+    api = TryApi()
+    host.offer({"op": "attach", "liveRun": OPEN_RUN})
+    host.offer(_filter(1, "id != 'a'"))
+    host.offer(_filter(2, "id == 'a'"))
+    host.serve(api)
+    first, second = (c[2] for c in api.completed)
+    assert first["notable"] == {"line": "first reading here; nothing to compare yet", "moved": False,
+                                "baseline": None,
+                                "caveats": [{"code": "FEW_ITEMS", "line": "2 records, fewer than 8"}]}
+    assert second["notable"] == {"line": "against t1, the number of records falls from 2 to 1 (past 0)",
+                                 "moved": True,
+                                 "baseline": {"label": "t1", "origin": "try", "seq": 1, "param": "where"},
+                                 "caveats": [{"code": "FEW_ITEMS", "line": "1 record, fewer than 8"}]}
+    assert [c[2]["provenance"]["machine"] for c in api.completed] == ["studio", "studio"]
+    held = told[1]["tries"]
+    assert [(t["seq"], t["op"], t["params"], t["name"], t["machine"]) for t in held] == [
+        (1, "records/filter", {"where": "id != 'a'"}, None, "studio")]
+    assert held[0]["result"] == first["result"] and held[0]["inputs"] == {"records": ROWS}
+    assert told[1]["machine"] == "studio" and "baseline" not in told[1] and "noise" not in told[1]
+
+
+def test_a_held_try_is_named_only_while_its_name_still_names_it(monkeypatch):
+    host, _ = _spied(monkeypatch)
+    bound = {"seq": 1, "path": "~scratch/live_open/base", "sha256": "a" * 64, "kind": "records/record"}
+    moved = {**bound, "seq": 3, "sha256": "c" * 64}
+    api = TryApi(answers={1: {"ok": True, "names": {"base": bound}}, 3: {"ok": True, "names": {"base": moved}}})
+    host.offer({"op": "attach", "liveRun": OPEN_RUN})
+    host.offer(_filter(1, "id != 'a'", **{"as": "base"}))
+    host.offer(_filter(2, "id == 'a'"))
+    host.offer(_try(3, op="records/union", inputs={"before": ROWS}, **{"as": "base"}))
+    host.offer(_filter(4, "id == 'b'"))
+    host.serve(api)
+    lines = [c[2]["notable"]["line"] for c in api.completed]
+    assert lines[1] == "against $base, the number of records falls from 2 to 1 (past 0)"
+    assert lines[3] == "against t1, the number of records falls from 2 to 1 (past 0)"
+
+
+def test_a_declared_baseline_is_read_from_memory_or_by_its_pin(monkeypatch):
+    fetched: list = []
+    monkeypatch.setattr("mechbench_runner.live._resolve", lambda v: fetched.append(v) or {
+        "kind": "collection", "item_kind": "records/record", "items": [{"id": "z"}]})
+    host, told = _spied(monkeypatch, machine="laptop")
+    bound = {"seq": 1, "path": "~scratch/live_open/base", "sha256": "a" * 64, "kind": "records/record"}
+    api = TryApi(answers={1: {"ok": True, "names": {"base": bound}}})
+    declared = {"name": "base", "result": {"$ref": {"bench": "~scratch/live_open/base", "sha256": "a" * 64}},
+                "seq": 1, "machine": "studio"}
+    elsewhere = {"name": "far", "result": {"$ref": {"bench": "~scratch/live_open/far", "sha256": "e" * 64}},
+                 "seq": 9, "machine": "studio"}
+    host.offer({"op": "attach", "liveRun": OPEN_RUN})
+    host.offer(_filter(1, "id != 'a'", **{"as": "base"}))
+    host.offer(_try(2, op="records/union", inputs={"before": ROWS}, baseline=declared))
+    host.offer(_try(3, op="records/union", inputs={"before": ROWS}, baseline=elsewhere))
+    host.serve(api)
+    second, third = api.completed[1][2]["notable"], api.completed[2][2]["notable"]
+    assert second["line"] == "against $base, the number of records rises from 2 to 3 (past 0)"
+    assert second["baseline"] == {"label": "$base", "origin": "declared", "seq": 1, "param": None}
+    assert told[1]["baseline"] == {**declared, "result": api.completed[0][2]["result"]}
+    assert third["line"] == "against $far, the number of records rises from 1 to 3 (past 0)"
+    assert fetched == [elsewhere["result"]]
+
+
+def test_a_tries_floor_is_the_one_it_names_read_once_by_its_pin_else_the_runners_own(monkeypatch):
+    fetched: list = []
+    monkeypatch.setattr("mechbench_runner.live._resolve", lambda v: fetched.append(v) or NAMED)
+    host, told = _spied(monkeypatch, find_floor=lambda _api: OWN)
+    api = TryApi()
+    pinned = {"$ref": {"bench": "me/lab/floors/noise", "sha256": "f" * 64}}
+    host.offer({"op": "attach", "liveRun": OPEN_RUN})
+    host.offer(_filter(1, "id != 'a'", noise=pinned, k=3))
+    host.offer(_filter(2, "id == 'a'", noise=pinned))
+    host.offer(_filter(3, "id == 'b'"))
+    host.serve(api)
+    assert [c[4] for c in api.completed] == [None, None, None]
+    assert [t["noise"] for t in told] == [NAMED, NAMED, OWN]
+    assert [t.get("k") for t in told] == [3.0, None, None]
+    assert fetched == [pinned]
+
+
+def test_an_open_live_run_looks_for_the_runners_floor_as_it_attaches_and_keeps_what_it_finds(monkeypatch, capsys):
+    looked: list = []
+
+    def find(api):
+        looked.append(api)
+        if len(looked) == 1:
+            raise RuntimeError("the API is away")
+        return OWN
+
+    host, _ = _spied(monkeypatch, find_floor=find)
+    api = TryApi()
+    host.offer({"op": "attach", "liveRun": OPEN_RUN})
+    host.serve(api)
+    assert host.floor is None
+    assert "could not look for this machine's noise floor: RuntimeError: the API is away" in capsys.readouterr().out
+    for other in ("live_two", "live_three"):
+        host.offer({"op": "attach", "liveRun": {**OPEN_RUN, "id": other}})
+        host.serve(api)
+    assert host.floor == OWN and len(looked) == 2
+    host.offer({"op": "attach", "liveRun": {**LIVE_RUN, "id": "live_handler"}})
+    host.serve(api)
+    assert len(looked) == 2
+
+
+class Inventory:
+    def __init__(self, paths):
+        self.paths = paths
+        self.asked: list[tuple] = []
+
+    def call(self, method, route, *, query=None, body=None):
+        self.asked.append((method, route, query))
+        return {"objects": [{"path": p} for p in self.paths]}, {}
+
+
+def _floor(item_id, machines, runs=()):
+    return {"kind": "collection", "item_kind": "platform/noise", "runs": [{"machine": m} for m in runs],
+            "items": [{"id": item_id, "machines": list(machines)}]}
+
+
+def test_the_runners_own_floor_is_every_floor_it_can_read_whose_runs_name_this_machine():
+    from mechbench_runner.live import own_floor
+
+    floors = {
+        "me/cal/noise-m4": _floor("m4", ["Apple M4 Max", "Apple M2 Ultra"]),
+        "me/cal/noise-m1": _floor("m1", ["Apple M1"]),
+        "team/cal/noise-studio": _floor("studio", [], runs=["studio", "laptop"]),
+    }
+    listing = Inventory(list(floors))
+    got = own_floor(listing, ("Studio", "Apple M4 Max"), fetch=floors.__getitem__)
+    assert got["kind"] == "collection" and got["item_kind"] == "platform/noise"
+    assert [it["id"] for it in got["items"]] == ["m4", "studio"]
+    assert listing.asked == [("GET", "/objects/~inventory",
+                              {"kind": "platform/noise", "scope": "accessible", "limit": 20})]
+    assert own_floor(Inventory(list(floors)), ("Apple M3",), fetch=floors.__getitem__) is None
+    assert own_floor(Inventory(list(floors)), (None, ""), fetch=floors.__getitem__) is None

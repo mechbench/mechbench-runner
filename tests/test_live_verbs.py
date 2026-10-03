@@ -63,6 +63,42 @@ def test_try_runs_on_the_current_live_run_and_prints_its_lines(api, capsys):
     assert "8 logits/funnel items" in out and "inline" in out
 
 
+NOTABLE = {
+    "line": "against t1, the number of records falls from 2 to 1 (past 0)",
+    "moved": True,
+    "baseline": {"label": "t1", "origin": "try", "seq": 1, "param": "where"},
+    "caveats": [{"code": "FEW_ITEMS", "line": "1 record, fewer than 8"}],
+}
+
+
+def test_try_reads_against_a_baseline_and_a_floor_and_prints_the_line_under_the_result(api, capsys, monkeypatch):
+    live_mod.set_current("live_9")
+    answer = {**ANSWER, "seq": 2, "kind": "records/record", "lines": ["1 records/record item"], "notable": NOTABLE,
+              "timing": {**ANSWER["timing"], "totalMs": 41}}
+    monkeypatch.setattr(Ctx, "api", lambda self, method, route, *, query=None, body=None: (
+        api.append((method, route, body)) or (answer, {})))
+    assert cli.main(["try", "records/filter", "--set", "where=id == 'a'", "--baseline", "$base",
+                     "--noise", "me/lab/floors/noise", "--k", "2"]) == 0
+    body = api[-1][2]
+    assert (body["baseline"], body["noise"], body["k"]) == ("$base", "me/lab/floors/noise", 2.0)
+    assert capsys.readouterr().out.splitlines() == [
+        f"t2  records/record  41 ms  sha256:{'a' * 12}",
+        "  1 records/record item",
+        "  result: inline (--json prints it)",
+        "  against t1, the number of records falls from 2 to 1 (past 0)",
+        "    margin: 1 record, fewer than 8",
+    ]
+
+
+def test_a_try_with_no_baseline_floor_or_k_sends_none_and_a_kind_with_no_line_prints_none(api, capsys):
+    live_mod.set_current("live_9")
+    assert cli.main(["try", "logits/read-layers"]) == 0
+    assert not {"baseline", "noise", "k"} & set(api[-1][2])
+    assert live_mod.notable_lines(None) == [] and live_mod.notable_lines({"line": ""}) == []
+    assert live_mod.notable_lines({"line": "first reading here; nothing to compare yet", "caveats": []}) == [
+        "  first reading here; nothing to compare yet"]
+
+
 def test_try_prints_the_whole_answer_as_json(api, capsys):
     live_mod.set_current("live_9")
     assert cli.main(["try", "logits/read-layers", "--json"]) == 0

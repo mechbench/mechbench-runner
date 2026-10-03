@@ -35,7 +35,37 @@ _None._
 
 ### Other
 
-_None._
+- **A try says whether its result moved.** `mechbench try` prints the
+  try's notable line under the result: one sentence reading it against
+  its baseline, past `k` noise floors and the kind's threshold when it
+  moved, and "within the floor:" or "below the threshold:" when it did
+  not, with each caveat beneath it as a margin line (`margin: 1 record,
+  fewer than 8`); `--json` has it as `notable`. `--baseline NAME` reads
+  the result against a name the live run bound (`'$_'`, quoted, the
+  last try that succeeded); without it, compute reads it against the
+  control the result carries, else the first try of the same operation
+  with the same inputs and one param changed. `--noise PATH` names a
+  `platform/noise` floor, and `--k` how many floors a change must pass
+  to have moved (default 1).
+- A live run's host gives compute the baseline the API resolved (its
+  value read from memory when held, else fetched by its pin), the
+  earlier tries it holds (operation, inputs, params, result, the name
+  that still names it, and this machine), the floor, `k`, and this
+  runner's name; its completion call carries `notable`, and the
+  runner's name as `provenance.machine`, so a later try read against
+  this one says when the two ran on different machines.
+- **This machine's own floor.** When an open live run attaches, the
+  host lists the `platform/noise` floors its owner can read (the newest
+  20, `GET /objects/~inventory?kind=platform/noise&scope=accessible`)
+  and keeps those whose runs name this machine, by the runner's name or
+  its chip (`Apple M4 Max`), in the header's `runs` or a record's
+  `machines`. A try that names no floor is read against all of them
+  (compute takes the widest record for the architecture, operation and
+  field). A floor the try names is fetched once by its pin. Until the
+  host finds a floor of its own, it looks again when the next open live
+  run attaches; one found is kept until the runner restarts.
+- `--baseline`, `--noise` and `--k` need the API that takes them on
+  `POST /live-runs/:id/tries`.
 
 ---
 

@@ -110,6 +110,12 @@ def live_try(ctx: Ctx, a: dict) -> Any:
         body["slot"] = a["slot"]
     if a.get("as"):
         body["as"] = a["as"]
+    if a.get("baseline"):
+        body["baseline"] = a["baseline"]
+    if a.get("noise"):
+        body["noise"] = a["noise"]
+    if a.get("k") is not None:
+        body["k"] = float(a["k"])
     return ctx.api("POST", f"/live-runs/{live_run_id}/tries", body=body)[0]
 
 
@@ -140,7 +146,17 @@ def try_lines(answer: dict[str, Any]) -> list[str]:
     head = f"t{answer.get('seq')}  {answer.get('kind')}  {timing.get('totalMs', '?')} ms  {prov.get('hash', '')[:19]}"
     where = answer.get("address") or "inline (--json prints it)"
     named = [f"  as {name}: {entry.get('path')}" for name, entry in (answer.get("names") or {}).items()]
-    return [head, *[f"  {line}" for line in answer.get("lines") or []], f"  result: {where}", *named]
+    said = [f"  {line}" for line in answer.get("lines") or []]
+    return [head, *said, f"  result: {where}", *named,
+            *notable_lines(answer.get("notable"))]
+
+
+def notable_lines(notable: Any) -> list[str]:
+    if not isinstance(notable, dict) or not notable.get("line"):
+        return []
+    margin = [f"    margin: {c['line']}" for c in notable.get("caveats") or []
+              if isinstance(c, dict) and c.get("line")]
+    return [f"  {notable['line']}", *margin]
 
 
 LIVE_RUN = Arg("live_run", "The live run (default: this machine's current one).", flag="--live-run")
@@ -179,7 +195,8 @@ LIVE = Noun(
         Verb(
             "live", "try",
             "Run one operation on the live run's warm model and answer with its result, "
-            "its lines and where it is kept; nothing is a job or a run.",
+            "its lines, its notable line (whether it moved against its baseline, with "
+            "any caveats) and where it is kept; nothing is a job or a run.",
             "POST /live-runs/:id/tries",
             (
                 Arg("op", "The operation, e.g. logits/read-layers.", required=True, positional=True),
@@ -191,6 +208,19 @@ LIVE = Noun(
                     type="pairs", flag="--set"),
                 Arg("as", "Bind the result to this name: one path segment, not t followed by "
                           "digits. `mechbench let NAME = OP …` is the same."),
+                Arg("baseline",
+                    "Read the result against this name ($_ is the last try that "
+                    "succeeded; quote it from a shell). Default: the control the "
+                    "result carries, else the first try of the same operation with "
+                    "one param changed."),
+                Arg("noise",
+                    "The noise floor: a platform/noise collection's path, as "
+                    "records/measure-noise writes it. A change has moved only past k "
+                    "floors and the kind's threshold; default the runner's own floor, "
+                    "when it has one."),
+                Arg("k",
+                    "How many floors a change must pass to have moved (default 1).",
+                    type="float"),
                 Arg("slot", "Replace a still-queued try in this slot."),
                 Arg("wait", "Seconds to wait for the answer (at most 120).", type="int"),
                 Arg("client_id", "Your own id for it: a resend is the same try.", flag="--client-id"),

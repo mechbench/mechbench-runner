@@ -265,7 +265,7 @@ argument, in about 26 KB.
 | live | **list**(search?, limit?, offset?) | read | `GET /live-runs` | `live(verb="list")` | `mechbench live list` |
 | live | **read**(id?) | read | `GET /live-runs/:id` | `live(verb="read")` | `mechbench live read` |
 | live | **start**(model, idle?, close_after?, label?) | draft | `POST /live-runs` | `live(verb="start")` | `mechbench live start` |
-| live | **try**(op, inputs?, params?, as?, slot?, wait?, client_id?, live_run?, as_json?) | draft | `POST /live-runs/:id/tries` | `live(verb="try")` | `mechbench live try` |
+| live | **try**(op, inputs?, params?, as?, baseline?, noise?, k?, slot?, wait?, client_id?, live_run?, as_json?) | draft | `POST /live-runs/:id/tries` | `live(verb="try")` | `mechbench live try` |
 | live | **names**(live_run?, search?, limit?, offset?) | read | `GET /live-runs/:id/names` | `live(verb="names")` | `mechbench live names` |
 | live | **close**(live_run?) | delete * | `POST /live-runs/:id/close` | `live(verb="close")` | `mechbench live close` |
 | live | create | — | — | — | — (`start` holds a model warm, which is what creating one is) |
