@@ -35,6 +35,20 @@ _None._
 
 ### Other
 
+_None._
+
+## 0.59.0 — 2026-10-03
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
 - A job's requirements reach compute: the runner hands the claimed job's
   `requirements` to the executor (`ProtocolSpec.extra["requirements"]`),
   which runs it on the backend they name, `mlx` when they name none
