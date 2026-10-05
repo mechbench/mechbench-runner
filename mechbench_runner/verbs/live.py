@@ -152,11 +152,43 @@ def try_lines(answer: dict[str, Any]) -> list[str]:
 
 
 def notable_lines(notable: Any) -> list[str]:
-    if not isinstance(notable, dict) or not notable.get("line"):
+    if not isinstance(notable, dict) or "state" not in notable:
         return []
-    margin = [f"    margin: {c['line']}" for c in notable.get("caveats") or []
-              if isinstance(c, dict) and c.get("line")]
-    return [f"  {notable['line']}", *margin]
+    baseline = notable.get("baseline") or {}
+    changes = [c for c in notable.get("changes") or [] if isinstance(c, dict)]
+    tag = f"[{notable.get('state') or 'no change'}]"
+    if not baseline:
+        line = f"  {tag} no baseline"
+    elif not changes:
+        line = f"  {tag} against {baseline.get('label')}: nothing compared"
+    else:
+        line = f"  {tag} against {baseline.get('label')}: {say_change(changes[0], notable.get('compared'))}"
+    codes = [str(c.get("code")) for c in notable.get("caveats") or [] if isinstance(c, dict) and c.get("code")]
+    return [line, *([f"    caveats: {' '.join(codes)}"] if codes else [])]
+
+
+def say_change(change: dict[str, Any], compared: Any) -> str:
+    key = " ".join(f"{k}={v}" for k, v in (change.get("key") or {}).items())
+    index = change.get("index")
+    field = f"{change.get('field')}[{index}]" if index is not None else str(change.get("field"))
+    measured = [f"difference {say_number(change.get('difference'))}"]
+    if change.get("metric") != "difference":
+        measured.append(f"{change.get('metric')} {say_number(change.get('distance'))}")
+    if change.get("floor") is None:
+        measured.append("no floor")
+    elif change.get("floors") is None:
+        measured.append(f"floor {say_number(change.get('floor'))}")
+    else:
+        measured.append(f"{say_number(change.get('floors'))} floors of {say_number(change.get('floor'))}")
+    measured.append(f"threshold {say_number(change.get('threshold'))}")
+    if isinstance(compared, int) and compared > 1:
+        measured.append(f"largest of {compared}")
+    said = f"{say_number(change.get('before'))} → {say_number(change.get('after'))}"
+    return f"{' '.join(p for p in (key, field) if p)} {said} ({', '.join(measured)})"
+
+
+def say_number(x: Any) -> str:
+    return f"{x:.4g}" if isinstance(x, (int, float)) and not isinstance(x, bool) else str(x)
 
 
 LIVE_RUN = Arg("live_run", "The live run (default: this machine's current one).", flag="--live-run")
@@ -195,8 +227,8 @@ LIVE = Noun(
         Verb(
             "live", "try",
             "Run one operation on the live run's warm model and answer with its result, "
-            "its lines, its notable line (whether it moved against its baseline, with "
-            "any caveats) and where it is kept; nothing is a job or a run.",
+            "its lines, its notable (its state against its baseline, noise, small or "
+            "moved, the raw changes and any caveats) and where it is kept; nothing is a job or a run.",
             "POST /live-runs/:id/tries",
             (
                 Arg("op", "The operation, e.g. logits/read-layers.", required=True, positional=True),

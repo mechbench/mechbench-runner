@@ -64,10 +64,12 @@ def test_try_runs_on_the_current_live_run_and_prints_its_lines(api, capsys):
 
 
 NOTABLE = {
-    "line": "against t1, the number of records falls from 2 to 1 (past 0)",
-    "moved": True,
+    "state": "moved",
     "baseline": {"label": "t1", "origin": "try", "seq": 1, "param": "where"},
-    "caveats": [{"code": "FEW_ITEMS", "line": "1 record, fewer than 8"}],
+    "compared": 1,
+    "changes": [{"key": {}, "field": "items", "index": None, "before": 2, "after": 1, "difference": -1,
+                 "metric": "difference", "distance": 1, "floors": None, "floor": None, "threshold": 0}],
+    "caveats": [{"code": "FEW_ITEMS", "count": 1, "unit": "record", "fewest": 8}],
 }
 
 
@@ -85,18 +87,46 @@ def test_try_reads_against_a_baseline_and_a_floor_and_prints_the_line_under_the_
         f"t2  records/record  41 ms  sha256:{'a' * 12}",
         "  1 records/record item",
         "  result: inline (--json prints it)",
-        "  against t1, the number of records falls from 2 to 1 (past 0)",
-        "    margin: 1 record, fewer than 8",
+        "  [moved] against t1: items 2 → 1 (difference -1, no floor, threshold 0)",
+        "    caveats: FEW_ITEMS",
     ]
 
 
-def test_a_try_with_no_baseline_floor_or_k_sends_none_and_a_kind_with_no_line_prints_none(api, capsys):
+def test_the_notable_line_is_built_from_the_fields():
+    change = {"key": {"id": "a", "layer": 2}, "field": "entropy_bits", "index": None, "before": 2.1234567,
+              "after": 1.4, "difference": -0.7234567, "metric": "difference", "distance": 0.7234567,
+              "floors": 14.4691, "floor": 0.05, "threshold": 0.5}
+    said = live_mod.notable_lines({"state": "noise", "baseline": {"label": "$base"}, "compared": 8,
+                                   "changes": [change], "caveats": [{"code": "OTHER_MACHINE", "machine": "x"},
+                                                                    {"code": "NO_FLOOR", "noise": False}]})
+    assert said == [
+        "  [noise] against $base: id=a layer=2 entropy_bits 2.123 → 1.4 "
+        "(difference -0.7235, 14.47 floors of 0.05, threshold 0.5, largest of 8)",
+        "    caveats: OTHER_MACHINE NO_FLOOR",
+    ]
+    tv = {**change, "key": {"id": "b"}, "field": "tracked.d.p", "metric": "total-variation", "distance": 0.79,
+          "floors": None, "floor": 0.0}
+    assert live_mod.notable_lines({"state": "small", "baseline": {"label": "factor 0"}, "compared": 1,
+                                   "changes": [tv], "caveats": []}) == [
+        "  [small] against factor 0: id=b tracked.d.p 2.123 → 1.4 "
+        "(difference -0.7235, total-variation 0.79, floor 0, threshold 0.5)"]
+    attributed = {**change, "key": {"id": "a"}, "field": "measures.contribution", "index": 3}
+    assert "id=a measures.contribution[3] 2.123 → 1.4" in live_mod.notable_lines(
+        {"state": "moved", "baseline": {"label": "t1"}, "compared": 2, "changes": [attributed], "caveats": []})[0]
+    assert live_mod.notable_lines({"state": None, "baseline": {"label": "$base"}, "compared": 0, "changes": [],
+                                   "caveats": [{"code": "NOTHING_TO_COMPARE", "field": "tracked.*.p"}]}) == [
+        "  [no change] against $base: nothing compared", "    caveats: NOTHING_TO_COMPARE"]
+
+
+def test_a_try_with_no_baseline_floor_or_k_sends_none_and_a_kind_with_no_notable_prints_none(api, capsys):
     live_mod.set_current("live_9")
     assert cli.main(["try", "logits/read-layers"]) == 0
     assert not {"baseline", "noise", "k"} & set(api[-1][2])
-    assert live_mod.notable_lines(None) == [] and live_mod.notable_lines({"line": ""}) == []
-    assert live_mod.notable_lines({"line": "first reading here; nothing to compare yet", "caveats": []}) == [
-        "  first reading here; nothing to compare yet"]
+    assert live_mod.notable_lines(None) == []
+    assert live_mod.notable_lines({"line": "an earlier shape", "moved": True}) == []
+    assert live_mod.notable_lines({"state": None, "baseline": None, "compared": 0, "changes": [],
+                                   "caveats": [{"code": "FEW_ITEMS", "count": 2}]}) == [
+        "  [no change] no baseline", "    caveats: FEW_ITEMS"]
 
 
 def test_try_prints_the_whole_answer_as_json(api, capsys):

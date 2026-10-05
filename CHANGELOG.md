@@ -27,7 +27,13 @@ with both headings.
 
 ### Changes that raise
 
-_None._
+- A try's `notable` is compute's new shape, forwarded as it is to the
+  API, MCP and threads: `{state, baseline, compared, changes, caveats}`,
+  `state` one of `noise`, `small`, `moved` (null with no baseline or
+  nothing to compare), each change raw numbers (`key`, `field`, `index`,
+  `before`, `after`, `difference`, `metric`, `distance`, `floors`,
+  `floor`, `threshold`), each caveat a `code` and its values; `line` and
+  `moved` are gone (`--json` prints it all).
 
 ### Changes that alter results without raising
 
@@ -35,7 +41,13 @@ _None._
 
 ### Other
 
-_None._
+- `mechbench try` prints the notable as one line it builds from the
+  fields, the state as a tag and the change that decided it, then the
+  caveats' codes:
+  `[moved] against t1: id=a layer=2 entropy_bits 2.123 → 1.4
+  (difference -0.7235, 14.47 floors of 0.05, threshold 0.5, largest of
+  8)` and `caveats: OTHER_MACHINE`. A notable in the earlier shape
+  prints nothing.
 
 ---
 

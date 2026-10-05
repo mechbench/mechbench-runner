@@ -345,13 +345,15 @@ def test_a_try_is_read_against_the_first_try_of_its_operation_with_one_param_cha
     host.offer(_filter(2, "id == 'a'"))
     host.serve(api)
     first, second = (c[2] for c in api.completed)
-    assert first["notable"] == {"line": "first reading here; nothing to compare yet", "moved": False,
-                                "baseline": None,
-                                "caveats": [{"code": "FEW_ITEMS", "line": "2 records, fewer than 8"}]}
-    assert second["notable"] == {"line": "against t1, the number of records falls from 2 to 1 (past 0)",
-                                 "moved": True,
-                                 "baseline": {"label": "t1", "origin": "try", "seq": 1, "param": "where"},
-                                 "caveats": [{"code": "FEW_ITEMS", "line": "1 record, fewer than 8"}]}
+    assert first["notable"] == {"state": None, "baseline": None, "compared": 0, "changes": [],
+                                "caveats": [{"code": "FEW_ITEMS", "count": 2, "unit": "record", "fewest": 8}]}
+    assert second["notable"] == {
+        "state": "moved",
+        "baseline": {"label": "t1", "origin": "try", "seq": 1, "param": "where"},
+        "compared": 1,
+        "changes": [{"key": {}, "field": "items", "index": None, "before": 2, "after": 1, "difference": -1,
+                     "metric": "difference", "distance": 1, "floors": None, "floor": None, "threshold": 0}],
+        "caveats": [{"code": "FEW_ITEMS", "count": 1, "unit": "record", "fewest": 8}]}
     assert [c[2]["provenance"]["machine"] for c in api.completed] == ["studio", "studio"]
     held = told[1]["tries"]
     assert [(t["seq"], t["op"], t["params"], t["name"], t["machine"]) for t in held] == [
@@ -371,9 +373,9 @@ def test_a_held_try_is_named_only_while_its_name_still_names_it(monkeypatch):
     host.offer(_try(3, op="records/union", inputs={"before": ROWS}, **{"as": "base"}))
     host.offer(_filter(4, "id == 'b'"))
     host.serve(api)
-    lines = [c[2]["notable"]["line"] for c in api.completed]
-    assert lines[1] == "against $base, the number of records falls from 2 to 1 (past 0)"
-    assert lines[3] == "against t1, the number of records falls from 2 to 1 (past 0)"
+    read = [(c[2]["notable"]["baseline"]["label"], c[2]["notable"]["changes"][0]["before"],
+             c[2]["notable"]["changes"][0]["after"]) for c in api.completed[1::2]]
+    assert read == [("$base", 2, 1), ("t1", 2, 1)]
 
 
 def test_a_declared_baseline_is_read_from_memory_or_by_its_pin(monkeypatch):
@@ -393,10 +395,10 @@ def test_a_declared_baseline_is_read_from_memory_or_by_its_pin(monkeypatch):
     host.offer(_try(3, op="records/union", inputs={"before": ROWS}, baseline=elsewhere))
     host.serve(api)
     second, third = api.completed[1][2]["notable"], api.completed[2][2]["notable"]
-    assert second["line"] == "against $base, the number of records rises from 2 to 3 (past 0)"
+    assert (second["state"], second["changes"][0]["before"], second["changes"][0]["after"]) == ("moved", 2, 3)
     assert second["baseline"] == {"label": "$base", "origin": "declared", "seq": 1, "param": None}
     assert told[1]["baseline"] == {**declared, "result": api.completed[0][2]["result"]}
-    assert third["line"] == "against $far, the number of records rises from 1 to 3 (past 0)"
+    assert (third["baseline"]["label"], third["changes"][0]["before"], third["changes"][0]["after"]) == ("$far", 1, 3)
     assert fetched == [elsewhere["result"]]
 
 
