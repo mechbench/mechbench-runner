@@ -128,11 +128,26 @@ def own_floor(api: Any, names: Sequence[str | None],
     listed, _ = api.call("GET", "/objects/~inventory", query=asked)
     rows = (listed.get("objects") or []) if isinstance(listed, dict) else []
     items: list[Any] = []
+    sources: list[dict[str, Any]] = []
     for row in rows:
         floor = fetch(str(row.get("path")))
         if names_machine(floor, wanted):
             items += [it for it in floor.get("items") or [] if isinstance(it, dict)]
-    return collection(NOISE_KIND, items) if items else None
+            sources.append(pinned_ref(row))
+    return collection(NOISE_KIND, items, sources=sources) if items else None
+
+
+def pinned_ref(row: dict[str, Any]) -> dict[str, Any]:
+    algo, _, digest = str(row.get("contentHash") or "").partition(":")
+    return {"$ref": {"bench": str(row.get("path")), **({"sha256": digest} if algo == "sha256" and digest else {})}}
+
+
+def floor_ref(floor: Any) -> dict[str, Any] | None:
+    sources = floor.get("sources") if isinstance(floor, dict) else None
+    if not isinstance(sources, list) or len(sources) != 1:
+        return None
+    ref = sources[0].get("$ref") if isinstance(sources[0], dict) else None
+    return sources[0] if isinstance(ref, dict) and ref.get("sha256") else None
 
 
 class LiveHost:
@@ -431,6 +446,7 @@ class LiveHost:
             session.remember(f"t{seq}", result)
             if event.get("op") is not None:
                 session.note_try(seq, event)
+            own = floor_ref(self.floor) if event.get("noise") is None else None
             address = None
             if len(json.dumps(result, separators=(",", ":"))) > session.inline_bytes:
                 op = got["provenance"]["op"]
@@ -448,6 +464,7 @@ class LiveHost:
                 "runMs": round(got["seconds"] * 1000, 3),
                 "provenance": {**got["provenance"], "hash": f"sha256:{got['hash']}",
                                **({"machine": self.machine} if self.machine else {})},
+                **({"noise": own} if own is not None else {}),
             }))
             if isinstance(answered, dict):
                 session.bind(answered.get("names"))

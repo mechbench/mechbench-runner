@@ -110,6 +110,11 @@ def test_the_notable_line_is_built_from_the_fields():
                                    "changes": [tv], "caveats": []}) == [
         "  [small] against factor 0: id=b tracked.d.p 2.123 → 1.4 "
         "(difference -0.7235, total-variation 0.79, floor 0, threshold 0.5)"]
+    unchanged = {**change, "before": 3e-05, "after": 3e-05, "difference": 0, "floors": 0, "floor": 0}
+    for floors in (0, None):
+        assert "(difference 0, floor 0, threshold 0.5)" in live_mod.notable_lines(
+            {"state": "noise", "baseline": {"label": "t2"}, "compared": 1,
+             "changes": [{**unchanged, "floors": floors}], "caveats": []})[0]
     attributed = {**change, "key": {"id": "a"}, "field": "measures.contribution", "index": 3}
     assert "id=a measures.contribution[3] 2.123 → 1.4" in live_mod.notable_lines(
         {"state": "moved", "baseline": {"label": "t1"}, "compared": 2, "changes": [attributed], "caveats": []})[0]

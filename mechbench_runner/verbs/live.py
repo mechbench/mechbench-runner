@@ -176,7 +176,7 @@ def say_change(change: dict[str, Any], compared: Any) -> str:
         measured.append(f"{change.get('metric')} {say_number(change.get('distance'))}")
     if change.get("floor") is None:
         measured.append("no floor")
-    elif change.get("floors") is None:
+    elif change.get("floors") is None or change.get("floor") == 0:
         measured.append(f"floor {say_number(change.get('floor'))}")
     else:
         measured.append(f"{say_number(change.get('floors'))} floors of {say_number(change.get('floor'))}")

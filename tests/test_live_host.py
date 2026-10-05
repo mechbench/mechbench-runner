@@ -419,6 +419,29 @@ def test_a_tries_floor_is_the_one_it_names_read_once_by_its_pin_else_the_runners
     assert fetched == [pinned]
 
 
+def test_a_try_without_a_named_floor_records_the_runners_own_floor_pinned(monkeypatch):
+    mine = {"$ref": {"bench": "me/cal/noise-studio", "sha256": "e" * 64}}
+    other = {"$ref": {"bench": "team/cal/noise-studio", "sha256": "d" * 64}}
+    for sources, recorded in (([mine], mine), ([mine, other], None), ([{"$ref": {"bench": "me/cal/x"}}], None)):
+        host, _ = _spied(monkeypatch, find_floor=lambda _api, s=sources: {**OWN, "sources": s})
+        monkeypatch.setattr("mechbench_runner.live._resolve", lambda v: NAMED)
+        api = TryApi()
+        named = {"$ref": {"bench": "me/lab/floors/noise", "sha256": "f" * 64}}
+        host.offer({"op": "attach", "liveRun": OPEN_RUN})
+        host.offer(_filter(1, "id != 'a'"))
+        host.offer(_filter(2, "id == 'a'", noise=named))
+        host.serve(api)
+        first, second = api.completed[0][2], api.completed[1][2]
+        assert first.get("noise") == recorded
+        assert "noise" not in second
+    host, _ = _spied(monkeypatch)
+    api = TryApi()
+    host.offer({"op": "attach", "liveRun": OPEN_RUN})
+    host.offer(_filter(1, "id != 'a'"))
+    host.serve(api)
+    assert "noise" not in api.completed[0][2]
+
+
 def test_an_open_live_run_looks_for_the_runners_floor_as_it_attaches_and_keeps_what_it_finds(monkeypatch, capsys):
     looked: list = []
 
@@ -450,7 +473,7 @@ class Inventory:
 
     def call(self, method, route, *, query=None, body=None):
         self.asked.append((method, route, query))
-        return {"objects": [{"path": p} for p in self.paths]}, {}
+        return {"objects": [{"path": p, "contentHash": f"sha256:{p[-2:] * 32}"} for p in self.paths]}, {}
 
 
 def _floor(item_id, machines, runs=()):
@@ -470,6 +493,8 @@ def test_the_runners_own_floor_is_every_floor_it_can_read_whose_runs_name_this_m
     got = own_floor(listing, ("Studio", "Apple M4 Max"), fetch=floors.__getitem__)
     assert got["kind"] == "collection" and got["item_kind"] == "platform/noise"
     assert [it["id"] for it in got["items"]] == ["m4", "studio"]
+    assert got["sources"] == [{"$ref": {"bench": "me/cal/noise-m4", "sha256": "m4" * 32}},
+                              {"$ref": {"bench": "team/cal/noise-studio", "sha256": "io" * 32}}]
     assert listing.asked == [("GET", "/objects/~inventory",
                               {"kind": "platform/noise", "scope": "accessible", "limit": 20})]
     assert own_floor(Inventory(list(floors)), ("Apple M3",), fetch=floors.__getitem__) is None
