@@ -27,6 +27,22 @@ with both headings.
 
 ### Changes that raise
 
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
+_None._
+
+---
+
+## 0.63.0 — 2026-10-04
+
+### Changes that raise
+
 - A try's `notable` is compute's new shape, forwarded as it is to the
   API, MCP and threads: `{state, baseline, compared, changes, caveats}`,
   `state` one of `noise`, `small`, `moved` (null with no baseline or
@@ -48,6 +64,9 @@ _None._
   (difference -0.7235, 14.47 floors of 0.05, threshold 0.5, largest of
   8)` and `caveats: OTHER_MACHINE`. A notable in the earlier shape
   prints nothing.
+
+---
+- The runner needs compute 0.191.0 or later (a try's notable in its new shape).
 
 ---
 
