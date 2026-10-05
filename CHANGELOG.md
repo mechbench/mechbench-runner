@@ -35,6 +35,22 @@ _None._
 
 ### Other
 
+_None._
+
+---
+
+## 0.64.0 — 2026-10-05
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
 - A try with no `--noise` that the runner's own floor judged sends that
   floor up with its answer as `noise`, a `$ref` pinned by its hash, so
   the API records it on the try as it records a named one (054: the row
@@ -44,6 +60,9 @@ _None._
   object, and nothing is sent.
 - `mechbench try` prints "floor 0" over a floor of 0, never "0 floors
   of 0", whatever compute says for `floors`.
+
+---
+- The runner needs compute 0.192.0 or later.
 
 ---
 
