@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import importlib.util
 import json
 from dataclasses import replace
@@ -128,11 +127,12 @@ def test_prefill_runs_at_batch_and_skips_past_the_token_cap(collection):
     assert any("cap" in s["reason"] for s in got["skipped"] if s["probe"] == "prefill")
 
 
-def test_decode_runs_at_batch_through_transformers_until_compute_batches(collection):
+def test_decode_runs_at_batch_through_compute_s_batched_generation(collection):
     got, _, _ = collection
     rows = by_probe(got, "decode")
     assert {(r["shape"]["t"], r["shape"]["b"]) for r in rows} == {(8, 1), (8, 2)}
-    assert all(r["path"] == "transformers" and r["tokens_per_second"] > 0 for r in rows)
+    assert all(r["path"] == "compute" and r["tokens_per_second"] > 0 for r in rows)
+    assert all(r["prefill_seconds"] > 0 for r in rows)
     assert all(r["bandwidth_fraction"] is not None for r in rows)
     assert any("positions" in s["reason"] for s in got["skipped"] if s["probe"] == "decode")
 
@@ -154,12 +154,18 @@ def test_the_instrumentation_ladder_has_every_rung_as_a_ratio_to_plain(collectio
         "attribute-layer", "attribute-sublayer"}
 
 
-def test_lora_skips_until_compute_trains_on_torch(collection):
+def test_the_lora_step_is_timed_by_compute_with_and_without_checkpointing(collection):
     got, _, _ = collection
-    lora = [s for s in got["skipped"] if s["probe"] == "lora_step"]
-    assert {s["shape"]["variant"] for s in lora} == {"plain", "checkpointed"}
-    assert "torch_backend.training.lora_trainer" in lora[0]["reason"]
-    assert got["summary"]["training_affordable"] == "unmeasured"
+    steps = {variant(r): r for r in by_probe(got, "lora")}
+    assert set(steps) == {"plain", "checkpointed"}
+    assert steps["plain"]["gradient_checkpointing"] is False
+    assert steps["checkpointed"]["gradient_checkpointing"] is True
+    for r in steps.values():
+        assert r["repeats"] == torch_model.LORA_STEPS and r["tokens_per_second"] > 0
+        assert set(r["projected"]) == {"60", "240", "720"}
+        assert r["projected_seconds"] == r["projected"]["60"]
+        assert r["shape"] == {"n": GRID.lora_n, "b": GRID.lora_b, "variant": variant(r)}
+    assert got["summary"]["training_affordable"] in ("yes", "no")
 
 
 def test_numerics_compare_repeats_paths_and_precision(collection):
@@ -227,9 +233,10 @@ def test_the_summary_prints_the_gate_numbers(collection):
     s = got["summary"]
     assert s["bandwidth_bytes_per_second"] > 0 and s["load"]["loads_to_device"] == "host"
     assert s["decode_affordable"] == "unmeasured"
+    assert s["training"]["projected_seconds"] > 0
     assert any(line.startswith("bandwidth") for line in said)
-    assert any(line.startswith("decode at batch 32") for line in said)
-    assert any(line.startswith("training: unmeasured") for line in said)
+    assert any(line.startswith("decode at batch 32: unmeasured") for line in said)
+    assert any(line.startswith("training: ") and "60 steps" in line for line in said)
 
 
 def test_each_model_block_carries_the_canary_taken_before_it(collection):
@@ -239,33 +246,38 @@ def test_each_model_block_carries_the_canary_taken_before_it(collection):
     assert "gpu" not in prefill["ambient"]
 
 
-def test_with_compute_s_batched_generation_and_training_the_gate_is_measured(tiny, monkeypatch):
-    calls = {"decode": 0, "train": []}
-
-    def decode_batch(model, prompts, *, max_new_tokens, min_new_tokens):
-        calls["decode"] += 1
-        return [p + [0] * max_new_tokens for p in prompts]
-
-    @contextlib.contextmanager
-    def lora_trainer(model, examples, *, rank, targets, gradient_checkpointing):
-        calls["train"].append((len(examples), gradient_checkpointing))
-        yield lambda: 0.5
-
-    found = {"generate": decode_batch, "train": lora_trainer}
-    monkeypatch.setattr(torch_model, "capability", lambda name: found[name])
+def test_without_compute_s_generation_and_training_decode_falls_back_and_lora_skips(
+        tiny, monkeypatch):
+    monkeypatch.setattr(torch_model, "capability", lambda name: None)
     grid = replace(GRID, decode_b=(1, 32), decode_t=(8,), prefill_n=(8,), prefill_b=(1,),
                    matmul_sizes=(), attention_n=())
     got = torch_calibrate.calibrate_torch(tiny, repeats=1, grid=grid, smi=False,
                                           sustained_minutes=0)
     decodes = by_probe(got, "decode")
-    assert all(r["path"] == "compute" for r in decodes) and calls["decode"] > 0
-    steps = by_probe(got, "lora")
-    assert {variant(r) for r in steps} == {"plain", "checkpointed"}
-    assert all(r["projected_seconds"] == pytest.approx(60 * r["seconds"]) for r in steps)
-    assert calls["train"] == [(GRID.lora_b, False), (GRID.lora_b, True)]
+    assert decodes and all(r["path"] == "transformers" for r in decodes)
+    assert got["summary"]["decode_path"] == "transformers" and "8" in got["summary"]["decode_b32"]
+    lora = [s for s in got["skipped"] if s["probe"] == "lora_step"]
+    assert {s["shape"]["variant"] for s in lora} == {"plain", "checkpointed"}
+    assert "torch_backend.train_timing.time_training" in lora[0]["reason"]
+    assert got["summary"]["training_affordable"] == "unmeasured"
+
+
+def test_the_gate_judges_training_by_the_60_step_projection(tiny, monkeypatch):
+    def time_training(model, *, steps, items, prompt_tokens, rank, targets, checkpointing,
+                      project):
+        return {"seconds_per_step": 0.5, "tokens_per_s": 10.0, "steps": steps,
+                "peak_memory_bytes": 2**30, "gradient_checkpointing": checkpointing,
+                "projected_seconds": {k: 0.5 * k for k in project}}
+
+    real = torch_model.capability
+    monkeypatch.setattr(torch_model, "capability",
+                        lambda name: time_training if name == "train" else real(name))
+    grid = replace(GRID, decode_t=(), prefill_n=(), matmul_sizes=(), attention_n=())
+    got = torch_calibrate.calibrate_torch(tiny, repeats=1, grid=grid, smi=False,
+                                          sustained_minutes=0)
     s = got["summary"]
+    assert s["training"]["projected_seconds"] == 30.0
     assert s["training_affordable"] == "yes" and s["training_fits"] == "yes"
-    assert s["decode_path"] == "compute" and "8" in s["decode_b32"]
 
 
 def test_the_machine_s_first_backend_is_the_default(monkeypatch):

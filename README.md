@@ -200,9 +200,10 @@ settings in force), what was skipped and why, the sustained-load series
 and a `summary` of the numbers a session decides on. Every row carries
 `backend`, `accelerator` and `device` beside the stack fingerprint, and a
 `probe` naming what measured it. A probe that needs CUDA, or a
-capability compute does not have yet (batched generation, LoRA training
-on torch), is listed under `skipped` with its reason rather than
-failing. `--residuals` writes the residual stream after every layer for
+capability the installed compute lacks (LoRA training on torch before
+compute 0.194.0), is listed under `skipped` with its reason rather than
+failing; decode without compute's batched generation is timed with
+transformers' `generate` and says so in `path`. `--residuals` writes the residual stream after every layer for
 one fixed input (MLX writes the same file); `--against` runs a file's
 tokens and puts the layer-by-layer difference in the header.
 

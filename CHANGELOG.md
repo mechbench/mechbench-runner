@@ -57,13 +57,15 @@ _None._
   reasons once a second (burst against steady state, and when throttling
   began); first-call costs. With `--model`: cold and warm load with peak
   host, system and device memory and whether it staged through the
-  host; prefill at N × B; decode at batch and context (compute's batched
-  generation when it has one, transformers' `generate` until then) with
+  host; prefill at N × B; decode at batch and context (compute's
+  `measure_throughput` when the model has `generate_batch`,
+  transformers' `generate` on an older compute, named in `path`) with
   the effective bandwidth; the instrumentation ladder (plain, an empty
   nnsight trace, captures at 1/8/all layers, an intervention, the
   per-head path, eager attention weights) as ratios to plain;
-  `logits/attribute` by layer and sublayer; the LoRA step once compute
-  trains on torch; numerics run to run (default and deterministic, with
+  `logits/attribute` by layer and sublayer; the LoRA step from compute's
+  `time_training` (5 steps of 6 items at 128 tokens, rank 8, with and
+  without gradient checkpointing, projected to 60, 240 and 720 steps); numerics run to run (default and deterministic, with
   their cost), eager against SDPA, per-head against fused, and bf16
   against fp32 by layer. What cannot run is listed under `skipped` with
   its reason. A `summary` of the gate numbers is printed at the end.

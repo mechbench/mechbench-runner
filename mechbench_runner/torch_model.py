@@ -14,16 +14,17 @@ from . import microbench
 from .torch_probes import Clock, Grid, Rows, host_memory, is_oom, measure
 
 CAPABILITIES = {
-    "generate": ("mechbench_compute.torch_backend.generate", "decode_batch"),
-    "train": ("mechbench_compute.torch_backend.training", "lora_trainer"),
+    "generate": ("mechbench_compute.torch_backend.throughput", "measure_throughput"),
+    "train": ("mechbench_compute.torch_backend.train_timing", "time_training"),
 }
 LOAD_REPEATS = 3
 WATCH_SECONDS = 0.02
 STAGED_FRACTION = 0.5
 LORA_RANK = 8
 LORA_TARGETS = ("q_proj", "v_proj")
-LORA_TARGET_TOKENS = 16
+LORA_STEPS = 5
 PROJECTED_STEPS = 60
+PROJECT = (60, 240, 720)
 TEXT = (
     "The lighthouse stood at the end of the breakwater, and every evening the "
     "keeper climbed its hundred and twelve steps to light the lamp. Ships passed "
@@ -251,13 +252,22 @@ def hf_generate(model: Any, ids: Any, new: int) -> Any:
                            pad_token_id=pad if pad is not None else 0)
 
 
-def decoder(model: Any) -> tuple[Callable[[Any, int], Any], str]:
+def decoder(model: Any) -> tuple[Callable[[Any, int, int, bool], tuple[float, float]], str]:
     found = capability("generate")
-    if found is not None:
-        def run(ids: Any, new: int) -> Any:
-            return found(model, ids.tolist(), max_new_tokens=new, min_new_tokens=new)
-        return run, "compute"
-    return (lambda ids, new: hf_generate(model, ids, new)), "transformers"
+    if found is not None and hasattr(model, "generate_batch"):
+        def measured(t: int, b: int, new: int, warm: bool) -> tuple[float, float]:
+            got = found(model, batch_sizes=(b,), prompt_tokens=t, new_tokens=new, warmup=warm)[0]
+            return float(got["prefill_seconds"]), float(got["decode_seconds"]) / new
+        return measured, "compute"
+
+    def generated(t: int, b: int, new: int, warm: bool) -> tuple[float, float]:
+        ids = batch_ids(model, t, b)
+        if warm:
+            hf_generate(model, ids, 1)
+        first = Clock(model.device).wall(lambda: hf_generate(model, ids, 1))
+        full = Clock(model.device).wall(lambda: hf_generate(model, ids, new))
+        return first, max(full - first, 0.0) / (new - 1)
+    return generated, "transformers"
 
 
 def decode(model: Any, clock: Clock, grid: Grid, repeats: int, rows: Rows, ref: str, dtype: str,
@@ -274,17 +284,15 @@ def decode(model: Any, clock: Clock, grid: Grid, repeats: int, rows: Rows, ref: 
             say(f"decode t={t} b={b} ({path})")
 
             def one(t: int = t, b: int = b, shape: dict[str, Any] = shape) -> None:
-                ids = batch_ids(model, t, b)
                 clock.reset_peak()
-                first = clock.wall(lambda: run(ids, 1))
-                full = clock.wall(lambda: run(ids, new))
-                steps = [max(full - first, 0.0) / (new - 1)]
-                spent = first + full
+                prefills: list[float] = []
+                steps: list[float] = []
+                spent = 0.0
                 while len(steps) < max(1, repeats):
-                    a = clock.wall(lambda: run(ids, 1))
-                    z = clock.wall(lambda: run(ids, new))
-                    steps.append(max(z - a, 0.0) / (new - 1))
-                    spent += a + z
+                    prefill_s, step_s = run(t, b, new, not steps)
+                    prefills.append(prefill_s)
+                    steps.append(step_s)
+                    spent += prefill_s + step_s * new
                     if spent >= grid.shape_budget_seconds and len(steps) >= 2:
                         break
                 step = statistics.median(steps)
@@ -292,7 +300,7 @@ def decode(model: Any, clock: Clock, grid: Grid, repeats: int, rows: Rows, ref: 
                 rows.add("decode", shape, steps, steps[0], probe="decode", dtype=dtype, model=ref,
                          peak=clock.peak(), path=path, new_tokens=new,
                          tokens_per_second=b / step if step > 0 else None,
-                         prefill_seconds=first,
+                         prefill_seconds=statistics.median(prefills),
                          effective_bytes_per_second=effective,
                          bandwidth_fraction=(effective / bandwidth
                                              if effective and bandwidth else None))
@@ -399,40 +407,35 @@ def attribution(model: Any, clock: Clock, grid: Grid, repeats: int, rows: Rows, 
         guarded(rows, clock, "attribution", shape, go)
 
 
-def examples(model: Any, grid: Grid) -> list[Any]:
-    flat = token_ids(model, grid.lora_n)
-    pair = (flat[:-LORA_TARGET_TOKENS], flat[-LORA_TARGET_TOKENS:])
-    try:
-        from mechbench_compute.distill import Example
-        return [Example(*pair)] * grid.lora_b
-    except ImportError:
-        return [pair] * grid.lora_b
-
-
 def lora(model: Any, clock: Clock, grid: Grid, repeats: int, rows: Rows, ref: str, dtype: str,
          say: Say) -> None:
-    trainer = capability("train")
+    timing = capability("train")
     for checkpointing in (False, True):
         variant = "checkpointed" if checkpointing else "plain"
         shape = {"n": grid.lora_n, "b": grid.lora_b, "variant": variant}
-        if trainer is None:
+        if timing is None:
             rows.skip("lora_step", shape, absent("train") + ": no LoRA training on torch")
             continue
         say(f"lora_step {variant}")
 
         def go(checkpointing: bool = checkpointing, shape: dict[str, Any] = shape) -> None:
-            with trainer(model, examples(model, grid), rank=LORA_RANK, targets=LORA_TARGETS,
-                         gradient_checkpointing=checkpointing) as step:
-                clock.reset_peak()
-                runs, warm = measure(clock.wall, step, repeats, at_least=2, warm_seconds=0.0,
-                                     budget=grid.shape_budget_seconds * 2)
-            seconds = microbench.summary(runs)["seconds"]
-            rows.add("lora_step", shape, runs, warm[0], probe="lora", dtype=dtype, model=ref,
-                     peak=clock.peak(), rank=LORA_RANK, targets=list(LORA_TARGETS),
-                     target_tokens=LORA_TARGET_TOKENS,
-                     tokens_per_second=grid.lora_n * grid.lora_b / seconds,
-                     peak_device_reserved_bytes=clock.peak_reserved(),
-                     projected_steps=PROJECTED_STEPS,
-                     projected_seconds=PROJECTED_STEPS * seconds)
+            clock.reset_peak()
+            got = timing(model, steps=LORA_STEPS, items=grid.lora_b, prompt_tokens=grid.lora_n,
+                         rank=LORA_RANK, targets=LORA_TARGETS, checkpointing=checkpointing,
+                         project=PROJECT)
+            per_step = float(got["seconds_per_step"])
+            projected = {str(k): v for k, v in (got.get("projected_seconds") or {}).items()}
+            row = rows.add("lora_step", shape, [per_step], per_step, probe="lora", dtype=dtype,
+                           model=ref, peak=int(got.get("peak_memory_bytes") or clock.peak()),
+                           rank=LORA_RANK, targets=list(LORA_TARGETS),
+                           tokens_per_second=got.get("tokens_per_s"),
+                           gradient_checkpointing=got.get("gradient_checkpointing"),
+                           peak_device_reserved_bytes=clock.peak_reserved(),
+                           final_loss=got.get("final_loss"), lora_params=got.get("lora_params"),
+                           projected=projected, projected_steps=PROJECTED_STEPS,
+                           projected_seconds=projected.get(str(PROJECTED_STEPS),
+                                                           PROJECTED_STEPS * per_step))
+            row["repeats"] = int(got.get("steps") or LORA_STEPS)
+            row["warmup_seconds"] = 0.0
         guarded(rows, clock, "lora_step", shape, go)
         gc.collect()

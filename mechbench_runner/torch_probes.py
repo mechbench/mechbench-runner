@@ -39,8 +39,8 @@ class Grid:
     decode_t: tuple[int, ...] = (512, 2048)
     decode_new_tokens: int = 32
     ladder_n: int = 512
-    lora_n: int = 256
-    lora_b: int = 4
+    lora_n: int = 128
+    lora_b: int = 6
     residual_tokens: int = 16
     shape_budget_seconds: float = 20.0
     reduced: bool = False
