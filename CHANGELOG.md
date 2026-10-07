@@ -31,6 +31,20 @@ _None._
 
 ### Changes that alter results without raising
 
+_None._
+
+### Other
+
+_None._
+
+## 0.66.0 — 2026-10-07
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
 - `calibrate` on a machine whose first backend is torch (a CUDA box) now
   measures torch rather than MLX, and keeps its idle baseline with
   `backend: torch`; the canary before each model-bearing node of a job
