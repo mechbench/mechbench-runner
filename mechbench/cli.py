@@ -23,8 +23,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     login_p.add_argument(
         "--token",
-        help="A registration token (mbr_...) from the website. Omit to be "
-             "shown where to get one.",
+        help="A registration token (mbr_...) from the website; '-' reads it "
+             "from stdin, and MECHBENCH_REGISTRATION_TOKEN is read when this is "
+             "omitted. Omit both to sign in through the browser.",
     )
     login_p.add_argument(
         "--name",

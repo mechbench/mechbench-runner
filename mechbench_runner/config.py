@@ -1,12 +1,34 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from . import credentials
 from .watchdog import DEFAULT_STALL_SECONDS
 
 DEFAULT_API_URL = "https://api.mechbench.ai"
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+class ApiUrlError(SystemExit):
+    pass
+
+
+def check_api_url(url: str) -> str:
+    try:
+        parsed = urlsplit(url)
+        host = parsed.hostname
+    except ValueError:
+        parsed, host = None, None
+    plain = parsed is not None and bool(host) and not (parsed.username or parsed.password)
+    if plain and (parsed.scheme == "https"
+                  or (parsed.scheme == "http" and host in LOCAL_HOSTS)):
+        return url
+    raise ApiUrlError(
+        f"refused the API address {url!r}: it must be https:// (http:// only "
+        f"for localhost). Check MECHBENCH_API_URL, or `mechbench login` again.")
 
 
 @dataclass(frozen=True)
@@ -31,9 +53,9 @@ class Config:
         env_key = os.environ.get("MECHBENCH_API_KEY")
         if env_key:
             return cls(
-                api_base_url=os.environ.get(
+                api_base_url=check_api_url(os.environ.get(
                     "MECHBENCH_API_URL", DEFAULT_API_URL
-                ).rstrip("/"),
+                ).rstrip("/")),
                 api_key=env_key,
                 poll_interval_seconds=poll,
                 warm_model_id=warm,
@@ -41,6 +63,12 @@ class Config:
             )
 
         stored = credentials.load()
+        if stored:
+            try:
+                check_api_url(stored.api_url.rstrip("/"))
+            except ApiUrlError as exc:
+                print(f"ignoring the stored credential: {exc.code}", file=sys.stderr)
+                stored = None
         if stored:
             return cls(
                 api_base_url=stored.api_url.rstrip("/"),
@@ -53,9 +81,9 @@ class Config:
             )
 
         return cls(
-            api_base_url=os.environ.get(
+            api_base_url=check_api_url(os.environ.get(
                 "MECHBENCH_API_URL", DEFAULT_API_URL
-            ).rstrip("/"),
+            ).rstrip("/")),
             api_key=None,
             poll_interval_seconds=poll,
             warm_model_id=warm,

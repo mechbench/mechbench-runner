@@ -26,7 +26,7 @@ def _client(handler) -> ApiClient:
 
 BYTES = b"\xa1\x64kind\x64note" * 1000
 DIGEST = hashlib.sha256(BYTES).hexdigest()
-GRANT = {"upload": {"url": "https://bucket.s3.test/key?sig=1", "method": "PUT",
+GRANT = {"upload": {"url": "https://bucket.s3.us-east-1.amazonaws.com/key?sig=1", "method": "PUT",
                     "headers": {"content-type": "application/cbor",
                                 "content-length": str(len(BYTES)),
                                 "x-amz-checksum-sha256": "abc="},

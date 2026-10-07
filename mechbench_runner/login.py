@@ -4,6 +4,7 @@ import os
 import sys
 from contextlib import suppress
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
 from . import credentials, machine
 from .api_client import ApiClient, ApiError, register_runner
@@ -32,12 +33,28 @@ def web_url(api_base_url: str) -> str:
     return f"{base}{SETTINGS_PATH}"
 
 
+def same_web_origin(url: str, api_base_url: str) -> bool:
+    try:
+        got, ours = urlsplit(url), urlsplit(web_url(api_base_url))
+    except ValueError:
+        return False
+    return (got.scheme in ("https", "http") and got.scheme == ours.scheme
+            and bool(got.netloc) and got.netloc == ours.netloc)
+
+
+def read_token(token: str | None) -> str | None:
+    if token == "-":
+        return sys.stdin.readline().strip() or None
+    return token or os.environ.get("MECHBENCH_REGISTRATION_TOKEN") or None
+
+
 def login(
     config: Config,
     *,
     token: str | None = None,
     name: str | None = None,
 ) -> int:
+    token = read_token(token)
     if not token:
         return _login_via_browser(config, name)
     return _login_with_token(config, token, name)
@@ -274,12 +291,16 @@ def _login_via_browser(config: Config, name: str | None) -> int:
         return 1
 
     verification = started.get("verificationUri") or web_url(config.api_base_url)
+    openable = same_web_origin(str(verification), config.api_base_url)
     interval = float(started.get("intervalSeconds") or 3)
 
     print(f'Connecting this machine as "{machine_name}".', flush=True)
     print(f"\nApprove it at:\n\n    {verification}\n", flush=True)
 
-    if sys.stdin.isatty():
+    if not openable:
+        print("That link is not on this API's website, so it is not opened for "
+              "you; open it yourself only if you trust it.", flush=True)
+    elif sys.stdin.isatty():
         try:
             input("Press ENTER to open your browser (or open the link yourself)…")
         except (EOFError, KeyboardInterrupt):

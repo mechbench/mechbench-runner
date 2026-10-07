@@ -8,11 +8,12 @@ import shutil
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
 from . import paths
-from .config import Config
+from .config import LOCAL_HOSTS, Config
 
 
 class ApiError(RuntimeError):
@@ -21,6 +22,20 @@ class ApiError(RuntimeError):
         self.status = status
         self.body = body
 
+
+
+UPLOAD_HOST_SUFFIX = ".amazonaws.com"
+
+
+def check_upload_url(url: str) -> str:
+    parsed = urlsplit(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme == "https" and host.endswith(UPLOAD_HOST_SUFFIX):
+        return url
+    if parsed.scheme in ("http", "https") and host in LOCAL_HOSTS:
+        return url
+    raise RuntimeError(f"refused an upload grant to {parsed.scheme}://{host}: "
+                       f"results go to S3 (https://…{UPLOAD_HOST_SUFFIX}) only")
 
 def register_runner(
     api_base_url: str,
@@ -427,6 +442,7 @@ class ApiClient:
     def upload_to_grant(grant: dict[str, Any], cbor_bytes: bytes,
                         timeout: float = 600.0) -> None:
         up = grant["upload"]
+        check_upload_url(str(up["url"]))
         res = httpx.put(up["url"], content=cbor_bytes, headers=dict(up["headers"]),
                         timeout=httpx.Timeout(timeout))
         if res.status_code >= 400:
