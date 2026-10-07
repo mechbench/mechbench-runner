@@ -27,15 +27,52 @@ with both headings.
 
 ### Changes that raise
 
-_None._
+- An extension installs only from its verified wheel and lock: a claim
+  that names an sdist alone, or a wheel without a lock, is released
+  `INSTALL_FAILED` instead of being built or installed unpinned.
+- Every line of an extension's lock must be `name==version
+  --hash=sha256:…` (continuation lines allowed, comments skipped); an
+  option (`--index-url`, `--find-links`, `-r`, `-e`), a URL, a path or a
+  marker refuses the install before uv runs.
+- An extension wheel whose distribution is `mechbench`,
+  `mechbench-compute` or `mechbench-schema`, or is not the package its
+  manifest names, is refused; so is a wheel whose name, version or tags
+  are not ones a wheel filename can carry.
+- An API address must be `https://` (`http://` only for localhost);
+  `MECHBENCH_API_URL` set to anything else stops the command, and a
+  stored credential naming one is ignored with a warning.
+- A result upload grant is sent only to S3 (`https://…amazonaws.com`) or
+  localhost.
+- A verification whose example input is not a bench path (segments of
+  letters, digits and `._~@:+-`, none starting with `.`) fails at the
+  conformance stage before anything is fetched.
 
 ### Changes that alter results without raising
 
-_None._
+- An extension's lock installs with `--no-deps --only-binary :all:` and
+  never moves `mechbench`, `mechbench-compute` or `mechbench-schema`:
+  their lines are left out, so the runner's own versions stay.
+- uv, builds, the self-check and the conformance run get the runner's
+  environment without any variable whose name carries KEY, TOKEN,
+  SECRET, PASSWORD or CREDENTIAL (`UV_*` kept): `MECHBENCH_API_KEY`,
+  `HF_TOKEN` and provider keys no longer reach them.
+- Error text a job, a live try, an install or a verification reports
+  (and the runner's log of it) masks every value of the job's
+  credentials, the runner's key, secret-named environment values, and
+  known key shapes (`hf_`, `mb?_`, `sk-`, GitHub, Slack, AWS, Google,
+  `Bearer …`), where before only `hf_` tokens were.
 
 ### Other
 
-_None._
+- `mechbench login --token -` reads the registration token from stdin,
+  and `MECHBENCH_REGISTRATION_TOKEN` supplies it when `--token` is
+  omitted, so it need not sit in shell history.
+- Browser sign-in opens the approval link only when it is on the API's
+  own website; any other link is printed with a warning and not opened.
+- `urllib3>=2.8,<3`; `uv.lock` refreshed (it pinned compute 0.148.0).
+- CI's `test` workflow audits the installed environment with
+  `pip-audit` against OSV and the PyPI advisory database and fails on
+  any known vulnerability.
 
 ---
 

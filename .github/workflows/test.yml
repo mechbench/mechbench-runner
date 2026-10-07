@@ -17,5 +17,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - run: python -m pip install --upgrade pip
       - run: pip install -e . pytest build
       - run: python -m pytest tests/ -q
+      # Fails on any package in the installed environment with a published
+      # advisory (PyPI advisory database + OSV). Accepted exceptions are
+      # listed here as `--ignore-vuln <id>` with the reason beside them;
+      # there are none today.
+      - name: audit dependencies
+        run: |
+          pip install pip-audit
+          pip-audit --skip-editable --progress-spinner off --vulnerability-service osv
+          pip-audit --skip-editable --progress-spinner off --vulnerability-service pypi
