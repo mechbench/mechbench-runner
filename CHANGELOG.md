@@ -27,6 +27,22 @@ with both headings.
 
 ### Changes that raise
 
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
+_None._
+
+---
+
+## 0.65.0 — 2026-10-07
+
+### Changes that raise
+
 - An extension installs only from its verified wheel and lock: a claim
   that names an sdist alone, or a wheel without a lock, is released
   `INSTALL_FAILED` instead of being built or installed unpinned.
@@ -64,6 +80,7 @@ with both headings.
 
 ### Other
 
+- Requires mechbench-compute 0.193.1 (host ceilings a protocol cannot raise).
 - `mechbench login --token -` reads the registration token from stdin,
   and `MECHBENCH_REGISTRATION_TOKEN` supplies it when `--token` is
   omitted, so it need not sit in shell history.
