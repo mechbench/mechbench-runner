@@ -36,19 +36,23 @@ MANIFEST = "https://api.example.test/releases/manifest"
 PY = "/fake/env/bin/python"
 
 
-def tiny_wheel(version: str = "1.0.0") -> bytes:
+def tiny_wheel(version: str = "1.0.0", *, tag: str = "py3-none-any") -> bytes:
+    return renamed_wheel("tinyext", version, tag=tag)
+
+
+def renamed_wheel(name: str, version: str, *, tag: str = "py3-none-any") -> bytes:
     files = {
-        "tinyext/__init__.py": "X = 1\n",
-        f"tinyext-{version}.dist-info/METADATA":
-            f"Metadata-Version: 2.1\nName: tinyext\nVersion: {version}\n",
-        f"tinyext-{version}.dist-info/WHEEL":
+        f"{name}/__init__.py": "X = 1\n",
+        f"{name}-{version}.dist-info/METADATA":
+            f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n",
+        f"{name}-{version}.dist-info/WHEEL":
             "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: true\n"
-            "Tag: py3-none-any\n",
-        f"tinyext-{version}.dist-info/entry_points.txt":
-            "[mechbench.extensions]\ntiny = tinyext:EXTENSION\n",
+            f"Tag: {tag}\n",
+        f"{name}-{version}.dist-info/entry_points.txt":
+            f"[mechbench.extensions]\ntiny = {name}:EXTENSION\n",
     }
-    record = [f"{n},," for n in files] + [f"tinyext-{version}.dist-info/RECORD,,"]
-    files[f"tinyext-{version}.dist-info/RECORD"] = "\n".join(record) + "\n"
+    record = [f"{n},," for n in files] + [f"{name}-{version}.dist-info/RECORD,,"]
+    files[f"{name}-{version}.dist-info/RECORD"] = "\n".join(record) + "\n"
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         for name, text in files.items():
@@ -64,7 +68,11 @@ def pin_of(n: int) -> str:
     return "sha256:" + f"{n:x}" * 64
 
 
-def item(wheel: bytes, *, lock: bytes | None = None, version: int = 1,
+LOCK = (b"numpy==2.0.0 \\\n    --hash=sha256:" + b"a" * 64 + b"\n"
+        b"six==1.16.0 --hash=sha256:" + b"c" * 64 + b"\n")
+
+
+def item(wheel: bytes, *, lock: bytes | None = LOCK, version: int = 1,
          wheel_ref: str | None = None) -> dict:
     return {"address": ADDRESS, "version": version, "hash": pin_of(version),
             "name": "u_alice/lab/tiny",
@@ -79,7 +87,7 @@ def item(wheel: bytes, *, lock: bytes | None = None, version: int = 1,
 class FakeApi:
     def __init__(self, claims=None, blobs=None) -> None:
         self.claims = list(claims or [])
-        self.blobs = dict(blobs or {})
+        self.blobs = {ref_of(LOCK): LOCK, **dict(blobs or {})}
         self.released: list[tuple[str, str, str]] = []
         self.interrupted: list[str] = []
         self.failed: list[tuple[str, str]] = []
@@ -206,8 +214,13 @@ class TestInstall:
         out = Extensions(python=PY, registry=reg).install(api, job([it]), holder, "m1")
         assert out.ok and out.restart is None
         [cmd] = uv.uv_calls()
-        assert cmd[:5] == [FAKE_UV, "pip", "install", "--python", PY]
-        assert cmd[5].endswith("/tinyext-1.0.0-py3-none-any.whl")
+        assert cmd[:-1] == [FAKE_UV, "pip", "install", "--python", PY, "--require-hashes",
+                            "--no-deps", "--only-binary", ":all:", "-r"]
+        req = uv.requirements[0].splitlines()
+        assert req[0] == "numpy==2.0.0  --hash=sha256:" + "a" * 64
+        assert req[1] == "six==1.16.0 --hash=sha256:" + "c" * 64
+        assert req[2].startswith("tinyext @ file://")
+        assert "/tinyext-1.0.0-py3-none-any.whl " in req[2]
         installed = json.loads(api_client.installed_path().read_text())
         rec = installed[it["hash"]]
         assert set(rec) == {"hash", "address", "version", "name", "package_name",
@@ -233,24 +246,129 @@ class TestInstall:
                 if (r.get("address"), r.get("version")) == (ADDRESS, 1)]
         assert seen and seen[0]["hash"] == it["hash"]
 
-    def test_with_a_lock_every_line_carries_a_hash(self, uv, holder):
+    def test_the_lock_never_moves_the_platform_or_the_package_itself(self, uv, holder):
         wheel = tiny_wheel()
         lock = (b"numpy==2.0.0 --hash=sha256:" + b"a" * 64 + b"\n"
-                b"tinyext==1.0.0 --hash=sha256:" + b"b" * 64 + b"\n")
+                b"tinyext==1.0.0 --hash=sha256:" + b"b" * 64 + b"\n"
+                b"mechbench-compute==0.100.0 --hash=sha256:" + b"d" * 64 + b"\n"
+                b"Mechbench_Schema==0.1.0 --hash=sha256:" + b"e" * 64 + b"\n"
+                b"mechbench==0.1.0 --hash=sha256:" + b"f" * 64 + b"\n")
         it = item(wheel, lock=lock)
         api = FakeApi(blobs={it["package"]["wheel"]: wheel,
                              it["package"]["lock"]: lock})
-        Extensions(python=PY, registry=FakeRegistry()).install(api, job([it]),
-                                                               holder, "m1")
-        [cmd] = uv.uv_calls()
-        assert cmd[:7] == [FAKE_UV, "pip", "install", "--python", PY,
-                           "--require-hashes", "-r"]
+        assert Extensions(python=PY, registry=FakeRegistry()).install(
+            api, job([it]), holder, "m1").ok
         req = uv.requirements[0].splitlines()
         assert req[0].startswith("numpy==2.0.0 --hash=sha256:")
-        assert not any(line.startswith("tinyext==") for line in req)
+        assert len(req) == 2
         digest = hashlib.sha256(wheel).hexdigest()
         assert req[-1].startswith("tinyext @ file://")
         assert req[-1].endswith(f"--hash=sha256:{digest}")
+
+    @pytest.mark.parametrize("line", [
+        b"--index-url https://evil.example/simple",
+        b"--extra-index-url=https://evil.example/simple",
+        b"--find-links /tmp",
+        b"-r /etc/passwd",
+        b"-e git+https://evil.example/x.git",
+        b"evil @ https://evil.example/evil.whl --hash=sha256:" + b"a" * 64,
+        b"evil==1.0 ; python_version > '3' --hash=sha256:" + b"a" * 64,
+        b"evil>=1.0 --hash=sha256:" + b"a" * 64,
+        b"evil==1.0",
+        b"evil==1.0 --hash=sha256:" + b"a" * 64 + b" --config-settings x=y",
+        b"./local/path",
+    ])
+    def test_a_lock_line_that_is_not_name_version_hash_installs_nothing(
+            self, uv, holder, line):
+        wheel = tiny_wheel()
+        lock = b"numpy==2.0.0 --hash=sha256:" + b"a" * 64 + b"\n" + line + b"\n"
+        it = item(wheel, lock=lock)
+        api = FakeApi(blobs={it["package"]["wheel"]: wheel,
+                             it["package"]["lock"]: lock})
+        assert not Extensions(python=PY, registry=FakeRegistry()).install(
+            api, job([it]), holder, "m1").ok
+        assert uv.uv_calls() == []
+        [(_jid, code, message)] = api.released
+        assert code == "INSTALL_FAILED" and "the lock's line 2" in message
+
+    @pytest.mark.parametrize("drop", ["wheel", "lock"])
+    def test_only_a_verified_wheel_with_its_lock_installs(self, uv, holder, drop):
+        wheel = tiny_wheel()
+        it = item(wheel)
+        it["package"][drop] = None
+        api = FakeApi(blobs={ref_of(wheel): wheel})
+        assert not Extensions(python=PY, registry=FakeRegistry()).install(
+            api, job([it]), holder, "m1").ok
+        assert uv.uv_calls() == [] and api.fetched == []
+        assert "only a verified build installs" in api.released[0][2]
+
+    def test_a_wheel_that_is_the_platform_is_refused(self, uv, holder):
+        wheel = renamed_wheel("mechbench_compute", "9.9.9")
+        it = item(wheel)
+        it["package"]["name"] = "mechbench-compute"
+        api = FakeApi(blobs={ref_of(wheel): wheel})
+        assert not Extensions(python=PY, registry=FakeRegistry()).install(
+            api, job([it]), holder, "m1").ok
+        assert uv.uv_calls() == []
+        assert "may not replace" in api.released[0][2]
+
+    def test_a_wheel_that_is_not_the_named_package_is_refused(self, uv, holder):
+        wheel = renamed_wheel("otherpkg", "1.0.0")
+        it = item(wheel)
+        api = FakeApi(blobs={ref_of(wheel): wheel})
+        assert not Extensions(python=PY, registry=FakeRegistry()).install(
+            api, job([it]), holder, "m1").ok
+        assert uv.uv_calls() == []
+        assert "not tinyext" in api.released[0][2]
+
+    @pytest.mark.parametrize("tag", ["py3-none-../../../x", "py3-none-a/b", "py3-none"])
+    def test_a_wheel_tag_that_is_not_a_tag_is_refused(self, uv, holder, tag):
+        wheel = tiny_wheel(tag=tag)
+        it = item(wheel)
+        api = FakeApi(blobs={ref_of(wheel): wheel})
+        assert not Extensions(python=PY, registry=FakeRegistry()).install(
+            api, job([it]), holder, "m1").ok
+        assert uv.uv_calls() == []
+        assert "tags are not tags" in api.released[0][2]
+        assert list(ext_mod.cache_dir().rglob("*.whl")) == []
+
+    def test_an_install_failure_reports_no_secret(self, uv, holder):
+        uv.fail = ("boom: sk-ant-abcdefghijklmnopqrstuvwxyzabc and my-own-key-abcdef "
+                   "and mbk_runnerkey12345")
+        wheel = tiny_wheel()
+        it = item(wheel)
+        api = FakeApi(blobs={ref_of(wheel): wheel})
+        j = job([it], integrations={"custom": {"apiKey": "my-own-key-abcdef"}})
+        assert not Extensions(python=PY, registry=FakeRegistry()).install(
+            api, j, holder, "m1").ok
+        message = api.released[0][2]
+        assert "boom" in message
+        for secret in ("abcdefghijklmnop", "my-own-key", "runnerkey"):
+            assert secret not in message
+            assert secret not in json.dumps(ext_mod.read_failed())
+
+    def test_the_real_uv_installs_the_wheel_and_its_lock(self, holder, monkeypatch,
+                                                          tmp_path):
+        found = shutil.which("uv")
+        if found is None:
+            pytest.skip("uv is not on PATH here")
+        venv = tmp_path / "venv"
+        made = subprocess.run([found, "venv", "-q", str(venv)], capture_output=True,
+                              text=True, check=False)
+        if made.returncode != 0:
+            pytest.skip(f"uv could not make a venv here: {made.stderr[-200:]}")
+        monkeypatch.setattr(install, "find_executable",
+                            lambda name: found if name == "uv" else None)
+        monkeypatch.setattr(install, "_run", lambda cmd, *, timeout: subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, check=False))
+        wheel = tiny_wheel()
+        lock = b"# nothing beside the package\n"
+        it = item(wheel, lock=lock)
+        api = FakeApi(blobs={ref_of(wheel): wheel, ref_of(lock): lock})
+        out = Extensions(python=str(venv / "bin" / "python"),
+                         registry=FakeRegistry()).install(api, job([it]), holder, "m1")
+        assert out.ok, api.released
+        assert list(venv.glob("lib/python*/site-packages/tinyext/__init__.py"))
 
     def test_a_hash_mismatch_releases_the_job_and_marks_the_hash_failed(
             self, uv, holder):

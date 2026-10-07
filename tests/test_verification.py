@@ -175,6 +175,8 @@ def test_the_whole_job_with_the_real_uv(tmp_path, monkeypatch):
     lock, kind = api.stored["alice/lab/builds/interp-extras/v2/j_verify1/lock"]
     assert kind == "lock" and report["lock"] == ref_of(lock)
     assert lock.decode() == v.lock_text
+    from mechbench_runner.extensions import read_lock
+    assert read_lock(v.lock_text)
 
     constraints = pins(v.constraints_text)
     locked = pins(v.lock_text)

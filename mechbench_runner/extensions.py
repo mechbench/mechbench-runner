@@ -24,6 +24,7 @@ from . import paths, release_manifest
 from .api_client import ApiError, installed_path
 from .confine import under
 from .policy import PolicyHolder, _release, job_of, policy_admits, runner_of
+from .redact import redact
 
 INSTALL_FAILED = "INSTALL_FAILED"
 
@@ -33,6 +34,15 @@ UV_TIMEOUT_SECONDS = 900.0
 
 RUNNER_DIST = release_manifest.RUNNER_DIST
 COMPUTE_DIST = release_manifest.COMPUTE_DIST
+PLATFORM_DISTS = frozenset({RUNNER_DIST, COMPUTE_DIST, "mechbench-schema"})
+
+DIST_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?")
+DIST_VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9.+!_]{0,63}")
+WHEEL_TAG = re.compile(r"[A-Za-z0-9_.]{1,64}")
+LOCK_LINE = re.compile(
+    r"(?P<name>[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?)"
+    r"==(?P<version>[A-Za-z0-9][A-Za-z0-9.+!_-]{0,63})"
+    r"(?P<hashes>(?:\s+--hash=sha256:[0-9a-f]{64})+)")
 
 
 class InstallError(Exception):
@@ -124,7 +134,14 @@ def _dist_of_wheel(path: Path) -> tuple[str, str, str]:
     if not name or not version or not tags:
         raise InstallError(
             "the wheel's metadata names no distribution, version or tag")
-    py, abi, plat = (sorted({t.split("-")[i] for t in tags}) for i in range(3))
+    if not (DIST_NAME.fullmatch(name) and DIST_VERSION.fullmatch(version)):
+        raise InstallError(f"the wheel's name or version is not one a wheel can carry: "
+                           f"{stem[:120]!r}")
+    split = [t.split("-") for t in tags]
+    if any(len(parts) != 3 or not all(WHEEL_TAG.fullmatch(p) for p in parts)
+           for parts in split):
+        raise InstallError(f"the wheel's tags are not tags: {tags[:4]!r}")
+    py, abi, plat = (sorted({parts[i] for parts in split}) for i in range(3))
     tag = "-".join(".".join(parts) for parts in (py, abi, plat))
     return name, version, f"{name}-{version}-{tag}.whl"
 
@@ -138,7 +155,37 @@ def _dist_of_sdist(path: Path) -> tuple[str, str, str]:
     name, _, version = top.rpartition("-")
     if not name or not version:
         raise InstallError("the sdist's top directory names no version")
+    if not (DIST_NAME.fullmatch(name) and DIST_VERSION.fullmatch(version)):
+        raise InstallError(f"the sdist's top directory is not name-version: {top[:120]!r}")
     return name, version, f"{top}.tar.gz"
+
+
+def read_lock(text: str) -> list[tuple[str, str]]:
+    logical: list[tuple[int, str]] = []
+    pending = ""
+    start = 0
+    for n, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not pending:
+            start = n
+        if line.endswith("\\"):
+            pending += line[:-1] + " "
+            continue
+        whole = (pending + line).strip()
+        pending = ""
+        if whole and not whole.startswith("#"):
+            logical.append((start, whole))
+    if pending.strip():
+        logical.append((start, pending.strip()))
+    out: list[tuple[str, str]] = []
+    for n, line in logical:
+        found = LOCK_LINE.fullmatch(line)
+        if found is None:
+            raise InstallError(
+                f"the lock's line {n} is not `name==version --hash=sha256:…`: "
+                f"{line[:120]!r}")
+        out.append((_norm(found["name"]), line))
+    return out
 
 
 @dataclass
@@ -280,23 +327,31 @@ class Extensions:
     def _install_one(self, api: Any, item: Mapping[str, Any], job: Mapping[str, Any],
                      installed: dict[str, dict[str, Any]]) -> str | None:
         pkg = item.get("package") or {}
-        ref = pkg.get("wheel") or pkg.get("sdist")
-        if not isinstance(ref, str):
-            raise InstallError("the claim names no wheel and no sdist")
-        artifact = self._fetch(api, ref, wheel=bool(pkg.get("wheel")))
-        lock = self._fetch(api, pkg["lock"], lock=True) if pkg.get("lock") else None
-        if lock is not None:
-            req = cache_dir() / f"{artifact.digest}.requirements.txt"
-            own = re.compile(rf"^{re.escape(_norm(artifact.dist))}\s*(==|@|\[|;|$)")
-            kept = [ln for ln in lock.path.read_text().splitlines()
-                    if not own.match(_norm(ln.strip()))]
-            kept.append(f"{artifact.dist} @ {artifact.path.resolve().as_uri()} "
-                        f"--hash=sha256:{artifact.digest}")
-            req.write_text("\n".join(kept) + "\n")
-            self._uv_run(["install", "--python", self.python, "--require-hashes",
-                          "-r", str(req)])
-        else:
-            self._uv_run(["install", "--python", self.python, str(artifact.path)])
+        wheel_ref, lock_ref = pkg.get("wheel"), pkg.get("lock")
+        if not isinstance(wheel_ref, str) or not isinstance(lock_ref, str):
+            raise InstallError("the claim names no verified wheel and lock; only a "
+                               "verified build installs")
+        artifact = self._fetch(api, wheel_ref, wheel=True)
+        own = _norm(artifact.dist)
+        if own in PLATFORM_DISTS:
+            raise InstallError(f"the wheel is {artifact.dist}, which an extension may "
+                               f"not replace")
+        named = pkg.get("name")
+        if isinstance(named, str) and named and _norm(named) != own:
+            raise InstallError(f"the wheel is {artifact.dist}, not {named}")
+        lock = self._fetch(api, lock_ref, lock=True)
+        try:
+            lines = read_lock(lock.path.read_text())
+        except UnicodeDecodeError as exc:
+            raise InstallError(f"the lock is not text ({exc})") from exc
+        kept = [line for name, line in lines
+                if name != own and name not in PLATFORM_DISTS]
+        kept.append(f"{artifact.dist} @ {artifact.path.resolve().as_uri()} "
+                    f"--hash=sha256:{artifact.digest}")
+        req = cache_dir() / f"{artifact.digest}.requirements.txt"
+        req.write_text("\n".join(kept) + "\n")
+        self._uv_run(["install", "--python", self.python, "--require-hashes",
+                      "--no-deps", "--only-binary", ":all:", "-r", str(req)])
         pin = str(item["hash"])
         address = str(item.get("address"))
         for old, rec in list(installed.items()):
@@ -354,7 +409,7 @@ class Extensions:
             raise InstallError(f"{ref} is not a wheel ({exc})") from exc
         named = cache_dir() / digest[:16]
         named.mkdir(exist_ok=True)
-        target = named / filename
+        target = under(named, filename, what="package file", ident=ref)
         if not target.is_file():
             shutil.copyfile(blob, target)
         return Fetched(target, digest, dist)
@@ -365,10 +420,11 @@ class Extensions:
         label = f"{item.get('address')}@{item.get('version')}"
         failed = read_failed()
         failed[pin] = {"address": item.get("address"), "version": item.get("version"),
-                       "reason": reason, "compute": compute_version(),
+                       "reason": redact(reason, job.get("integrations") or ()), "compute": compute_version(),
                        "policy": {"id": held.id, "version": held.version}, "at": _now()}
         _write(failed_path(), failed)
-        message = f"install of {label} failed on {runner}: {reason}"
+        message = redact(f"install of {label} failed on {runner}: {reason}",
+                         job.get("integrations") or ())
         job_id = str(job.get("id"))
         print(f"[runner] job {job_id} released: {INSTALL_FAILED}: {message}",
               flush=True)

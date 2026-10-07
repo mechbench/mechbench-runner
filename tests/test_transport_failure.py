@@ -123,7 +123,7 @@ class TestReporting:
         runner._report_error(api, {"id": "j_6"}, BenchTransportError(
             "PUT https://api/x?token=hf_abcdefgh12345678 unreachable"))
         _, message = api.interrupted[0]
-        assert "hf_[redacted]" in message and "abcdefgh" not in message
+        assert "token=[redacted]" in message and "abcdefgh" not in message
 
     def test_an_unreportable_interrupt_is_not_fatal(self, monkeypatch):
         runner = _runner(monkeypatch)

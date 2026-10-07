@@ -16,6 +16,7 @@ from . import paths
 from .confine import make_owned, owned_dir, remove_owned, under
 from .extensions import Extensions, InstallError, _norm, compute_version
 from .policy import PolicyHolder, _release, job_of, policy_admits, runner_of
+from .redact import child_env, redact
 
 VERIFICATION = "verification"
 COMPUTE_DIST = "mechbench-compute"
@@ -26,6 +27,7 @@ UV_TIMEOUT_SECONDS = 900.0
 CONFORMANCE_TIMEOUT_SECONDS = 3600.0
 MESSAGE_CHARS = 4000
 STEPS = ("fetch", "venv", "build", "install", "lock", "conformance", "upload")
+BENCH_SEGMENT = re.compile(r"[A-Za-z0-9_~@:+-][A-Za-z0-9._~@:+-]{0,199}")
 
 Runner = Callable[..., subprocess.CompletedProcess]
 
@@ -62,7 +64,7 @@ def _finding(f: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "code": _clip(f.get("code") or "UNKNOWN", 64),
         "at": _clip(f.get("at") or "", 500),
-        "message": _clip(f.get("message") or "", MESSAGE_CHARS),
+        "message": _clip(redact(f.get("message") or ""), MESSAGE_CHARS),
         "severity": severity if severity in ("error", "warning") else "error",
     }
 
@@ -142,6 +144,15 @@ def _refs_in(value: Any) -> list[str]:
     return out
 
 
+def bench_path(where: str) -> str:
+    parts = where.split("/")
+    if (len(where) > 500 or len(parts) < 2
+            or not all(BENCH_SEGMENT.fullmatch(p) for p in parts)):
+        raise StageError("conformance", f"an example's input {where[:200]!r} is not a "
+                                        f"bench path")
+    return where
+
+
 def _decode(data: bytes) -> Any:
     try:
         found = json.loads(data)
@@ -201,6 +212,7 @@ class Verification:
                 timeout=timeout,
                 check=False,
                 cwd=cwd,
+                env=child_env(),
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise StageError(stage, f"{cmd[0]} did not run to the end ({exc})") from exc
@@ -336,13 +348,13 @@ class Verification:
         except StageError as exc:
             report["failure"] = {
                 "stage": exc.stage,
-                "message": _clip(exc.message, MESSAGE_CHARS) or exc.stage,
+                "message": _clip(redact(exc.message), MESSAGE_CHARS) or exc.stage,
             }
         except Exception as exc:  # noqa: BLE001
             stage = STEPS[step]
             report["failure"] = {
                 "stage": stage,
-                "message": _clip(f"{type(exc).__name__}: {exc}", MESSAGE_CHARS),
+                "message": _clip(redact(f"{type(exc).__name__}: {exc}"), MESSAGE_CHARS),
             }
         finally:
             remove_owned(scratch)
@@ -460,7 +472,8 @@ class Verification:
         wanted: list[str] = []
         for op in (manifest.get("provides") or {}).get("ops") or []:
             wanted += _refs_in(op.get("example_inputs") or {})
-        targets = {where: under(root, f"{where}.json", what="object path", ident=where)
+        targets = {where: under(root, f"{bench_path(where)}.json", what="object path",
+                                ident=where)
                    for where in sorted(set(wanted))}
         root.mkdir(parents=True, exist_ok=True)
         for where, target in targets.items():
@@ -517,6 +530,7 @@ class Verification:
                 timeout=CONFORMANCE_TIMEOUT_SECONDS,
                 check=False,
                 cwd=None,
+                env=child_env(),
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise StageError(

@@ -11,6 +11,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from .redact import redact
+
 PURE = "pure"
 ANY = "any"
 NOTHING = "nothing"
@@ -296,7 +298,7 @@ class LiveHost:
         try:
             self.executor._model_loaded(model)
         except Exception as exc:  # noqa: BLE001
-            self._status(session.id, "failed", f"could not load {model}: {exc}")
+            self._status(session.id, "failed", redact(f"could not load {model}: {exc}"))
             return
         session.warm = True
         if announce:
@@ -437,10 +439,11 @@ class LiveHost:
         except Stopped:
             api.live_complete(live_run_id, seq, error="stopped")
         except TryRefused as exc:
-            api.live_complete(live_run_id, seq, error=str(exc), refused=True)
+            api.live_complete(live_run_id, seq, error=redact(exc), refused=True)
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
-            api.live_complete(live_run_id, seq, error=f"{type(exc).__name__}: {exc}")
+            api.live_complete(live_run_id, seq,
+                              error=redact(f"{type(exc).__name__}: {exc}"))
         else:
             result = _plain(got["result"])
             session.remember(f"t{seq}", result)
@@ -496,7 +499,8 @@ class LiveHost:
             api.live_complete(live_run_id, seq, error="stopped")
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
-            api.live_complete(live_run_id, seq, error=f"{type(exc).__name__}: {exc}")
+            api.live_complete(live_run_id, seq,
+                              error=redact(f"{type(exc).__name__}: {exc}"))
         else:
             state = _plain(got["state"])
             outputs = _plain({k: v for k, v in got["outputs"].items() if k != "state"})

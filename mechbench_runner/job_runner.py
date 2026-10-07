@@ -36,6 +36,7 @@ from .live import NOTHING, PURE, LiveHost, own_floor
 from .machine import default_name
 from .paths import limits_path, spool_dir
 from .policy import PolicyHolder, check_claim, policy_holds_live
+from .redact import redact, remember
 from .spend import SharedLimiter, SpendLedger
 from .spool import JobSpool, adopt_legacy, job_dir, make_job_dir
 from .verification import VERIFICATION, Verification
@@ -220,6 +221,8 @@ class JobRunner:
         self._disowned: set[str] = set()
         self._caffeinate: subprocess.Popen | None = None
         self._transport_interrupts: dict[str, int] = {}
+        self._failure: tuple[BaseException, str, str] | None = None
+        remember(config.api_key)
         self._limiter = SharedLimiter(limits_path())
         self._spend: SpendLedger | None = None
         self._watch: NodeWatch | None = None
@@ -437,8 +440,8 @@ class JobRunner:
                 try:
                     _check_claim(job)
                 except PathRefusedError as exc:
-                    print(f"[runner] {exc}")
-                    self.state.job_failed(str(job.get("id", "?"))[:64], str(exc))
+                    print(f"[runner] {redact(exc)}")
+                    self.state.job_failed(str(job.get("id", "?"))[:64], redact(exc))
                     self._report_error(api, job, exc)
                     continue
 
@@ -455,11 +458,12 @@ class JobRunner:
                     self.state.job_finished(job["id"])
                     self._transport_interrupts.pop(job["id"], None)
                 except Exception as exc:  # noqa: BLE001
-                    traceback.print_exc()
+                    message, trace = self._failure_text(exc)
+                    print(trace, file=sys.stderr, end="", flush=True)
                     if self._is_transport(exc):
-                        self.state.job_interrupted(job.get("id", "?"), str(exc))
+                        self.state.job_interrupted(job.get("id", "?"), message)
                     else:
-                        self.state.job_failed(job.get("id", "?"), str(exc))
+                        self.state.job_failed(job.get("id", "?"), message)
                     self._report_error(api, job, exc)
 
         self._stop_channel()
@@ -820,6 +824,10 @@ class JobRunner:
             _spool_result(job_id, cbor_bytes, digest,
                           _claim_token_of(api, job_id), missing)
             self._deliver(api, job_id, cbor_bytes, digest, missing)
+        except BaseException as exc:
+            self._failure = (exc, HELD_CREDENTIALS.redact(str(exc)),
+                             HELD_CREDENTIALS.redact(traceback.format_exc()))
+            raise
         finally:
             if self._watch is not None:
                 self._watch.close(canary_after=False)
@@ -985,8 +993,8 @@ class JobRunner:
         job_id = job.get("id")
         if not job_id:
             return
-        import re as _re
-        message = _re.sub(r"hf_[A-Za-z0-9]{8,}", "hf_[redacted]", str(exc))
+        message = self._failure_text(exc)[0]
+        self._failure = None
 
         if self._is_transport(exc):
             resumes = self._transport_resumes(job_id, job)
@@ -1016,6 +1024,13 @@ class JobRunner:
         except Exception:  # noqa: BLE001
             print(f"[runner] failed to report failure for {job_id}")
         _clear_spool(job_id)
+
+    def _failure_text(self, exc: BaseException) -> tuple[str, str]:
+        held = self._failure
+        if held is not None and held[0] is exc:
+            return held[1], held[2]
+        trace = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        return redact(str(exc)), redact(trace)
 
     def _claim_control_socket(self) -> None:
         existing = probe()

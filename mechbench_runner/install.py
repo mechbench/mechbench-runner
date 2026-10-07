@@ -7,6 +7,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from .redact import child_env
+
 DIST = "mechbench"
 
 
@@ -115,5 +117,6 @@ def installed_versions() -> dict[str, str]:
 
 def _run(cmd: list[str], *, timeout: float) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603
-        cmd, capture_output=True, text=True, timeout=timeout, check=False
+        cmd, capture_output=True, text=True, timeout=timeout, check=False,
+        env=child_env(),
     )

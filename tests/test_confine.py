@@ -16,7 +16,7 @@ from mechbench_runner.confine import (  # noqa: E402
 )
 from mechbench_runner.extensions import InstallError, digest_of  # noqa: E402
 from mechbench_runner.spool import JobSpool, job_dir, make_job_dir  # noqa: E402
-from mechbench_runner.verification import Verification  # noqa: E402
+from mechbench_runner.verification import StageError, Verification  # noqa: E402
 
 CRAFTED = ["../x", "/etc/passwd", "a/../../b", "", "." * 64, "..", "a" * 65, None]
 
@@ -68,7 +68,9 @@ class TestCraftedIds:
             jr._check_claim(job)
         assert repr(bad) in str(got.value)
 
-    def test_a_crafted_object_path_is_refused_before_it_is_fetched(self, tmp_path):
+    @pytest.mark.parametrize("bad", ["../../../outside", "u_a/../../x", "/etc/passwd",
+                                     "u_a/./p", "u_a//p", "u_a/p\0x", "solo"])
+    def test_a_crafted_object_path_is_refused_before_it_is_fetched(self, tmp_path, bad):
         fetched: list[str] = []
 
         class Api:
@@ -78,10 +80,10 @@ class TestCraftedIds:
 
         manifest = {"provides": {"ops": [{"example_inputs": {
             "ok": {"$ref": {"bench": "u_a/p/records"}},
-            "bad": {"$ref": {"bench": "../../../outside"}},
+            "bad": {"$ref": {"bench": bad}},
         }}]}}
         root = tmp_path / "inputs"
-        with pytest.raises(PathRefusedError, match="outside"):
+        with pytest.raises(StageError, match="not a bench path"):
             Verification()._inputs(Api(), root, manifest)
         assert fetched == []
         assert list(root.rglob("*")) == []

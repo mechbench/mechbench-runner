@@ -226,6 +226,30 @@ class TestAJobWithARemoteNode:
         assert lent[-1] == {"anthropic": {"token": SECRET}}
         assert jc.HELD.empty
 
+    def test_a_failure_reports_no_value_the_job_was_lent(self, monkeypatch, capsys):
+        _home, check, _seen, _sent = self._wire(monkeypatch)
+        runner = _runner(monkeypatch)
+        custom = "plain-custom-credential-0042"
+        api = JobApi(check, {"anthropic": {"token": SECRET}, "custom": {"key": custom}})
+        failed: list[str] = []
+        api.fail_job = lambda job_id, message, timeout=None: failed.append(message)
+
+        def crash(spec, **kw):
+            raise RuntimeError(f"the provider refused {custom} and {SECRET}")
+
+        monkeypatch.setattr(runner._executor, "run", crash)
+        job = _job()
+        with pytest.raises(RuntimeError) as got:
+            runner._handle(api, job)
+        assert jc.HELD.empty
+        _message, trace = runner._failure_text(got.value)
+        assert "RuntimeError" in trace
+        assert custom not in trace and SECRET not in trace
+        runner._report_error(api, job, got.value)
+        [message] = failed
+        assert "the provider refused" in message
+        assert custom not in message and SECRET not in message
+
     def test_sigterm_while_idle_empties_the_holder(self, monkeypatch):
         runner = _runner(monkeypatch)
         jc.HELD.fetch(CredentialsApi({"hf": {"token": HF_SECRET}}),

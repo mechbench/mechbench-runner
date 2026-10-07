@@ -5,6 +5,7 @@ import threading
 from typing import Any
 
 from .api_client import ApiError
+from .redact import redact
 
 
 class JobCredentials:
@@ -38,6 +39,10 @@ class JobCredentials:
                     self._secrets[str(provider)] = dict(credential)
             got.clear()
         return self._secrets
+
+    def redact(self, text: object) -> str:
+        with self._lock:
+            return redact(text, self._secrets)
 
     def clear(self) -> None:
         with self._lock:
