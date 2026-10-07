@@ -9,6 +9,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from typing import Any
 
+from . import gpu as _gpu
 from .identity import run as _run
 
 THERMAL = ("nominal", "fair", "serious", "critical")
@@ -115,8 +116,12 @@ def _span(values: list[float]) -> dict[str, float] | None:
 
 class Sampler:
     def __init__(self, sh: Run = run, interval: float = INTERVAL_SECONDS,
-                 me: int | None = None) -> None:
+                 me: int | None = None, smi: _gpu.Smi | bool | None = None) -> None:
         self._sh = sh
+        if smi is None:
+            smi = _gpu.Smi() if _gpu.present() else False
+        self._smi = smi or None
+        self._gpu_states: list[dict[str, Any]] = []
         self._interval = interval
         self._me = os.getpid() if me is None else me
         self._stop = threading.Event()
@@ -137,6 +142,7 @@ class Sampler:
         gpu = gpu_utilization(self._sh)
         mem = memory(self._sh)
         procs = processes(self._sh, self._me)
+        state = self._smi.state() if self._smi is not None else None
         try:
             load = os.getloadavg()[0]
         except OSError:
@@ -148,6 +154,8 @@ class Sampler:
                 self._speed.append(t["cpu_speed_limit"])
             if gpu is not None:
                 self._gpu.append(gpu)
+            if state is not None:
+                self._gpu_states.append(state)
             for k, v in mem.items():
                 self._mem.setdefault(k, []).append(v)
             if load is not None:
@@ -193,7 +201,9 @@ class Sampler:
                 else:
                     mem[k] = _span(v)
             top = sorted(self._top.values(), key=lambda p: -p["cpu"])[:3]
+            states = _gpu.summarize(self._gpu_states)
             return {
+                **({"gpu": states} if states else {}),
                 "samples": self.samples,
                 "thermal": {"worst": worst, **({"cpu_speed_limit_min": min(self._speed)}
                                                 if self._speed else {})},
@@ -270,6 +280,10 @@ def ambient(counters: dict[str, Any], before: dict[str, float] | None,
         reasons.append(f"thermal state {worst}")
     for name in counters.get("busy") or []:
         reasons.append(f"{name} was busy")
+    slowed = [r for r in (counters.get("gpu") or {}).get("throttling") or ()
+              if r in _gpu.SLOWDOWN]
+    if slowed:
+        reasons.append(f"the GPU slowed its clocks ({', '.join(slowed)})")
     if (counters.get("power") or {}).get("low_power"):
         reasons.append("low power mode was on")
     out["reasons"] = reasons
@@ -300,9 +314,12 @@ class NodeWatch:
                  baseline: Callable[[], dict[str, Any] | None] | None = None,
                  canary: Callable[[dict[str, Any] | None], dict[str, float] | None] | None = None,
                  sampler: Callable[[], Sampler] = Sampler,
-                 settle: Callable[[], int] = settle) -> None:
+                 settle: Callable[[], int] = settle,
+                 gpu: Any = None) -> None:
         from . import microbench
 
+        self._gpu = gpu
+        self._gpu_sent: set[str] = set()
         self._bearing = bearing
         self._report = report
         self._baseline = baseline or microbench.load_baseline
@@ -313,6 +330,10 @@ class NodeWatch:
 
     def start(self, nid: str) -> None:
         self.close(canary_after=False)
+        if self._gpu is not None:
+            with suppress(Exception):
+                self._gpu.node_start(nid)
+            self._gpu_sent.discard(nid)
         if nid not in self._bearing:
             return
         try:
@@ -339,6 +360,30 @@ class NodeWatch:
             return None
         return {"ambient": amb, "quiet": quiet}
 
+    def _busy(self, nid: str) -> dict[str, Any] | None:
+        if self._gpu is None:
+            return None
+        try:
+            self._gpu.node_end(nid)
+            return self._gpu.node_summary(nid)
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _with_busy(self, nid: str, fields: dict[str, Any]) -> dict[str, Any]:
+        busy = self._busy(nid)
+        if busy is None:
+            return fields
+        self._gpu_sent.add(nid)
+        return {**fields, "ambient": {**(fields.get("ambient") or {}), "gpu_busy": busy}}
+
+    def _gpu_only(self, nid: str) -> None:
+        if self._gpu is None or nid in self._gpu_sent or nid in self._bearing:
+            return
+        busy = self._busy(nid)
+        if busy is not None:
+            self._gpu_sent.add(nid)
+            self._send(nid, {"ambient": {"gpu_busy": busy}})
+
     def _send(self, nid: str, fields: dict[str, Any]) -> None:
         body = {k: v for k, v in fields.items() if v is not None}
         if body:
@@ -346,15 +391,20 @@ class NodeWatch:
                 self._report(nid, body)
 
     def span(self, nid: str, measured: dict[str, Any]) -> None:
-        self._send(nid, {**measured, **(self._finish(nid, canary_after=True) or {})})
+        fields = {**measured, **(self._finish(nid, canary_after=True) or {})}
+        if self._gpu is not None and (nid in self._bearing or nid not in self._gpu_sent):
+            fields = self._with_busy(nid, fields)
+        self._send(nid, fields)
 
     def done(self, nid: str) -> None:
         held = self._finish(nid, canary_after=True)
         if held:
-            self._send(nid, held)
+            self._send(nid, self._with_busy(nid, held))
+        else:
+            self._gpu_only(nid)
 
     def close(self, *, canary_after: bool = True) -> None:
         nid = self._open["nid"] if self._open is not None else None
         held = self._finish(None, canary_after=canary_after)
         if nid is not None and held:
-            self._send(nid, held)
+            self._send(nid, self._with_busy(nid, held))

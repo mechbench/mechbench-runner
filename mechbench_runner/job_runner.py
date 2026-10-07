@@ -20,7 +20,7 @@ from typing import Any
 from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 from mechbench_schema import dump_canonical
 
-from . import release_manifest
+from . import gpu_watch, release_manifest
 from . import supervisor as supervisor_mod
 from .ambient import NodeWatch, model_bearing
 from .api_client import ApiClient, ApiError
@@ -226,6 +226,7 @@ class JobRunner:
         self._limiter = SharedLimiter(limits_path())
         self._spend: SpendLedger | None = None
         self._watch: NodeWatch | None = None
+        self._gpu: gpu_watch.JobGpu | None = None
         hooks = dict(
             on_download=self._announce_download,
             on_download_bytes=self._announce_download_bytes,
@@ -768,7 +769,8 @@ class JobRunner:
             except Exception as e:  # noqa: BLE001
                 print(f"[runner] span report failed ({e}); continuing")
 
-        self._watch = NodeWatch(model_bearing(spec_dict), report_span)
+        self._gpu = self._start_gpu(job_id)
+        self._watch = NodeWatch(model_bearing(spec_dict), report_span, gpu=self._gpu)
 
         def on_progress(done: int, total: int,
                         node: dict | None = None) -> None:
@@ -832,6 +834,7 @@ class JobRunner:
             if self._watch is not None:
                 self._watch.close(canary_after=False)
                 self._watch = None
+            self._finish_gpu(api, job_id, job.get("resultPath"))
             if self._spend is not None and self._spend.spent_usd > 0:
                 with suppress(Exception):
                     api.report_progress(job_id, *self._last_scalar or (0, 1),
@@ -843,6 +846,30 @@ class JobRunner:
             self._release_awake()
             HELD_CREDENTIALS.clear()
             job.pop("integrations", None)
+
+    def _start_gpu(self, job_id: str) -> gpu_watch.JobGpu | None:
+        try:
+            found = gpu_watch.JobGpu.for_machine()
+            return found.start() if found is not None else None
+        except Exception as e:  # noqa: BLE001
+            print(f"[runner] {job_id}: GPU sampling did not start ({e}); continuing")
+            return None
+
+    def _finish_gpu(self, api: ApiClient, job_id: str, result_path: str | None) -> None:
+        held, self._gpu = self._gpu, None
+        if held is None:
+            return
+        try:
+            body = {**held.stop(), "job": job_id}
+            where = gpu_watch.save(job_id, body)
+            s = body["summary"]
+            print(f"[runner] {job_id}: GPU busy {s.get('busy_fraction')}, idle "
+                  f"{s.get('idle_seconds')} s of {body['seconds']} s; series at {where}")
+            path = gpu_watch.object_path(result_path)
+            if path:
+                api.put_bytes(path, json.dumps(body).encode(), timeout=60.0)
+        except Exception as e:  # noqa: BLE001
+            print(f"[runner] {job_id}: GPU series not stored ({e}); continuing")
 
     def _verify(self, api: ApiClient, job: dict[str, Any]) -> None:
         job_id = job["id"]

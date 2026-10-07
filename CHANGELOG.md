@@ -31,11 +31,54 @@ _None._
 
 ### Changes that alter results without raising
 
-_None._
+- `calibrate` on a machine whose first backend is torch (a CUDA box) now
+  measures torch rather than MLX, and keeps its idle baseline with
+  `backend: torch`; the canary before each model-bearing node of a job
+  re-runs the probes on that backend.
+- Every calibration row carries `backend`, `accelerator` and `device`
+  (MLX rows: `mlx`, `metal`, the chip). The MLX fingerprint and
+  measurements are unchanged.
+- A node's ambient on a machine with nvidia-smi carries the GPU's
+  clocks, temperature, power and throttle reasons; a thermal or hardware
+  slowdown (not the power cap) makes the node not quiet.
+- On Linux a cold `load` drops the weights from the page cache with
+  `posix_fadvise(DONTNEED)`; `msync` did not.
 
 ### Other
 
-_None._
+- `calibrate --backend torch` (with `--device`, `--sustained-minutes`):
+  the GPU's identity (name, compute capability, driver, CUDA, cuDNN,
+  NCCL, unified memory, power limit, persistence, MIG, disk, TF32,
+  deterministic and SDPA settings); memory bandwidth against the stated
+  peak; matmul throughput at 2048/4096/8192 in bf16, fp16, tf32, fp32
+  and fp8 where the GPU has it; launch latency; host-device copies,
+  pinned and pageable; SDPA backends against eager attention; a
+  sustained-load probe sampling clock, temperature, power and throttle
+  reasons once a second (burst against steady state, and when throttling
+  began); first-call costs. With `--model`: cold and warm load with peak
+  host, system and device memory and whether it staged through the
+  host; prefill at N × B; decode at batch and context (compute's batched
+  generation when it has one, transformers' `generate` until then) with
+  the effective bandwidth; the instrumentation ladder (plain, an empty
+  nnsight trace, captures at 1/8/all layers, an intervention, the
+  per-head path, eager attention weights) as ratios to plain;
+  `logits/attribute` by layer and sublayer; the LoRA step once compute
+  trains on torch; numerics run to run (default and deterministic, with
+  their cost), eager against SDPA, per-head against fused, and bf16
+  against fp32 by layer. What cannot run is listed under `skipped` with
+  its reason. A `summary` of the gate numbers is printed at the end.
+- `calibrate --residuals FILE` writes the residual stream after every
+  layer for one fixed input, on MLX or torch; `--against FILE` runs that
+  file's tokens and carries the layer-by-layer difference.
+- Every job on a machine with an NVIDIA GPU samples it once a second
+  (`MECHBENCH_GPU_SAMPLE_SECONDS`; NVML when `pynvml` is installed,
+  nvidia-smi otherwise): utilization, memory, host available memory,
+  SM clock, temperature, power and throttle reasons. Each node's span
+  carries its busy fraction, utilization, idle seconds, peaks and
+  throttling under `ambient.gpu_busy`; the job's summary and the
+  compressed 1 Hz series are written to `~/.mechbench/gpu/<job>.json`
+  and stored beside the results at `<resultPath>/gpu-series`. Sampling
+  never fails a job.
 
 ---
 

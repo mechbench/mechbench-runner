@@ -238,7 +238,7 @@ argument, in about 26 KB.
 | policy | delete | — | — | — | — (runners reference a policy by id and version; put them under another (`policy apply`) instead) |
 | policy | history | — | — | — | — (`policy read` carries every version, newest first) |
 | runner | **list**(signed_out?, search?, limit?, offset?) | read | `GET /runners` | `runner(verb="list")` | `mechbench runner list` |
-| runner | **calibrate**(model?, repeats?, out?, push?, into?) | draft | — (on the caller's machine) | `runner(verb="calibrate")` | `mechbench runner calibrate` |
+| runner | **calibrate**(model?, repeats?, backend?, device?, sustained_minutes?, residuals?, against?, out?, push?, into?) | draft | — (on the caller's machine) | `runner(verb="calibrate")` | `mechbench runner calibrate` |
 | runner | read | — | — | — | — (`runner list` has each runner whole; the machines page shows one) |
 | runner | create | — | — | — | — (a runner is registered from its own machine by `mechbench login`) |
 | runner | update | — | — | — | — (renamed and paused on the machines page (PATCH /runners/:id)) |

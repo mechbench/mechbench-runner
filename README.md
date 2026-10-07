@@ -182,6 +182,30 @@ ambient load while it ran. The micro-benchmarks are kept in
 `~/.mechbench/calibration/baseline.json`: the idle baseline the canary
 compares against before and after each model-bearing node of every job.
 
+On a CUDA machine `calibrate` runs on the torch backend (the backend the
+machine offers first; `--backend torch` picks it anywhere, on the CPU
+when there is no GPU):
+
+```bash
+mechbench calibrate --out g0.json                                  # the machine: probes and 5 minutes of sustained load
+mechbench calibrate --model google/gemma-3-27b-it --repeats 2 \
+  --sustained-minutes 0 --out g2.json                              # a model: load, prefill, decode, instrumentation, numerics
+mechbench calibrate --model google/gemma-3-4b-it --residuals box.json --against home.json
+```
+
+The collection's header carries the GPU's identity (name, compute
+capability, driver, CUDA, cuDNN, NCCL, unified memory, power limit,
+persistence and MIG from nvidia-smi, the TF32, deterministic and SDPA
+settings in force), what was skipped and why, the sustained-load series
+and a `summary` of the numbers a session decides on. Every row carries
+`backend`, `accelerator` and `device` beside the stack fingerprint, and a
+`probe` naming what measured it. A probe that needs CUDA, or a
+capability compute does not have yet (batched generation, LoRA training
+on torch), is listed under `skipped` with its reason rather than
+failing. `--residuals` writes the residual stream after every layer for
+one fixed input (MLX writes the same file); `--against` runs a file's
+tokens and puts the layer-by-layer difference in the header.
+
 ### From a checkout
 
 ```bash
@@ -256,6 +280,7 @@ All via env vars:
 | `MECHBENCH_POLL_INTERVAL_SECONDS` | `2.0` | Job-runner poll cadence. |
 | `MECHBENCH_WARM_MODEL_ID` | *(none)* | Optional model to load at startup so the first job skips cold start. There is deliberately no default: a protocol names the model it runs against, and a job that names none is an error. |
 | `MECHBENCH_WATCHDOG_SECONDS` | `900` | How long without progress counts as wedged. `0` disables it. |
+| `MECHBENCH_GPU_SAMPLE_SECONDS` | `1` | On a machine with an NVIDIA GPU, how often a job samples its utilization, memory, clocks, temperature, power and throttle state. `0` turns it off. |
 
 ## Relationship to other mechbench repos
 

@@ -79,6 +79,15 @@ def _mapped(path: Path, fn: Callable[[Any, int, int], Any]) -> Any:
 
 
 def evict(path: Path) -> bool:
+    if hasattr(os, "posix_fadvise"):
+        fd = os.open(path, os.O_RDONLY)
+        try:
+            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+            return True
+        except OSError:
+            return False
+        finally:
+            os.close(fd)
     return bool(_mapped(path, lambda libc, addr, size: libc.msync(addr, size, MS_INVALIDATE) == 0))
 
 
@@ -242,7 +251,8 @@ def _loads(snapshot: Path, files: list[Path], cache: str, repeats: int, say: Say
     return model, times, peak(), extra
 
 
-def model_records(model_ref: str, repeats: int, say: Say) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def model_records(model_ref: str, repeats: int, say: Say, residuals: str | None = None,
+                  ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     mx = _mx()
     found = local_snapshot(model_ref)
     if found is None:
@@ -302,6 +312,10 @@ def model_records(model_ref: str, repeats: int, say: Say) -> tuple[list[dict[str
                without_capture_seconds=statistics.median(base),
                bytes_captured=captured["bytes"], layers=picks))
 
+    if residuals:
+        say("residuals")
+        write_mlx_residuals(model, residuals, about)
+
     import mlx.nn as nn
     import mlx.optimizers as optim
     from mechbench_compute.distill import Example, soft_ce
@@ -330,8 +344,44 @@ def model_records(model_ref: str, repeats: int, say: Say) -> tuple[list[dict[str
     return rows, about
 
 
+def write_mlx_residuals(model: Any, path: str, about: dict[str, Any]) -> None:
+    from . import numerics
+
+    tokens = _tokens(model, numerics_tokens())
+    body = numerics.export(numerics.mlx_residuals(model, tokens), tokens,
+                           {"model": about["model"], "dtype": about["dtype"], "backend": "mlx",
+                            "accelerator": "metal", "device": identity().get("chip")})
+    Path(path).write_text(json.dumps(body) + "\n")
+    about["residuals"] = path
+
+
+def numerics_tokens() -> int:
+    from .torch_probes import Grid
+    return Grid().residual_tokens
+
+
+def default_backend() -> str:
+    from .identity import backends
+    found = backends()
+    return found[0] if found else "mlx"
+
+
 def calibrate(model: str | None = None, *, repeats: int = 10, write_baseline: bool = True,
-              say: Say = lambda _: None, baseline: Path | None = None) -> dict[str, Any]:
+              say: Say = lambda _: None, baseline: Path | None = None,
+              backend: str | None = None, device: str | None = None,
+              sustained_minutes: float | None = None, residuals: str | None = None,
+              against: str | None = None) -> dict[str, Any]:
+    chosen = backend or default_backend()
+    if chosen == "torch":
+        from . import sustained, torch_calibrate
+        return torch_calibrate.calibrate_torch(
+            model, repeats=repeats, device=device,
+            sustained_minutes=(sustained.DEFAULT_MINUTES if sustained_minutes is None
+                               else sustained_minutes),
+            write_baseline=write_baseline and default_backend() == "torch", baseline=baseline,
+            residuals=residuals, against=against, say=say)
+    if chosen != "mlx":
+        raise ValueError(f"calibrate runs on the mlx or torch backend, not {chosen!r}")
     me = identity()
     from .api_client import _hardware
     _, memory_gb = _hardware()
@@ -342,14 +392,15 @@ def calibrate(model: str | None = None, *, repeats: int = 10, write_baseline: bo
         rows, measured = micro_records(repeats)
         about: dict[str, Any] = {}
         if model:
-            model_rows, about = model_records(model, repeats, say)
+            model_rows, about = model_records(model, repeats, say, residuals)
             rows += model_rows
     finally:
         sampler.stop()
     components = stack_components(checkpoint=about.get("model"), dtype=about.get("dtype"))
     stack = fingerprint(components)
     chip = me.get("chip") or "unknown"
-    items = [{**r, "chip": chip, "stack": stack} for r in rows]
+    items = [{**r, "chip": chip, "stack": stack, "backend": "mlx", "accelerator": "metal",
+              "device": chip} for r in rows]
     amb, quiet = ambient(sampler.result(), None, None)
     if write_baseline:
         microbench.save_baseline(measured, me, fingerprint(stack_components()), baseline)

@@ -230,7 +230,12 @@ fi
 step "8. calibration"
 CAL_RESULT="skipped: this runner cannot calibrate on torch"
 if [ "$TORCH_SOURCE" != "none" ] && mechbench calibrate --help 2>&1 | grep -q -- '--backend'; then
-  if mechbench calibrate --backend torch; then CAL_RESULT="done"; else CAL_RESULT="failed (see the log)"; fi
+  if mechbench calibrate --backend torch --out "$HOME/calibration-g0-$ROLE.json" \
+      --push --into benjismith/calibration > /dev/null; then
+    CAL_RESULT="done: $HOME/calibration-g0-$ROLE.json"
+  else
+    CAL_RESULT="failed (see the log)"
+  fi
 fi
 echo "calibration: $CAL_RESULT"
 
