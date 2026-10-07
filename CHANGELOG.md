@@ -37,6 +37,10 @@ _None._
 
 _None._
 
+## 0.66.1 — 2026-10-07
+
+The release of 0.66.0, which its release gate stopped on a timing-sensitive test (`test_a_failing_sample_never_stops_the_watch` waited 50 ms for two samples); the test now waits for them. 0.66.0 was not published.
+
 ## 0.66.0 — 2026-10-07
 
 ### Changes that raise

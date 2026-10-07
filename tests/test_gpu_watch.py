@@ -94,7 +94,9 @@ def test_a_failing_sample_never_stops_the_watch():
 
     w = gpu_watch.JobGpu(flaky, interval=0.01).start()
     import time
-    time.sleep(0.05)
+    deadline = time.monotonic() + 5
+    while calls["n"] < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
     body = w.stop()
     assert calls["n"] >= 2 and body["summary"]["samples"] == 0
 
