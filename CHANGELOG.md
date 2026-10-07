@@ -37,9 +37,22 @@ _None._
 
 _None._
 
-## 0.66.1 — 2026-10-07
+## 0.66.2 — 2026-10-07
 
-The release of 0.66.0, which its release gate stopped on a timing-sensitive test (`test_a_failing_sample_never_stops_the_watch` waited 50 ms for two samples); the test now waits for them. 0.66.0 was not published.
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
+- The release of 0.66.0's changes. Its gate stopped on a timing-sensitive
+  test (`test_a_failing_sample_never_stops_the_watch` waited 50 ms for two
+  samples), which now waits for them, and 0.66.1's on its own release
+  notes. Neither 0.66.0 nor 0.66.1 was published.
 
 ## 0.66.0 — 2026-10-07
 
