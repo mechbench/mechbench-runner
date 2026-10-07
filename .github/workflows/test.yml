@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: python -m pip install --upgrade pip
+      - run: python -m pip install --upgrade pip setuptools
       - run: pip install -e . pytest build
       - run: python -m pytest tests/ -q
       # Fails on any package in the installed environment with a published
