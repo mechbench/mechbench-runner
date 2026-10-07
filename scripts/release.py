@@ -55,11 +55,9 @@ def check_changelog(version: str) -> str | None:
 
 
 def main() -> None:
-    upload = "--upload" in sys.argv
-    if not upload and "--check" not in sys.argv:
-        print("usage: scripts/release.py --check    run the gate; upload nothing\n"
-              "       scripts/release.py --upload   run the gate, then twine upload "
-              "(the old path, until CI publishes; docs/RELEASING.md)")
+    if "--check" not in sys.argv:
+        print("usage: scripts/release.py --check    run the gate; dist/ holds what "
+              "CI publishes (a v<version> tag on main publishes; docs/RELEASING.md)")
         sys.exit(2)
 
     version = re.search(
@@ -161,15 +159,6 @@ def main() -> None:
             die("wss dial: wanted a policy rejection over real TLS", proc)
 
     print(f"\ngate PASSED for {ver}")
-    if not upload:
-        print("--check: not uploading; dist/ holds what CI publishes")
-        return
-    print("uploading…")
-    proc = run(["uvx", "twine", "upload", f"dist/mechbench-{ver}*"],
-               timeout=600)
-    if proc.returncode != 0:
-        die("twine upload", proc)
-    print(f"published mechbench {ver}")
 
 
 if __name__ == "__main__":

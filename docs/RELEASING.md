@@ -59,9 +59,8 @@ A release that has to be withdrawn: publish a manifest naming the
 earlier versions with `-f allow_downgrade=true`. Runners on the newer
 versions follow it back; without the flag they refuse an older manifest.
 
-The old path, `scripts/release.py --upload` (twine from this Mac), stays
-for exactly one release, the one that carries the release key (0.53.0),
-and is then removed.
+There is no other path: `scripts/release.py` only checks, and nothing
+is uploaded from a laptop.
 
 ## What the runner checks
 
@@ -81,6 +80,9 @@ the downloaded files and the manifest's sha256.
 
 ## One-time setup (Benji)
 
+Steps 1–5 were done by 2026-10-06; step 6 follows the first CI
+publishes (runner 0.64.1, compute 0.192.1).
+
 1. **Two-factor authentication on PyPI.** On the account that owns
    `mechbench` and `mechbench-compute`: pypi.org → Account settings →
    Two factor authentication, with a security key or an authenticator
@@ -95,9 +97,8 @@ the downloaded files and the manifest's sha256.
    `pypi`.
 3. **A `pypi` environment in each repository.** github.com/mechbench/mechbench-runner
    → Settings → Environments → New environment `pypi`, and the same in
-   mechbench-compute. Recommended: Deployment branches and tags →
-   Selected → tag pattern `v*`; Required reviewers → yourself, if you
-   want to approve each publish.
+   mechbench-compute, deployable only from tags matching `v*` (no
+   required reviewer).
 4. **The release key** (done 2026-09-30, fingerprint
    `sha256:86a25d4dc32f5bdf597d30ca9621acd2`). In mechbench-infra:
 
@@ -143,12 +144,9 @@ the downloaded files and the manifest's sha256.
 4. Runners before 0.53.0 still pick PyPI's newest on their own hourly
    check, which brings them to 0.53.0 or later; from 0.53.0 on they
    follow only the manifest.
-5. Every release after that goes through the tag, once steps 1–3 of the
-   one-time setup (PyPI 2FA, the trusted publishers, the `pypi`
-   environments) are done. The `--upload` path is removed in the first
-   of them; until then a release still goes `scripts/release.py --upload`
-   and then `gh workflow run publish-release-manifest.yml --repo
-   mechbench/mechbench-api -f runner=X -f compute=Y`.
+5. ~~Every release after that goes through the tag.~~ From runner
+   0.64.1 and compute 0.192.1 (2026-10-06), the first releases CI
+   published; `--upload` was removed in them.
 
 ## Rotating the key
 
