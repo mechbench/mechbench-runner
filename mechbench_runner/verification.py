@@ -405,7 +405,8 @@ class Verification:
                     lines.append(f"{dist}=={version}")
                     if dist == COMPUTE_DIST:
                         compute_req = f"{COMPUTE_DIST}=={version}"
-            links.append(house)
+            if house.is_dir():
+                links.append(house)
         if not compute_req:
             pinned = [ln for ln in lines if _norm(ln.split("==", 1)[0]) == COMPUTE_DIST]
             if not pinned:

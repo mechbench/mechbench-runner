@@ -39,7 +39,7 @@ _None._
 
 ---
 
-## 0.64.1 — 2026-10-06
+## 0.64.2 — 2026-10-06
 
 ### Changes that raise
 
@@ -51,6 +51,9 @@ _None._
 
 ### Other
 
+- An extension's verification on a runner whose only editable install
+  is the runner itself no longer fails at install by naming a wheelhouse
+  that was never built.
 - The first release published by CI through PyPI trusted publishing;
   `scripts/release.py --upload` is gone and `--check` is the only mode.
 

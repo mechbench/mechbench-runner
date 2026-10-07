@@ -81,7 +81,7 @@ the downloaded files and the manifest's sha256.
 ## One-time setup (Benji)
 
 Steps 1–5 were done by 2026-10-06; step 6 follows the first CI
-publishes (runner 0.64.1, compute 0.192.1).
+publishes (runner 0.64.2, compute 0.192.1).
 
 1. **Two-factor authentication on PyPI.** On the account that owns
    `mechbench` and `mechbench-compute`: pypi.org → Account settings →
