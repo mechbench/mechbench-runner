@@ -20,7 +20,7 @@
 #
 # Attended instead, fill in (never commit or share the values):
 #   MECHBENCH_TOKEN       a single-use registration token from
-#                         https://mechbench.ai/download (mbr_…), within 15 min
+#                         https://mechbench.ai/settings/runners ("Generate a token") (mbr_…), within 15 min
 #   MECHBENCH_TOKEN_PEER  a second one, for the second Spark (optional)
 #
 # Either way:

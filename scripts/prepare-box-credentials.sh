@@ -8,7 +8,7 @@
 #   scripts/prepare-box-credentials.sh [path/to/dedicated-cuda.sh]
 #
 # Asks (nothing is echoed) for two registration tokens from
-# https://mechbench.ai/download (mbr_…, used within 15 minutes) and, optionally,
+# https://mechbench.ai/settings/runners ("Generate a token") (mbr_…, used within 15 minutes) and, optionally,
 # a Hugging Face read token that has accepted Gemma's licence. Each runner is
 # registered by `mechbench login --token - --name enverge-spark-{host,peer}`
 # with HOME set to a fresh temporary directory: login writes only
