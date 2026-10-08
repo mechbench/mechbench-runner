@@ -588,6 +588,11 @@ def _render(data: dict) -> str:
         f"runner   v{data.get('runner_version')}{compute_note} "
         f"pid {data.get('pid')}, up {up / 60:.0f}m{whose}"
     )
+    pairs = data.get("accelerators")
+    if pairs is not None:
+        lines.append("runs     " + (" · ".join(f"{', '.join(names)} on {accelerator}"
+                                              for accelerator, names in pairs.items())
+                                    or "no backend"))
     if data.get("runner_id"):
         name = data.get("runner_name")
         lines.append(f"id       {data['runner_id']}{f' ({name})' if name else ''}"

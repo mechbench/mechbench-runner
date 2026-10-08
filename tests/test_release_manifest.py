@@ -34,6 +34,7 @@ def installed(monkeypatch):
     monkeypatch.setattr(install, "installed_versions", lambda: dict(have))
     monkeypatch.setattr(install, "find_executable",
                         lambda name: FAKE_UV if name == "uv" else None)
+    monkeypatch.setattr(install, "unmet_extras", lambda dist="": {})
     return have
 
 
@@ -198,6 +199,46 @@ class TestInstallRule:
     def test_the_installer_failing_is_reported(self, installed):
         got, _ = run_upgrade(signed(), run=Recorder(fail={"--require-hashes"}))
         assert not got.ok and not got.changed and "failed" in got.message
+
+
+class TestExtrasAreKept:
+    def _extras(self, monkeypatch, before, after):
+        monkeypatch.setattr(install, "unmet_extras", lambda dist="": before)
+        monkeypatch.setattr(install, "unmet", lambda dist, extra: after.get(extra, []))
+
+    def test_an_upgrade_that_keeps_the_torch_extra_whole_is_kept(
+            self, installed, monkeypatch):
+        self._extras(monkeypatch, {"torch": []}, {"torch": []})
+        got, run = run_upgrade(signed())
+        assert got.ok and got.changed and len(run.calls) == 1
+
+    def test_an_upgrade_that_breaks_the_torch_extra_restores_the_install_before(
+            self, installed, monkeypatch):
+        self._extras(monkeypatch, {"torch": [], "dev": []},
+                     {"torch": ["nnsight<0.9,>=0.7 (0.9.1 installed)"]})
+        got, run = run_upgrade(signed())
+        assert not got.ok and not got.changed
+        assert len(run.calls) == 2
+        assert run.calls[1] == [FAKE_UV, "pip", "install", "--python", PY,
+                                "mechbench==0.52.0", "mechbench-compute==0.174.0"]
+        assert "the torch extra needs nnsight<0.9,>=0.7 (0.9.1 installed)" in got.message
+        assert "the install before it is restored" in got.message
+        assert (f"uv pip install --python {PY} 'mechbench-compute[torch]==0.175.0'"
+                in got.message)
+        assert "dev" not in got.message
+
+    def test_a_problem_the_extra_had_before_is_not_the_upgrade_s(
+            self, installed, monkeypatch):
+        old = ["sympy>=1.13.3 (1.12 installed)"]
+        self._extras(monkeypatch, {"torch": old}, {"torch": old})
+        got, run = run_upgrade(signed())
+        assert got.ok and got.changed and len(run.calls) == 1
+
+    def test_a_machine_without_the_extra_is_never_given_it(self, installed, monkeypatch):
+        self._extras(monkeypatch, {}, {"torch": ["torch>=2.4 (absent)"]})
+        got, run = run_upgrade(signed())
+        assert got.ok and len(run.calls) == 1
+        assert "torch" not in Path(run.calls[0][7]).read_text()
 
 
 class TestRestore:

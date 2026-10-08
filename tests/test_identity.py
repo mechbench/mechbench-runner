@@ -49,9 +49,14 @@ def test_the_machine_from_sysctl_ioreg_and_sw_vers(monkeypatch):
             raise importlib.metadata.PackageNotFoundError(dist)
         return versions[dist]
     monkeypatch.setattr(identity.importlib.metadata, "version", version)
-    monkeypatch.setattr(identity, "backends", lambda: ["mlx"])
+    monkeypatch.setattr(identity, "backends", lambda: ["mlx", "torch"])
+    monkeypatch.setattr(identity, "accelerators",
+                        lambda: {"metal": ["mlx"], "cpu": ["torch"]})
     monkeypatch.setattr(identity, "architecture_levels",
                         lambda: {"llama": "core", "gemma4": "full"})
+    monkeypatch.setattr(identity, "architecture_levels_by_backend",
+                        lambda: {"mlx": {"gemma4": "full", "llama": "core"},
+                                 "torch": {"gemma4": "core", "qwen3": "core"}})
     assert identity.identity() == {
         "chip": "Apple M5 Ultra",
         "gpu_cores": 80,
@@ -59,9 +64,12 @@ def test_the_machine_from_sysctl_ioreg_and_sw_vers(monkeypatch):
         "python": "3.12.8",
         "stack": {"mlx": "0.29.1", "mlx_lm": "0.28.0", "mlx_vlm": "0.3.4",
                   "torch": None},
-        "backends": ["mlx"],
+        "backends": ["mlx", "torch"],
+        "accelerators": {"metal": ["mlx"], "cpu": ["torch"]},
         "architectures": ["gemma4", "llama"],
         "architecture_levels": {"gemma4": "full", "llama": "core"},
+        "architecture_levels_by_backend": {"mlx": {"gemma4": "full", "llama": "core"},
+                                           "torch": {"gemma4": "core", "qwen3": "core"}},
     }
 
 

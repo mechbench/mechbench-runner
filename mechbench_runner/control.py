@@ -51,12 +51,14 @@ class RunnerState:
 
     def __init__(self, *, version: str, api_url: str,
                  compute_version: str = "", runner_id: str | None = None,
-                 runner_name: str | None = None) -> None:
+                 runner_name: str | None = None,
+                 accelerators: dict[str, list[str]] | None = None) -> None:
         self._lock = threading.Lock()
         self._runner_id = runner_id
         self._runner_name = runner_name
         self._phase = "starting"
         self._compute_version = compute_version
+        self._accelerators = accelerators
         self._job: JobView | None = None
         self._model_id: str | None = None
         self._paused = False
@@ -93,6 +95,8 @@ class RunnerState:
                 "runner_id": self._runner_id,
                 "runner_name": self._runner_name,
                 "compute_version": self._compute_version,
+                **({"accelerators": self._accelerators}
+                   if self._accelerators is not None else {}),
                 "api_url": self._api_url,
                 "pid": os.getpid(),
                 "supervised": _supervisor_pid() is not None,

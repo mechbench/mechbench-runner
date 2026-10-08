@@ -35,7 +35,12 @@ class TestAdvertise:
         assert set(caps) - {"classes", "compute", "installs", "installed",
                             "accelerator", "memory_gb"} <= {
             "chip", "gpu_cores", "os", "python", "stack", "backends",
-            "architectures", "architecture_levels"}
+            "accelerators", "architectures", "architecture_levels",
+            "architecture_levels_by_backend"}
+        assert caps["accelerator"] in caps["accelerators"] or not caps["accelerators"].get(
+            caps["accelerator"])
+        assert set(caps["backends"]) == {b for names in caps["accelerators"].values()
+                                         for b in names}
         assert caps["classes"] == ["local", "pure", "remote"]
         assert caps["compute"] == __version__
         assert caps["installs"] is True
@@ -88,6 +93,44 @@ class TestAdvertise:
         monkeypatch.setattr(backends, "advertise", lambda *a, **k: torch)
         assert identity.backends() == ["torch"]
         assert api_client.read_classes() == ["local", "pure", "remote"]
+
+    def test_the_set_is_compute_s_and_an_older_compute_s_one_accelerator_is_read_as_one(
+            self, monkeypatch):
+        from mechbench_compute import backends
+
+        from mechbench_runner import identity
+
+        mac = {"accelerator": "metal", "backends": ["mlx", "torch"],
+               "accelerators": {"metal": ["mlx"], "cpu": ["torch"]}}
+        monkeypatch.setattr(backends, "advertise", lambda *a, **k: mac)
+        assert identity.backends() == ["mlx", "torch"]
+        assert identity.accelerators() == {"metal": ["mlx"], "cpu": ["torch"]}
+        monkeypatch.setattr(backends, "advertise",
+                            lambda *a, **k: {"accelerator": "cuda", "backends": ["torch"]})
+        assert identity.accelerators() == {"cuda": ["torch"]}
+        monkeypatch.setattr(backends, "advertise",
+                            lambda *a, **k: {"accelerator": "cpu", "backends": []})
+        assert identity.accelerators() == {}
+
+        def gone(*a, **k):
+            raise ImportError("no compute")
+        monkeypatch.setattr(backends, "advertise", gone)
+        assert identity.accelerators() is None
+        assert identity.backends() == []
+
+    def test_the_architectures_are_keyed_by_backend_where_compute_keys_them(
+            self, monkeypatch):
+        from mechbench_compute import support
+
+        from mechbench_runner import identity
+
+        keyed = {"mlx": {"gemma3": "full"}, "torch": {"qwen3": "core", "gemma3": "core"}}
+        monkeypatch.setattr(support, "architecture_levels_by_backend",
+                            lambda *a, **k: keyed, raising=False)
+        assert identity.architecture_levels_by_backend() == {
+            "mlx": {"gemma3": "full"}, "torch": {"gemma3": "core", "qwen3": "core"}}
+        monkeypatch.delattr(support, "architecture_levels_by_backend")
+        assert identity.architecture_levels_by_backend() is None
 
     def test_the_architectures_are_compute_s_one_map_of_its_backends(
             self, monkeypatch):

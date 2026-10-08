@@ -4,6 +4,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from . import credentials, machine
 from .api_client import ApiClient, ApiError
@@ -108,12 +109,26 @@ def _backend() -> Check:
             f"Supported today: {supported}. The platform-independent "
             f"half of mechbench-compute still works for reading results.",
         )
-    present = ", ".join(f"{b.label} [{_version_of(b.module)}]"
-                        for b in backends.available())
+    where = _where_each_runs(backends)
+    present = ", ".join(
+        f"{b.label} [{_version_of(b.module)}]"
+        + (f" on {' and '.join(where[b.name])}" if where.get(b.name) else "")
+        for b in backends.available())
     return Check(
         "compute backend", OK,
-        f"{present} on {accelerator}" + (f"; {absent}" if absent else ""),
+        (present if where else f"{present} on {accelerator}")
+        + (f"; {absent}" if absent else ""),
     )
+
+
+def _where_each_runs(backends: Any) -> dict[str, list[str]]:
+    advertise = getattr(backends, "advertise", None)
+    pairs = (advertise() if advertise is not None else {}).get("accelerators")
+    where: dict[str, list[str]] = {}
+    for accelerator, names in (pairs or {}).items():
+        for name in names:
+            where.setdefault(name, []).append(accelerator)
+    return where
 
 
 def _compute() -> Check:

@@ -30,7 +30,7 @@ from .confine import PathRefusedError, check_id, owner_of, remove_owned
 from .control import ControlServer, RunnerState, probe, socket_path
 from .exits import EXIT_CRASH, EXIT_OK, EXIT_RESTART
 from .extensions import Extensions
-from .identity import chip
+from .identity import accelerators, chip
 from .job_credentials import HELD as HELD_CREDENTIALS
 from .live import NOTHING, PURE, LiveHost, own_floor
 from .machine import default_name
@@ -263,7 +263,8 @@ class JobRunner:
         self.state = RunnerState(version=runner_version, api_url=config.api_base_url,
                                  compute_version=compute_version,
                                  runner_id=config.runner_id,
-                                 runner_name=config.runner_name)
+                                 runner_name=config.runner_name,
+                                 accelerators=accelerators())
         self.state.limits_snapshot = self._limiter.snapshot
         self._control = ControlServer(self.state)
         self._channel = LiveChannel(config, self.state)

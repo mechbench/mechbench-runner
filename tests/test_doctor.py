@@ -69,7 +69,8 @@ class TestMachineChecks:
         monkeypatch.setattr(
             importlib.util,
             "find_spec",
-            lambda n, *a, **k: None if n.split(".")[0] == "mlx" else real(n, *a, **k),
+            lambda n, *a, **k: (None if n.split(".")[0] in {"mlx", "torch"}
+                                else real(n, *a, **k)),
         )
         check = doctor._backend()  # noqa: SLF001
         assert check.status == FAIL
@@ -88,8 +89,26 @@ class TestMachineChecks:
         check = doctor._backend()  # noqa: SLF001
         assert check.status == OK
         assert "] on metal" in check.detail, check.detail
-        if any(b.name == "torch" for b in backends.BACKENDS):
+        if backends.is_installed(backends.find("torch")):
+            assert "] on cpu" in check.detail, check.detail
+        else:
             assert "; torch absent: " in check.detail, check.detail
+
+    def test_each_backend_is_named_with_every_accelerator_it_runs_on(self, monkeypatch):
+        from mechbench_compute import backends
+
+        mlx, torch = backends.BACKENDS
+        monkeypatch.setattr(backends, "available", lambda *a, **k: [mlx, torch])
+        monkeypatch.setattr(backends, "describe", lambda *a, **k: [])
+        monkeypatch.setattr(backends, "active", lambda: mlx)
+        monkeypatch.setattr(backends, "advertise", lambda *a, **k: {
+            "accelerator": "cuda", "backends": ["torch"],
+            "accelerators": {"metal": ["mlx"], "cuda": ["torch"], "cpu": ["torch"]}})
+        check = doctor._backend()  # noqa: SLF001
+        assert check.status == OK
+        assert check.detail.startswith(f"{mlx.label} [")
+        assert "] on metal, " in check.detail
+        assert check.detail.endswith("] on cuda and cpu"), check.detail
 
     def test_a_compute_without_detection_says_the_accelerator_is_unknown(
             self, monkeypatch):

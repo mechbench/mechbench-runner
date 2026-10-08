@@ -27,7 +27,11 @@ with both headings.
 
 ### Changes that raise
 
-_None._
+- An update (the manifest's self-upgrade, `mechbench update`) that would
+  leave an installed extra of `mechbench-compute` (`torch`) with a
+  requirement it no longer meets is refused after the install, and the
+  install before it restored; the message names the requirement and the
+  command that takes the new version with the extra.
 
 ### Changes that alter results without raising
 
@@ -35,7 +39,18 @@ _None._
 
 ### Other
 
-_None._
+- A runner advertises every accelerator it has with the backends that
+  run there (`accelerators`, from compute's `backends.advertise()`:
+  `{"metal": ["mlx"], "cpu": ["torch"]}` on a Mac with the torch extra),
+  beside `accelerator` and `backends` as before, and the architectures
+  it loads keyed by backend (`architecture_levels_by_backend`). Sent at
+  registration, in the channel's `hello` and on every claim; an API on
+  an older mechbench-models drops both fields and places by
+  `accelerator` and `backends`. With an older compute the set is the one
+  accelerator with its backends.
+- `doctor` names every accelerator each backend runs on ("… on metal,
+  PyTorch … on cpu"); `service-status` adds a `runs` line ("mlx on
+  metal · torch on cpu"), and its `--json` an `accelerators` field.
 
 ## 0.66.2 — 2026-10-07
 

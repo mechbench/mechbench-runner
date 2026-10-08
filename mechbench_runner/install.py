@@ -6,6 +6,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .redact import child_env
 
@@ -113,6 +114,87 @@ def installed_versions() -> dict[str, str]:
         except PackageNotFoundError:
             out[name] = "(absent)"
     return out
+
+
+COMPUTE_DIST = "mechbench-compute"
+
+
+def _version(name: str) -> str | None:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        return None
+
+
+def requirements_of(dist: str, extra: str | None = None) -> list[Any]:
+    from importlib.metadata import PackageNotFoundError, requires
+
+    from packaging.requirements import InvalidRequirement, Requirement
+
+    try:
+        raw = requires(dist) or []
+    except PackageNotFoundError:
+        return []
+    out = []
+    for line in raw:
+        try:
+            req = Requirement(line)
+        except InvalidRequirement:
+            continue
+        base = req.marker is None or req.marker.evaluate({"extra": ""})
+        if extra is None:
+            if base:
+                out.append(req)
+        elif (not base and req.marker is not None
+                and req.marker.evaluate({"extra": extra})):
+            out.append(req)
+    return out
+
+
+def installed_extras(dist: str = COMPUTE_DIST) -> list[str]:
+    from importlib.metadata import PackageNotFoundError, metadata
+
+    try:
+        provided = metadata(dist).get_all("Provides-Extra") or []
+    except PackageNotFoundError:
+        return []
+    found = []
+    for extra in provided:
+        reqs = requirements_of(dist, extra)
+        if reqs and all(_version(r.name) is not None for r in reqs):
+            found.append(extra)
+    return found
+
+
+def unmet(dist: str, extra: str) -> list[str]:
+    from packaging.utils import canonicalize_name
+
+    todo = list(requirements_of(dist, extra))
+    seen: set[str] = set()
+    out: list[str] = []
+    while todo:
+        req = todo.pop(0)
+        key = canonicalize_name(req.name)
+        if key in seen:
+            continue
+        seen.add(key)
+        have = _version(req.name)
+        if have is None:
+            out.append(f"{req} (absent)")
+            continue
+        if req.specifier and not req.specifier.contains(have, prereleases=True):
+            out.append(f"{req} ({have} installed)")
+            continue
+        todo.extend(requirements_of(req.name))
+        for wanted in sorted(req.extras):
+            todo.extend(requirements_of(req.name, wanted))
+    return out
+
+
+def unmet_extras(dist: str = COMPUTE_DIST) -> dict[str, list[str]]:
+    return {extra: unmet(dist, extra) for extra in installed_extras(dist)}
 
 
 def _run(cmd: list[str], *, timeout: float) -> subprocess.CompletedProcess[str]:

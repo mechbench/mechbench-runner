@@ -67,14 +67,32 @@ tool as nothing to do and reports that in a way that reads like success,
 so a machine can sit on an old version while looking freshly installed.
 `update` verifies by reading the installed version back afterwards
 rather than trusting an exit code, and rolls back if the new version
-cannot start.
+cannot start. An extra of `mechbench-compute` installed beside it (the
+torch backend's, below) is kept: the update installs the manifest into
+the same environment, then checks that every requirement the extra adds
+still holds, down its dependencies, and restores the install before it
+when one does not, naming the requirement and the command that takes the
+new version with the extra. A machine without the extra is never given
+it.
 
 `mechbench doctor` answers "will this actually work here" —
 Python, backend, credentials, API, model cache, disk — before you find
 out the slow way.
 
-Running a model needs Apple Silicon (the MLX backend from
-`mechbench-compute`). The rest installs anywhere.
+Running a model needs a backend from `mechbench-compute`: MLX on Apple
+Silicon, installed by default, or torch, its `torch` extra (about
+555 MB), on an NVIDIA or AMD GPU or on any machine's CPU. The rest
+installs anywhere. To add torch to the tool's environment:
+
+```bash
+uv tool install --managed-python --python 3.14 'mechbench==X' \
+  --with 'mechbench-compute[torch]==Y'
+```
+
+A machine advertises each accelerator it has with the backends that run
+there; a Mac with the extra runs MLX on `metal` and torch on `cpu`, and
+takes a job that asks for either (`mechbench run PROTOCOL --backend
+torch --accelerator cpu`). `doctor` and `service-status` show the set.
 
 ### Running it yourself
 

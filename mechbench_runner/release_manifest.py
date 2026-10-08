@@ -405,16 +405,45 @@ def upgrade(python: str, url: str, *, requested: str | None = None,
     go, why = plan(m, have, requested=requested)
     if not go:
         return Upgrade(not why, False, why, previous, m.target)
+    kept = extras_before()
     try:
         install(python or sys.executable, m, get_bytes=get_bytes, run=run, say=say)
     except ManifestError as exc:
         return Upgrade(False, False,
                        f"upgrade to {RUNNER_DIST} {m.runner_version}, {COMPUTE_DIST} "
                        f"{m.compute_version} failed ({exc})", previous, m.target)
+    broken = extras_broken(kept)
+    if broken:
+        here = python or sys.executable
+        lost = "; ".join(f"the {extra} extra needs {', '.join(problems)}"
+                         for extra, problems in broken.items())
+        restored = restore_previous(here, previous, run=run, say=say)
+        fix = " && ".join(
+            f"uv pip install --python {here} "
+            f"'{COMPUTE_DIST}[{extra}]=={m.compute_version}'" for extra in broken)
+        back = "is restored" if restored else "could not be restored"
+        return Upgrade(False, False,
+                       f"upgrade to {RUNNER_DIST} {m.runner_version}, {COMPUTE_DIST} "
+                       f"{m.compute_version} would drop what this machine installed "
+                       f"beside it ({lost}); the install before it {back}. To take "
+                       f"it with the extra: {fix}", previous, m.target)
     return Upgrade(True, True,
                    f"upgraded {RUNNER_DIST} {previous[0]} -> {m.runner_version}, "
                    f"{COMPUTE_DIST} {previous[1]} -> {m.compute_version} from the "
                    f"release manifest of {m.published_at}", previous, m.target)
+
+
+def extras_before() -> dict[str, list[str]]:
+    return install_mod.unmet_extras()
+
+
+def extras_broken(before: Mapping[str, list[str]]) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for extra, was in before.items():
+        now = [p for p in install_mod.unmet(COMPUTE_DIST, extra) if p not in was]
+        if now:
+            out[extra] = now
+    return out
 
 
 def _norm(name: str) -> str:

@@ -81,12 +81,39 @@ def stack() -> dict[str, str | None]:
     return out
 
 
-def backends() -> list[str]:
+def advertised() -> dict[str, Any]:
     try:
         from mechbench_compute.backends import advertise
-        return [str(b) for b in advertise()["backends"]]
+        return dict(advertise())
     except Exception:  # noqa: BLE001
-        return []
+        return {}
+
+
+def backends() -> list[str]:
+    return [str(b) for b in advertised().get("backends") or []]
+
+
+def accelerators() -> dict[str, list[str]] | None:
+    found = advertised()
+    if not found:
+        return None
+    pairs = found.get("accelerators")
+    if isinstance(pairs, dict):
+        return {str(a): [str(b) for b in names] for a, names in pairs.items()}
+    has = [str(b) for b in found.get("backends") or []]
+    return {str(found["accelerator"]): has} if found.get("accelerator") and has else {}
+
+
+def architecture_levels_by_backend() -> dict[str, dict[str, str]] | None:
+    try:
+        from mechbench_compute import support
+        by_backend = getattr(support, "architecture_levels_by_backend", None)
+        if by_backend is None:
+            return None
+        return {str(b): {str(k): str(v) for k, v in sorted(levels.items())}
+                for b, levels in by_backend().items()}
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def architecture_levels() -> dict[str, str]:
@@ -118,8 +145,10 @@ def identity() -> dict[str, Any]:
         "python": platform.python_version(),
         "stack": stack(),
         "backends": backends(),
+        "accelerators": accelerators(),
         "architectures": sorted(levels),
         "architecture_levels": dict(sorted(levels.items())),
+        "architecture_levels_by_backend": architecture_levels_by_backend(),
     }
     return {k: v for k, v in out.items() if v is not None}
 

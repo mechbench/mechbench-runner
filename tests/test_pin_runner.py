@@ -109,3 +109,15 @@ def test_status_shows_the_id_a_run_pins():
     assert snap["runner_id"] == "rnr_home" and snap["runner_name"] == "studio"
     assert "id       rnr_home (studio)  pin a run here: --runner rnr_home" in _render(snap)
     assert "pin a run" not in _render(RunnerState(version="x", api_url="y").snapshot())
+
+
+def test_status_shows_where_each_backend_runs():
+    state = RunnerState(version="0.67.0", api_url="http://x",
+                        accelerators={"metal": ["mlx"], "cpu": ["torch"]})
+    snap = state.snapshot()
+    assert snap["accelerators"] == {"metal": ["mlx"], "cpu": ["torch"]}
+    assert "runs     mlx on metal · torch on cpu" in _render(snap)
+    assert "runs     no backend" in _render(
+        RunnerState(version="x", api_url="y", accelerators={}).snapshot())
+    bare = RunnerState(version="x", api_url="y").snapshot()
+    assert "accelerators" not in bare and "runs " not in _render(bare)
