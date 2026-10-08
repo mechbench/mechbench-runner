@@ -27,6 +27,20 @@ with both headings.
 
 ### Changes that raise
 
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
+_None._
+
+## 0.67.0 — 2026-10-08
+
+### Changes that raise
+
 - An update (the manifest's self-upgrade, `mechbench update`) that would
   leave an installed extra of `mechbench-compute` (`torch`) with a
   requirement it no longer meets is refused after the install, and the

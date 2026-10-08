@@ -34,8 +34,8 @@ HF_TOKEN=""
 PEER_HOST=""
 ROLE="${ROLE:-host}"
 RUNNER_NAME="${RUNNER_NAME:-enverge-spark-$ROLE}"
-RUNNER_MIN="0.66.2"
-COMPUTE_MIN="0.195.0"
+RUNNER_MIN="0.67.0"
+COMPUTE_MIN="0.196.0"
 DISK_RESERVE_GB=60
 
 SELF="$0"
@@ -133,7 +133,7 @@ step "5. downloads (detached)"
 if [ "$ROLE" = "host" ]; then
   MODELS="google/gemma-3-4b-it|unsloth/gemma-3-4b-it google/gemma-3-27b-it|unsloth/gemma-3-27b-it google/gemma-3-27b-pt|unsloth/gemma-3-27b-pt"
 else
-  MODELS="google/gemma-3-4b-it|unsloth/gemma-3-4b-it google/gemma-4-31b-it google/gemma-4-31b-pt|google/gemma-4-31b Qwen/Qwen3-32B"
+  MODELS="google/gemma-3-4b-it|unsloth/gemma-3-4b-it google/gemma-4-e2b-it google/gemma-4-31b-it google/gemma-4-31b-pt|google/gemma-4-31b Qwen/Qwen3-32B"
 fi
 cat > "$HOME/mechbench-downloads.py" <<'PY'
 import json, os, shutil, sys, time
