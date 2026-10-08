@@ -45,7 +45,7 @@ ask() {  # ask PROMPT VAR: read a secret without echoing it
 ask "registration token for enverge-spark-host (mbr_…): " TOKEN_HOST
 ask "registration token for enverge-spark-peer (mbr_…, Enter to skip the peer): " TOKEN_PEER
 ask "Hugging Face read token (Enter to skip): " HF
-IFS= read -r -p "the peer Spark's address as the host sees it (Enter if unknown; not secret): " PEER
+IFS= read -r -p "the peer Spark's address as the host sees it (Enter if unknown: the host finds it; not secret): " PEER
 case "$TOKEN_HOST" in mbr_*) ;; *) echo "the host token must start mbr_" >&2; exit 1 ;; esac
 case "$TOKEN_PEER" in ""|mbr_*) ;; *) echo "the peer token must start mbr_" >&2; exit 1 ;; esac
 case "$PEER" in *[!A-Za-z0-9.@:_-]*) echo "the peer address has unexpected characters" >&2; exit 1 ;; esac

@@ -28,9 +28,8 @@
 #                         licence (optional: without it the ungated copies are
 #                         pulled where they exist)
 #   PEER_HOST             the second Spark's address as seen from this one, if
-#                         SSH between them works without a password (optional:
-#                         otherwise run this script there by hand with
-#                         ROLE=peer; with nobody there, the host runs alone)
+#                         known (optional: when empty the host finds it, step 9;
+#                         if nothing answers, the host runs alone)
 #   AUTOPILOT             1 (default): on the host, fetch the 055 autopilot and
 #                         run the whole session unattended (step 11); 0: the
 #                         session is queued from the Mac by hand
@@ -278,17 +277,147 @@ if [ "$TORCH_SOURCE" != "none" ] && mechbench calibrate --help 2>&1 | grep -q --
 fi
 echo "calibration: $CAL_RESULT"
 
-# 9. The second Spark: this script again, as the peer, if SSH needs no
-#    password and this script can read itself.
+# 9. The second Spark: this script again, as the peer, with the peer's own
+#    credentials (or token), never the host's. With PEER_HOST empty the host
+#    looks for it (~/mechbench-find-peer.py, at most two minutes): names in
+#    /etc/hosts and ~/.ssh/config, then the /30 or /31 peer and the neighbours
+#    on any linked interface other than the default route's (the Sparks' direct
+#    link); the first that answers ssh with a GPU and is not this machine. The
+#    peer's script is kept (mode 600) in ~/mechbench-peer-startup.sh until it
+#    is delivered, so the autopilot can deliver it if the link appears later.
 PEER_RESULT="not attempted"
-if [ "$ROLE" = "host" ] && [ -n "$PEER_HOST" ] \
-   && { [ -n "$MECHBENCH_CREDENTIALS_PEER" ] || [ -n "$MECHBENCH_TOKEN_PEER" ]; }; then
-  step "9. the peer at $PEER_HOST"
+PEER_SEARCH="{}"
+cat > "$HOME/mechbench-find-peer.py" <<'PY'
+"""Find the other Spark from this one: the first candidate that answers ssh with an NVIDIA GPU and
+is not this machine. Prints one JSON object: {"peer": <target or null>, "why": …, "tried": […]}.
+Bounded: at most DEADLINE seconds in all, each probe at most PROBE seconds."""
+import ipaddress, json, os, re, socket, subprocess, sys, time
+
+DEADLINE = float(os.environ.get("FIND_PEER_SECONDS", "120"))
+PROBE = 20.0
+MARK = "::mechbench-peer::"
+REMOTE = (f"echo {MARK}host $(hostname); echo {MARK}id $(cat /etc/machine-id 2>/dev/null); "
+          f"nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | sed 's/^/{MARK}gpu /'")
+
+
+def sh(cmd, timeout=10.0):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def read(path):
+    try:
+        with open(os.path.expanduser(path)) as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def me():
+    names = {socket.gethostname(), socket.getfqdn(), "localhost"}
+    addrs = {a.split("/")[0] for a in re.findall(r"inet (\S+)", sh(["ip", "-4", "-o", "addr", "show"]))}
+    return names, addrs | {"127.0.0.1"}, read("/etc/machine-id").strip()
+
+
+def interfaces():
+    """(name, cidr) of IPv4 addresses on interfaces that are up, not loopback, not the default route's."""
+    default = set(re.findall(r"\bdev (\S+)", sh(["ip", "-4", "route", "show", "default"])))
+    up = set(re.findall(r"^\d+: ([^:@]+)[^\n]*\bstate UP\b", sh(["ip", "-o", "link", "show"]), re.M))
+    out = []
+    for name, cidr in re.findall(r"^\d+: (\S+)\s+inet (\S+)", sh(["ip", "-4", "-o", "addr", "show"]), re.M):
+        if name != "lo" and name not in default and name in up:
+            out.append((name, cidr))
+    return out
+
+
+def candidates(names, addrs):
+    seen, out = set(), []
+
+    def add(c, source):
+        if c and c not in seen and c not in names and c not in addrs and not c.startswith("127."):
+            seen.add(c)
+            out.append((c, source))
+
+    for line in read("/etc/hosts").splitlines():
+        words = line.split("#", 1)[0].split()
+        if len(words) >= 2 and not words[0].startswith(("127.", "::1", "fe00", "ff0")) and words[0] not in addrs:
+            for name in words[1:]:
+                if not name.startswith(("ip6-", "localhost")):
+                    add(name, "/etc/hosts")
+    for line in read("~/.ssh/config").splitlines():
+        m = re.match(r"\s*Host\s+(.+)", line, re.I)
+        if m:
+            for name in m.group(1).split():
+                if not any(ch in name for ch in "*?!"):
+                    add(name, "~/.ssh/config")
+    links = interfaces()
+    for name, cidr in links:
+        net = ipaddress.ip_interface(cidr)
+        if net.network.prefixlen in (30, 31):
+            hosts = list(net.network.hosts()) if net.network.prefixlen == 30 else list(net.network)
+            for h in hosts:
+                add(str(h), f"the /{net.network.prefixlen} peer on {name}")
+    linked = {n for n, _ in links}
+    for line in sh(["ip", "-4", "neigh"]).splitlines():
+        w = line.split()
+        if len(w) >= 3 and w[1] == "dev" and w[2] in linked and not ({"FAILED", "INCOMPLETE"} & set(w)):
+            add(w[0], f"a neighbour on {w[2]}")
+    return out
+
+
+def probe(target, timeout, my_names, my_id):
+    cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=accept-new",
+           target, REMOTE]
+    try:
+        got = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return None, type(e).__name__
+    if got.returncode != 0:
+        return None, f"ssh exit {got.returncode}"
+    facts = {"gpu": []}
+    for line in got.stdout.splitlines():
+        if line.startswith(MARK):
+            key, _, value = line[len(MARK):].partition(" ")
+            if key == "gpu":
+                facts["gpu"].append(value.strip())
+            else:
+                facts[key] = value.strip()
+    if (my_id and facts.get("id") == my_id) or (not facts.get("id") and facts.get("host") in my_names):
+        return None, "this machine"
+    gpus = [g for g in facts["gpu"] if g]
+    if not gpus:
+        return None, f"no GPU ({facts.get('host') or '?'})"
+    return {"host": facts.get("host"), "gpu": gpus[0]}, "ok"
+
+
+def find(deadline=DEADLINE):
+    t0 = time.monotonic()
+    names, addrs, my_id = me()
+    tried = []
+    found = candidates(names, addrs)
+    if not found:
+        return {"peer": None, "why": "no candidates (no other names, no link peers, no neighbours)", "tried": []}
+    for target, source in found:
+        left = deadline - (time.monotonic() - t0)
+        if left <= 1:
+            return {"peer": None, "why": f"stopped after {deadline:.0f} s", "tried": tried}
+        facts, result = probe(target, min(PROBE, left), names, my_id)
+        tried.append({"candidate": target, "source": source, "result": result})
+        if facts:
+            return {"peer": target, "source": source, **facts, "tried": tried}
+    return {"peer": None, "why": "no candidate answered ssh with a GPU", "tried": tried}
+
+
+if __name__ == "__main__":
+    print(json.dumps(find()))
+PY
+if [ "$ROLE" = "host" ] && { [ -n "$MECHBENCH_CREDENTIALS_PEER" ] || [ -n "$MECHBENCH_TOKEN_PEER" ]; }; then
+  step "9. the peer"
   if [ ! -r "$SELF" ]; then
     PEER_RESULT="this script cannot read itself ($SELF); run it on the peer by hand with ROLE=peer"
-  elif ssh -o BatchMode=yes -o ConnectTimeout=10 "$PEER_HOST" true 2>/dev/null; then
-    # The peer gets its own credentials (or token), never the host's; they
-    # travel on ssh's stdin, not on a command line.
+  else
     PEER_TOKEN="$MECHBENCH_TOKEN_PEER" "$TOOL_PY" -c '
 import os, sys
 token = os.environ["PEER_TOKEN"]
@@ -298,11 +427,24 @@ for line in open(sys.argv[1]):
         line = line.split("=", 1)[0] + "=\"\"\n"
     elif line.startswith("MECHBENCH_TOKEN="):
         line = "MECHBENCH_TOKEN=\"" + token + "\"\n"
-    sys.stdout.write(line)' "$SELF" \
-      | ssh "$PEER_HOST" "umask 077 && cat > ~/mechbench-startup.sh && ROLE=peer AUTOPILOT=0 setsid nohup bash -l ~/mechbench-startup.sh > /dev/null 2>&1 < /dev/null &"
-    PEER_RESULT="started on $PEER_HOST (its log: ~/mechbench-startup.log there)"
-  else
-    PEER_RESULT="ssh to $PEER_HOST needs a password; run this script there by hand with ROLE=peer"
+    sys.stdout.write(line)' "$SELF" > "$HOME/mechbench-peer-startup.sh.tmp" \
+      && chmod 600 "$HOME/mechbench-peer-startup.sh.tmp" \
+      && mv "$HOME/mechbench-peer-startup.sh.tmp" "$HOME/mechbench-peer-startup.sh"
+    if [ -z "$PEER_HOST" ]; then
+      PEER_SEARCH="$("$TOOL_PY" "$HOME/mechbench-find-peer.py" 2>/dev/null || echo '{}')"
+      PEER_HOST="$(printf '%s' "$PEER_SEARCH" | "$TOOL_PY" -c 'import json, sys; print(json.load(sys.stdin).get("peer") or "")' 2>/dev/null)"
+      echo "peer search: $PEER_SEARCH"
+    fi
+    if [ -z "$PEER_HOST" ]; then
+      PEER_RESULT="no peer found (see peer_search); the autopilot keeps looking, or run this script there by hand with ROLE=peer"
+    elif ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$PEER_HOST" \
+           "umask 077 && cat > ~/mechbench-startup.sh && ROLE=peer AUTOPILOT=0 setsid nohup bash -l ~/mechbench-startup.sh > /dev/null 2>&1 < /dev/null &" \
+           < "$HOME/mechbench-peer-startup.sh"; then
+      rm -f "$HOME/mechbench-peer-startup.sh"
+      PEER_RESULT="started on $PEER_HOST (its log: ~/mechbench-startup.log there)"
+    else
+      PEER_RESULT="ssh to $PEER_HOST failed; the autopilot keeps trying, or run this script there by hand with ROLE=peer"
+    fi
   fi
   echo "$PEER_RESULT"
 fi
@@ -311,6 +453,7 @@ fi
 step "10. gate G0"
 ROLE="$ROLE" RUNNER_NAME="$RUNNER_NAME" CV="$CV" TORCH_SOURCE="$TORCH_SOURCE" CUDA_JSON="$CUDA_JSON" \
 KIT_RESULT="$KIT_RESULT" CAL_RESULT="$CAL_RESULT" PEER_RESULT="$PEER_RESULT" \
+PEER_HOST="$PEER_HOST" PEER_SEARCH="$PEER_SEARCH" \
 STARTUP_SECONDS="$(( $(date +%s) - T0 ))" "$TOOL_PY" - "$G0" <<'PY'
 import json, os, sys
 e = os.environ
@@ -320,8 +463,12 @@ except ValueError:
     cuda = {"raw": e["CUDA_JSON"]}
 facts = {"role": e["ROLE"], "runner": e["RUNNER_NAME"], "compute": e["CV"],
          "torch_source": e["TORCH_SOURCE"], "cuda": cuda, "kit": e["KIT_RESULT"],
-         "calibration": e["CAL_RESULT"], "peer": e["PEER_RESULT"],
+         "calibration": e["CAL_RESULT"], "peer": e["PEER_RESULT"], "peer_host": e["PEER_HOST"] or None,
          "startup_seconds": int(e["STARTUP_SECONDS"])}
+try:
+    facts["peer_search"] = json.loads(e["PEER_SEARCH"])
+except ValueError:
+    facts["peer_search"] = {"raw": e["PEER_SEARCH"][:500]}
 with open(sys.argv[1], "w") as f:
     json.dump(facts, f, indent=1)
 print(json.dumps(facts, indent=1))
