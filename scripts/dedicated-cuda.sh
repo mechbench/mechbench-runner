@@ -5,17 +5,37 @@
 # docs/DGX_SPARK_SESSION.md. Any Linux machine with an NVIDIA GPU runs it the
 # same way. Paste it into Enverge's "add startup script".
 #
-# Fill in before pasting, and nowhere else (never commit or share the values):
+# Unattended (the box starts whenever Enverge frees a slot): fill nothing in by
+# hand. On the Mac, run scripts/prepare-box-credentials.sh: it registers the two
+# runners now (enverge-spark-host, enverge-spark-peer) into throwaway HOME
+# directories, embeds their saved credentials and the Hugging Face token below,
+# and puts the completed script on the clipboard for Enverge's form. (A
+# registration token expires 15 minutes after it is minted, so `mechbench login
+# --token` here works only with someone watching.)
+#   MECHBENCH_CREDENTIALS_HOST  base64 of the host runner's ~/.mechbench/config.toml
+#   MECHBENCH_CREDENTIALS_PEER  the same for the peer (the host passes it over ssh)
+# Each holds the runner's own key and the CLI key its registration minted for
+# the verbs (`mechbench run`, `result`, `object`, `runner calibrate --push`):
+# the autopilot needs no other key. Revoke both runners after the session.
+#
+# Attended instead, fill in (never commit or share the values):
 #   MECHBENCH_TOKEN       a single-use registration token from
-#                         https://mechbench.ai/download (mbr_…)
+#                         https://mechbench.ai/download (mbr_…), within 15 min
 #   MECHBENCH_TOKEN_PEER  a second one, for the second Spark (optional)
+#
+# Either way:
 #   HF_TOKEN              a Hugging Face read token that has accepted Gemma's
 #                         licence (optional: without it the ungated copies are
 #                         pulled where they exist)
 #   PEER_HOST             the second Spark's address as seen from this one, if
 #                         SSH between them works without a password (optional:
 #                         otherwise run this script there by hand with
-#                         ROLE=peer and the peer's token)
+#                         ROLE=peer; with nobody there, the host runs alone)
+#   AUTOPILOT             1 (default): on the host, fetch the 055 autopilot and
+#                         run the whole session unattended (step 11); 0: the
+#                         session is queued from the Mac by hand
+#   AUTOPILOT_BUDGET      the autopilot's wall clock from its start, after which
+#                         nothing new is queued (default 8h)
 #
 # Enverge runs startup scripts as `user` in a login shell (not root), caps them
 # at one hour, and logs them to /var/log/enverge/startup.log. This script keeps
@@ -28,10 +48,15 @@
 # the peer takes Gemma 4 31B, then Qwen3-32B. One runner per Spark; nothing is
 # sharded across the two.
 
-MECHBENCH_TOKEN="mbr_REPLACE_ME"
+MECHBENCH_CREDENTIALS_HOST=""
+MECHBENCH_CREDENTIALS_PEER=""
+MECHBENCH_TOKEN=""
 MECHBENCH_TOKEN_PEER=""
 HF_TOKEN=""
 PEER_HOST=""
+AUTOPILOT="${AUTOPILOT:-1}"
+AUTOPILOT_BUDGET="${AUTOPILOT_BUDGET:-8h}"
+KIT_OBJECT="benjismith/training/055/autopilot-kit"
 ROLE="${ROLE:-host}"
 RUNNER_NAME="${RUNNER_NAME:-enverge-spark-$ROLE}"
 RUNNER_MIN="0.67.0"
@@ -185,7 +210,21 @@ fi
 # 6. The runner as a systemd user service, with cuBLAS deterministic
 #    (calibration measures what that costs).
 step "6. runner"
-mechbench login --token "$MECHBENCH_TOKEN" --name "$RUNNER_NAME"
+if [ "$ROLE" = "host" ]; then CREDS="$MECHBENCH_CREDENTIALS_HOST"; else CREDS="$MECHBENCH_CREDENTIALS_PEER"; fi
+if [ -n "$CREDS" ]; then
+  # Registered from the Mac (prepare-box-credentials.sh): restore the saved
+  # credentials. The runner's hello reports this machine's platform and
+  # capabilities; the hostname on its page stays the Mac's from registration.
+  mkdir -p -m 700 "$HOME/.mechbench"
+  ( umask 077 && printf '%s' "$CREDS" | base64 -d > "$HOME/.mechbench/config.toml" ) \
+    && chmod 600 "$HOME/.mechbench/config.toml" \
+    && echo "credentials restored for $RUNNER_NAME (registered beforehand)"
+elif [ -n "$MECHBENCH_TOKEN" ]; then
+  printf '%s\n' "$MECHBENCH_TOKEN" | mechbench login --token - --name "$RUNNER_NAME"
+else
+  echo "no credentials and no registration token: this runner is not signed in"
+fi
+unset CREDS
 mechbench install-service
 DROPIN="$HOME/.config/systemd/user/mechbench.service.d"
 mkdir -p "$DROPIN"
@@ -242,14 +281,25 @@ echo "calibration: $CAL_RESULT"
 # 9. The second Spark: this script again, as the peer, if SSH needs no
 #    password and this script can read itself.
 PEER_RESULT="not attempted"
-if [ "$ROLE" = "host" ] && [ -n "$PEER_HOST" ] && [ -n "$MECHBENCH_TOKEN_PEER" ]; then
+if [ "$ROLE" = "host" ] && [ -n "$PEER_HOST" ] \
+   && { [ -n "$MECHBENCH_CREDENTIALS_PEER" ] || [ -n "$MECHBENCH_TOKEN_PEER" ]; }; then
   step "9. the peer at $PEER_HOST"
   if [ ! -r "$SELF" ]; then
     PEER_RESULT="this script cannot read itself ($SELF); run it on the peer by hand with ROLE=peer"
   elif ssh -o BatchMode=yes -o ConnectTimeout=10 "$PEER_HOST" true 2>/dev/null; then
-    sed -e "s|^MECHBENCH_TOKEN=.*|MECHBENCH_TOKEN=\"$MECHBENCH_TOKEN_PEER\"|" \
-        -e 's|^MECHBENCH_TOKEN_PEER=.*|MECHBENCH_TOKEN_PEER=""|' -e 's|^PEER_HOST=.*|PEER_HOST=""|' "$SELF" \
-      | ssh "$PEER_HOST" "umask 077 && cat > ~/mechbench-startup.sh && ROLE=peer setsid nohup bash -l ~/mechbench-startup.sh > /dev/null 2>&1 < /dev/null &"
+    # The peer gets its own credentials (or token), never the host's; they
+    # travel on ssh's stdin, not on a command line.
+    PEER_TOKEN="$MECHBENCH_TOKEN_PEER" "$TOOL_PY" -c '
+import os, sys
+token = os.environ["PEER_TOKEN"]
+blank = ("MECHBENCH_CREDENTIALS_HOST=", "MECHBENCH_TOKEN_PEER=", "PEER_HOST=")
+for line in open(sys.argv[1]):
+    if line.startswith(blank):
+        line = line.split("=", 1)[0] + "=\"\"\n"
+    elif line.startswith("MECHBENCH_TOKEN="):
+        line = "MECHBENCH_TOKEN=\"" + token + "\"\n"
+    sys.stdout.write(line)' "$SELF" \
+      | ssh "$PEER_HOST" "umask 077 && cat > ~/mechbench-startup.sh && ROLE=peer AUTOPILOT=0 setsid nohup bash -l ~/mechbench-startup.sh > /dev/null 2>&1 < /dev/null &"
     PEER_RESULT="started on $PEER_HOST (its log: ~/mechbench-startup.log there)"
   else
     PEER_RESULT="ssh to $PEER_HOST needs a password; run this script there by hand with ROLE=peer"
@@ -277,10 +327,66 @@ with open(sys.argv[1], "w") as f:
 print(json.dumps(facts, indent=1))
 PY
 
+# 11. The autopilot (host only): the 055 directory's battery, fetched from the
+#     private platform object the PM wrote with `battery.py kit` (the
+#     experiments repository is private; this runner's CLI key reads the
+#     object), run as a detached systemd user unit that outlives this script's
+#     hour and restarts on failure. It resumes from its state file
+#     (~/mechbench-055/experiments/055-the-dgx-spark-session/session.json) and
+#     leaves the runners signed in.
+AUTOPILOT_RESULT="not started (ROLE=$ROLE, AUTOPILOT=$AUTOPILOT)"
+if [ "$ROLE" = "host" ] && [ "$AUTOPILOT" = "1" ]; then
+  step "11. the autopilot"
+  KIT_HOME="$HOME/mechbench-055"
+  BATTERY="$KIT_HOME/experiments/055-the-dgx-spark-session/battery.py"
+  ENVF="$HOME/.config/mechbench-autopilot.env"
+  if systemctl --user is-active --quiet mechbench-autopilot 2>/dev/null; then
+    AUTOPILOT_RESULT="already running (systemctl --user status mechbench-autopilot)"
+  elif mechbench object read "$KIT_OBJECT" --full > "$HOME/mechbench-055-kit.json" \
+       && "$TOOL_PY" - "$HOME/mechbench-055-kit.json" "$KIT_HOME" <<'PY'
+import hashlib, json, sys
+from pathlib import Path
+kit = json.loads(Path(sys.argv[1]).read_text())
+root = Path(sys.argv[2]).resolve()
+for rel, text in kit["files"].items():
+    if hashlib.sha256(text.encode()).hexdigest() != kit["sha256"][rel]:
+        raise SystemExit(f"{rel}: its sha256 does not match the kit's")
+    p = (root / rel).resolve()
+    if root not in p.parents:
+        raise SystemExit(f"{rel}: outside {root}")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text)
+print(f"kit at {str(kit.get('commit'))[:12]}, made {kit.get('made')}: {len(kit['files'])} files in {root}")
+PY
+  then
+    mkdir -p "$HOME/.config"
+    ( umask 077 && printf '%s\n' "PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin" \
+        "MECHBENCH_PY=$TOOL_PY" "MECHBENCH_SPARK_PEER=$PEER_HOST" "PYTHONUNBUFFERED=1" > "$ENVF" )
+    if systemd-run --user --unit=mechbench-autopilot --collect \
+         --property=Restart=on-failure --property=RestartSec=60 \
+         --property=EnvironmentFile="$ENVF" --property=WorkingDirectory="$HOME" \
+         --property=StandardOutput="append:$HOME/mechbench-autopilot.log" \
+         --property=StandardError="append:$HOME/mechbench-autopilot.log" \
+         "$TOOL_PY" "$BATTERY" autopilot --budget "$AUTOPILOT_BUDGET" 2>/dev/null; then
+      AUTOPILOT_RESULT="running as the user unit mechbench-autopilot (budget $AUTOPILOT_BUDGET)"
+    else
+      ( set -a; . "$ENVF"; set +a
+        setsid nohup bash -c 'until "$0" "$1" autopilot --budget "$2"; do sleep 60; done' \
+          "$TOOL_PY" "$BATTERY" "$AUTOPILOT_BUDGET" >> "$HOME/mechbench-autopilot.log" 2>&1 < /dev/null & )
+      AUTOPILOT_RESULT="running detached in a restart loop (no user systemd)"
+    fi
+  else
+    AUTOPILOT_RESULT="failed: could not fetch or unpack $KIT_OBJECT (above); queue from the Mac"
+  fi
+  echo "autopilot: $AUTOPILOT_RESULT"
+fi
+
 cat <<EOF
 
 === done in $(( $(date +%s) - T0 ))s; log at $LOG, gate facts at $G0
 Downloads continue: tail -f ~/mechbench-downloads.log
-The runner $RUNNER_NAME claims jobs that name the torch backend. The session's
-jobs are queued from the Mac by the battery script (docs/DGX_SPARK_SESSION.md).
+The runner $RUNNER_NAME claims jobs that name the torch backend.
+Autopilot: $AUTOPILOT_RESULT
+  its log: ~/mechbench-autopilot.log; its status, from anywhere:
+  mechbench object read benjismith/training/055/autopilot-status --full
 EOF
