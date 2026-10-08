@@ -1,5 +1,3 @@
-"""dedicated-cuda.sh's peer search (~/mechbench-find-peer.py) on a fake machine."""
-
 from __future__ import annotations
 
 import subprocess
@@ -64,7 +62,6 @@ def fp(monkeypatch):
 
 
 def answers(table):
-    """A fake ssh: table[target] = (returncode, host, machine-id, gpu)."""
     calls = []
 
     def run(cmd, capture_output, text, timeout):
@@ -85,7 +82,7 @@ def test_candidates_in_order_without_this_machine(fp):
     assert [c for c, _ in got] == ["github.com", "192.168.100.2", "169.254.7.11"]
     assert "spark-a" not in dict(got) and "10.1.2.1" not in dict(
         got
-    )  # not the default route's
+    )
 
 
 def test_first_gpu_answer_wins(fp, monkeypatch):
