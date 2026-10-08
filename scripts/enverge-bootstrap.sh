@@ -19,7 +19,7 @@ esac
 settings="$(printf '%s\n' "$full" | grep -E '^(MECHBENCH_CREDENTIALS_HOST|MECHBENCH_CREDENTIALS_PEER|MECHBENCH_TOKEN|MECHBENCH_TOKEN_PEER|HF_TOKEN|PEER_HOST)=' )"
 [ "$(printf '%s\n' "$settings" | wc -l | tr -d ' ')" = 6 ] || { echo "expected six settings on the clipboard" >&2; exit 1; }
 
-boot="$(cat <<EOF
+cat <<EOF | pbcopy
 #!/bin/bash
 # mechbench: the DGX Spark session's startup. Downloads scripts/dedicated-cuda.sh
 # from github.com/mechbench/mechbench-runner at a pinned commit, checks it, writes
@@ -49,7 +49,4 @@ PY
 rm -f "\$F.src"
 exec bash "\$F"
 EOF
-)"
-
-printf '%s\n' "$boot" | pbcopy
-echo "copied: $(printf '%s\n' "$boot" | wc -c | tr -d ' ') bytes (limit 16384); dedicated-cuda.sh at ${COMMIT:0:7}"
+echo "copied: $(pbpaste | wc -c | tr -d ' ') bytes (limit 16384); dedicated-cuda.sh at ${COMMIT:0:7}"
