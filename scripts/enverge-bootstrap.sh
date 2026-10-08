@@ -16,7 +16,7 @@ case "$full" in
   *) echo "the clipboard does not hold the completed startup script; run prepare-box-credentials.sh again" >&2; exit 1 ;;
 esac
 
-settings="$(printf '%s\n' "$full" | grep -E '^(MECHBENCH_CREDENTIALS_HOST|MECHBENCH_CREDENTIALS_PEER|MECHBENCH_TOKEN|MECHBENCH_TOKEN_PEER|HF_TOKEN|PEER_HOST)=' )"
+settings="$(printf '%s\n' "$full" | awk -F= '/^(MECHBENCH_CREDENTIALS_HOST|MECHBENCH_CREDENTIALS_PEER|MECHBENCH_TOKEN|MECHBENCH_TOKEN_PEER|HF_TOKEN|PEER_HOST)="/ && !seen[$1]++')"
 [ "$(printf '%s\n' "$settings" | wc -l | tr -d ' ')" = 6 ] || { echo "expected six settings on the clipboard" >&2; exit 1; }
 
 cat <<EOF | pbcopy
