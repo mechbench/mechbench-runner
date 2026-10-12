@@ -132,18 +132,33 @@ sys.exit(0 if out["cuda"] else 1)
 PY
 }
 TORCH_SOURCE="pypi"
+TORCH_SPEC=""
+TORCH_INDEX=""
+# Newer torch builds can abort at import on some GB10 machines
+# (`malloc(): corrupted top size` while loading their CUDA libraries; seen
+# with 2.13 and 2.14 for CUDA 13.0 on Enverge's 2x Spark, 2026-10-12), where
+# 2.11 for CUDA 13.0 and 2.9 for CUDA 12.9 run. Each is tried in turn.
 if ! CUDA_JSON="$(cuda_check)"; then
   echo "torch from PyPI cannot run kernels here: $CUDA_JSON"
-  echo "reinstalling torch from https://download.pytorch.org/whl/cu130"
-  uv pip install --python "$TOOL_PY" --reinstall-package torch \
-    --index-url https://download.pytorch.org/whl/cu130 --extra-index-url https://pypi.org/simple torch
-  TORCH_SOURCE="pytorch-cu130"
-  CUDA_JSON="$(cuda_check)" || {
-    echo "CUDA still unavailable: $CUDA_JSON"
+  for candidate in "torch|cu130" "torch<2.12|cu130" "torch<2.10|cu129"; do
+    TORCH_SPEC="${candidate%%|*}"
+    TORCH_INDEX="https://download.pytorch.org/whl/${candidate##*|}"
+    echo "reinstalling $TORCH_SPEC from $TORCH_INDEX"
+    uv pip install --python "$TOOL_PY" --reinstall-package torch \
+      --index-url "$TORCH_INDEX" --extra-index-url https://pypi.org/simple "$TORCH_SPEC"
+    if CUDA_JSON="$(cuda_check)"; then
+      TORCH_SOURCE="pytorch-${candidate##*|} ($TORCH_SPEC)"
+      break
+    fi
+    echo "still unavailable with $TORCH_SPEC: $CUDA_JSON"
+    TORCH_SOURCE="none"
+  done
+  if [ "$TORCH_SOURCE" = "none" ]; then
     echo "fallback by hand: NVIDIA's PyTorch container (nvcr.io/nvidia/pytorch, a GB10 build)"
     echo "with steps 3 and 6 run inside it; see docs/DGX_SPARK_SESSION.md, gate G0"
-    TORCH_SOURCE="none"
-  }
+  else
+    systemctl --user restart mechbench.service 2>/dev/null || true
+  fi
 fi
 echo "$CUDA_JSON"
 "$TOOL_PY" -c 'import mechbench_compute.backends as b; print("advertise", b.advertise()); print("describe", b.describe())'
@@ -251,9 +266,9 @@ if [ "$TORCH_SOURCE" != "none" ] && cd "$KIT_DIR"; then
   git checkout --quiet "${KIT_COMMIT:-HEAD}" && echo "kit at $(git log --oneline -1 | cut -c1-70) (compute $CV)"
   uv venv --quiet --python 3.12 .venv
   uv pip install --quiet --python .venv/bin/python -e '.[torch,dev]'
-  if [ "$TORCH_SOURCE" = "pytorch-cu130" ]; then
+  if [ -n "$TORCH_SPEC" ]; then
     uv pip install --quiet --python .venv/bin/python --reinstall-package torch \
-      --index-url https://download.pytorch.org/whl/cu130 --extra-index-url https://pypi.org/simple torch
+      --index-url "$TORCH_INDEX" --extra-index-url https://pypi.org/simple "$TORCH_SPEC"
   fi
   KIT_OUT="$(MECHBENCH_KIT_DEVICE=cuda CUBLAS_WORKSPACE_CONFIG=:4096:8 .venv/bin/python -m pytest \
     tests/test_architecture_kit.py tests/test_torch_backend.py tests/test_backends.py tests/test_backend_jobs.py \
