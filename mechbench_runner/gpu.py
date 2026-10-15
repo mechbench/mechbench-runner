@@ -4,12 +4,15 @@ import csv
 import io
 import re
 import shutil
+import sys
 from collections.abc import Callable, Sequence
 from typing import Any
 
 from .identity import run as _run
 
 Run = Callable[[list[str]], str]
+Reading = tuple[int | None, int | None]
+Reader = tuple[str, Callable[[], "Reading | str"]]
 
 SMI = "nvidia-smi"
 REASON_FIELDS = ("clocks_event_reasons.active", "clocks_throttle_reasons.active")
@@ -92,12 +95,62 @@ def reasons(raw: str | int | None) -> list[str] | None:
     return [name for bit, name in REASONS if value & bit]
 
 
+def memory_from(readers: Sequence[Reader]) -> dict[str, Any]:
+    reasons: list[str] = []
+    for name, read in readers:
+        try:
+            got = read()
+        except Exception as e:  # noqa: BLE001
+            got = f"{name} did not answer ({e})"
+        if isinstance(got, str):
+            reasons.append(got)
+            continue
+        used, free = got
+        if used is None and free is None:
+            reasons.append(f"{name} reports the device's memory as N/A")
+            continue
+        return {"used_bytes": used, "free_bytes": free, "source": name, "reason": None}
+    return {"used_bytes": None, "free_bytes": None, "source": None,
+            "reason": "; ".join(reasons) or "no reader of the device's memory"}
+
+
+def nvml_memory(nvml: Any, handle: Any) -> Reading | str:
+    info = nvml.nvmlDeviceGetMemoryInfo(handle)
+    return int(info.used), int(info.free)
+
+
+def torch_memory(index: int = 0) -> Reading | str:
+    torch = sys.modules.get("torch")
+    if torch is None:
+        return "torch is not loaded in this process"
+    if not torch.cuda.is_initialized():
+        return "torch has not initialized CUDA in this process"
+    free, total = torch.cuda.mem_get_info(index)
+    return int(total) - int(free), int(free)
+
+
+def fallbacks(index: int = 0) -> list[Reader]:
+    held: dict[str, Any] = {}
+
+    def from_nvml() -> Reading | str:
+        if "nvml" not in held:
+            held["nvml"] = Nvml.open(index)
+        found = held["nvml"]
+        if found is None:
+            return "pynvml is not installed or NVML did not start"
+        return nvml_memory(found._nvml, found._handle)  # noqa: SLF001
+
+    return [("nvml", from_nvml), ("torch", lambda: torch_memory(index))]
+
+
 class Smi:
-    def __init__(self, sh: Run = run, index: int = 0) -> None:
+    def __init__(self, sh: Run = run, index: int = 0,
+                 memory: Sequence[Reader] | None = None) -> None:
         self._sh = sh
         self._index = index
         self._unsupported: set[str] = set()
         self._reason_field: str | None = None
+        self._memory = list(memory) if memory is not None else fallbacks(index)
 
     def _query(self, fields: Sequence[str]) -> dict[str, str | None] | None:
         out = self._sh([SMI, f"--id={self._index}", f"--query-gpu={','.join(fields)}",
@@ -162,17 +215,25 @@ class Smi:
         if all(v is None for v in raw.values()):
             return None
         mask = mask_of(raw.get(field)) if field else None
+        used_mib = number(raw.get("memory.used"))
+
+        def from_smi() -> Reading | str:
+            if used_mib is None:
+                return "nvidia-smi reports memory.used as N/A"
+            return int(used_mib * 2**20), None
+
         return described(
             sm=number(raw.get("clocks.sm")), max_sm=number(raw.get("clocks.max.sm")),
             temperature=number(raw.get("temperature.gpu")), power=number(raw.get("power.draw")),
             power_limit=number(raw.get("power.limit")),
             utilization=number(raw.get("utilization.gpu")),
-            used_mib=number(raw.get("memory.used")), mask=mask)
+            memory=memory_from([("nvidia-smi", from_smi), *self._memory]), mask=mask)
 
 
 def described(*, sm: float | None, max_sm: float | None, temperature: float | None,
               power: float | None, power_limit: float | None, utilization: float | None,
-              used_mib: float | None, mask: int | None) -> dict[str, Any]:
+              mask: int | None, memory: dict[str, Any] | None = None) -> dict[str, Any]:
+    memory = memory or memory_from(())
     active = reasons(mask)
     return {
         "sm_clock_mhz": sm,
@@ -181,7 +242,10 @@ def described(*, sm: float | None, max_sm: float | None, temperature: float | No
         "power_w": power,
         "power_limit_w": power_limit,
         "utilization_percent": utilization,
-        "memory_used_bytes": int(used_mib * 2**20) if used_mib is not None else None,
+        "memory_used_bytes": memory["used_bytes"],
+        "memory_free_bytes": memory["free_bytes"],
+        "memory_source": memory["source"],
+        "memory_reason": memory["reason"],
         "reason_mask": mask,
         "reasons": active,
         "throttling": sorted(set(active or ()) & THROTTLING) if active is not None else None,
@@ -189,9 +253,12 @@ def described(*, sm: float | None, max_sm: float | None, temperature: float | No
 
 
 class Nvml:
-    def __init__(self, nvml: Any, index: int = 0) -> None:
+    def __init__(self, nvml: Any, index: int = 0,
+                 memory: Sequence[Reader] | None = None) -> None:
         self._nvml = nvml
         self._handle = nvml.nvmlDeviceGetHandleByIndex(index)
+        self._memory = (list(memory) if memory is not None
+                        else [("torch", lambda: torch_memory(index))])
 
     @classmethod
     def open(cls, index: int = 0) -> Nvml | None:
@@ -214,7 +281,6 @@ class Nvml:
     def state(self) -> dict[str, Any] | None:
         n = self._nvml
         util = self._read("nvmlDeviceGetUtilizationRates")
-        mem = self._read("nvmlDeviceGetMemoryInfo")
         power = self._read("nvmlDeviceGetPowerUsage")
         limit = self._read("nvmlDeviceGetEnforcedPowerLimit")
         mask = (self._read("nvmlDeviceGetCurrentClocksEventReasons")
@@ -229,7 +295,8 @@ class Nvml:
             power=power / 1000 if power is not None else None,
             power_limit=limit / 1000 if limit is not None else None,
             utilization=float(util.gpu) if util is not None else None,
-            used_mib=mem.used / 2**20 if mem is not None else None,
+            memory=memory_from([("nvml", lambda: nvml_memory(n, self._handle)),
+                                *self._memory]),
             mask=int(mask) if mask is not None else None)
 
 
@@ -257,9 +324,27 @@ def summarize(states: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
                 seen.append(r)
     return {
         "samples": len(states),
+        "memory": memory_summary(states),
         "sm_clock_mhz": span("sm_clock_mhz"),
         "temperature_c": span("temperature_c"),
         "power_w": span("power_w"),
         "utilization_percent": span("utilization_percent"),
         "throttling": seen,
     }
+
+
+def memory_summary(states: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    def span(key: str) -> dict[str, int] | None:
+        values = [s[key] for s in states if s.get(key) is not None]
+        return {"min": min(values), "max": max(values)} if values else None
+
+    sources: list[str] = []
+    for s in states:
+        if s.get("memory_source") and s["memory_source"] not in sources:
+            sources.append(s["memory_source"])
+    if not sources:
+        reasons = [s["memory_reason"] for s in states if s.get("memory_reason")]
+        return {"used_bytes": None, "free_bytes": None, "sources": [],
+                "reason": reasons[-1] if reasons else "no sample read the device's memory"}
+    return {"used_bytes": span("memory_used_bytes"), "free_bytes": span("memory_free_bytes"),
+            "sources": sources, "reason": None}

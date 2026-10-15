@@ -19,7 +19,7 @@ def chunks(seconds: float, step_at) -> list[dict[str, float]]:
 def sample(t: float, reasons: int) -> dict:
     return {"t": t, **gpu.described(sm=2400.0 if not reasons else 1800.0, max_sm=3003.0,
                                     temperature=60.0 + t / 10, power=40.0, power_limit=None,
-                                    utilization=100.0, used_mib=None, mask=reasons)}
+                                    utilization=100.0, mask=reasons)}
 
 
 def test_a_machine_that_holds_its_clocks_reports_steady_equal_to_burst():
@@ -75,7 +75,7 @@ def test_the_probe_runs_for_its_minutes_and_samples_the_gpu_while_it_runs():
     got = sustained.sustained(step, timed, flops=FLOPS, minutes=0.01, interval=0.05,
                               sample=lambda: gpu.described(
                                   sm=2400.0, max_sm=None, temperature=50.0, power=None,
-                                  power_limit=None, utilization=100.0, used_mib=None, mask=0),
+                                  power_limit=None, utilization=100.0, mask=0),
                               chunk_seconds=0.05)
     assert calls["n"] > 1 and got["chunks"] >= 1
     assert got["gpu"]["samples"] >= 1 and got["series"][0]["sm_clock_mhz"] == 2400.0

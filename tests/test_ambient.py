@@ -330,3 +330,37 @@ def test_the_runner_takes_compute_s_span_and_sends_it_with_the_ambient(monkeypat
     r._spool_node_done("cap", None, "sha256:fp")
     [(nid, fields)] = sent
     assert nid == "cap" and fields["forwards"] == 2 and fields["quiet"] is True
+
+
+class TestGb10Memory:
+    def linux_sampled(self, memory):
+        from mechbench_runner import gpu
+        from tests.test_gpu import FakeSmi
+
+        s = Sampler(sh=lambda cmd: "", me=1, smi=gpu.Smi(FakeSmi(), memory=memory))
+        s.sample()
+        s.sample()
+        return s.result()
+
+    def test_where_nvidia_smi_says_na_the_device_memory_comes_from_the_fallback(self):
+        counters = self.linux_sampled([("nvml", lambda: (30 * GB, 90 * GB))])
+        device = counters["memory"]["device"]
+        assert device["sources"] == ["nvml"]
+        assert device["used_bytes"] == {"min": 30 * GB, "max": 30 * GB}
+        assert device["free_bytes"] == {"min": 90 * GB, "max": 90 * GB}
+        assert "memory_reason" not in counters
+
+    def test_where_nothing_answers_the_memory_is_null_with_a_reason_never_empty(self):
+        counters = self.linux_sampled([("nvml", lambda: "pynvml is not installed"),
+                                       ("torch", lambda: "torch is not loaded in this process")])
+        assert counters["memory"] is None
+        assert "nvidia-smi reports memory.used as N/A" in counters["memory_reason"]
+        assert "pynvml is not installed" in counters["memory_reason"]
+        assert counters["gpu"]["memory"]["reason"]
+
+    def test_without_a_gpu_the_reason_says_so(self):
+        s = Sampler(sh=lambda cmd: "", me=1, smi=False)
+        s.sample()
+        counters = s.result()
+        assert counters["memory"] is None
+        assert "no GPU is visible" in counters["memory_reason"]

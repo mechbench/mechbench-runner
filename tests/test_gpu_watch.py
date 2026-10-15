@@ -234,3 +234,24 @@ def test_the_canary_measures_on_the_backend_its_baseline_was_taken_on(monkeypatc
     microbench.canary(base)
     microbench.canary({**base, "backend": "torch"})
     assert seen == ["mlx", "mlx", "torch", "torch"]
+
+
+def test_the_series_names_the_memory_source_and_the_summary_its_reason():
+    clock = Clock()
+    smi = gpu.Smi(FakeSmi(), memory=[("torch", lambda: (8 * 2**30, 100 * 2**30))])
+    w = gpu_watch.JobGpu(smi.state, interval=1.0, clock=clock, available=lambda: None)
+    w.start_at = clock.now
+    w.take()
+    body = w.stop()
+    row = gpu_watch.unpack(body["series"])[0]
+    assert row["memory_source"] == "torch" and row["memory_free_mib"] == 100 * 1024
+    assert body["summary"]["memory_sources"] == ["torch"]
+    assert body["summary"]["min_memory_free_bytes"] == 100 * 2**30
+    assert "memory_reason" not in body["summary"]
+
+    quiet = gpu.Smi(FakeSmi(), memory=[("nvml", lambda: "pynvml is not installed")])
+    w = gpu_watch.JobGpu(quiet.state, interval=1.0, clock=clock, available=lambda: None)
+    w.start_at = clock.now
+    w.take()
+    s = w.stop()["summary"]
+    assert s["memory_sources"] == [] and "pynvml is not installed" in s["memory_reason"]
