@@ -735,12 +735,7 @@ class JobRunner:
         resume_map: dict = {}
         resume_summary: dict | None = None
         if resumed and "resume" in inspect.signature(self._executor.run).parameters:
-            with suppress(Exception):
-                resume_map = self._spool.resume_map()
-                resume_summary = self._spool.summary() if resume_map else None
-            if resume_map:
-                print(f"[runner] {job_id}: resuming from spool — "
-                      f"{resume_summary}")
+            resume_map, resume_summary = self._read_resume(job_id)
         self._active_job = job_id
         self._active_api = api
         self._last_byte_report = 0.0
@@ -785,10 +780,8 @@ class JobRunner:
                     and node_index == reported_node):
                 return
             extra: dict[str, Any] = {}
-            if resumed and not promoted:
-                extra["resumed_from"] = resume_summary or {
-                    "node": str((node or {}).get("id", "")), "reused": 0,
-                }
+            if resume_summary and not promoted:
+                extra["resumed_from"] = resume_summary
             ledger = self._spend
             if ledger is not None and ledger.changed():
                 extra["spent_usd"] = ledger.spent_usd
@@ -909,15 +902,46 @@ class JobRunner:
                       f"({type(e).__name__}: {str(e)[:120]}); further drops "
                       f"for this node are counted, not logged")
 
+    def _read_resume(self, job_id: str) -> tuple[dict, dict | None]:
+        spool = self._spool
+        try:
+            resume_map = spool.resume_map()
+        except Exception as e:  # noqa: BLE001
+            print(f"[runner] {job_id}: the spool could not be read "
+                  f"({type(e).__name__}: {str(e)[:200]}); nothing to resume "
+                  f"from, every node runs again")
+            return {}, None
+        for nid, why in spool.unread.items():
+            print(f"[runner] {job_id}: node {nid!r} could not reuse {why[:200]}")
+        if not resume_map:
+            print(f"[runner] {job_id}: nothing to resume from: "
+                  f"{spool.empty_reason}; every node runs again")
+            return {}, None
+        summary = spool.summary(resume_map)
+        print(f"[runner] {job_id}: resuming from spool — {summary}")
+        return resume_map, summary
+
     def _spool_checkpoint(self, nid: str, state) -> None:
-        if self._spool is not None:
-            with suppress(Exception):
-                self._spool.checkpoint(nid, state)
+        if self._spool is None:
+            return
+        try:
+            self._spool.checkpoint(nid, state)
+        except Exception as e:  # noqa: BLE001
+            if nid not in self._spool.unsaved:
+                self._spool.unsaved.add(nid)
+                print(f"[runner] {self._spool.job_id}: node {nid!r}'s training "
+                      f"checkpoint could not be spooled and will not resume "
+                      f"({type(e).__name__}: {str(e)[:120]}); further failures "
+                      f"for this node are not logged")
 
     def _spool_node_done(self, nid: str, path, fingerprint: str) -> None:
         if self._spool is not None:
-            with suppress(Exception):
+            try:
                 self._spool.node_done(nid, path, fingerprint)
+            except Exception as e:  # noqa: BLE001
+                print(f"[runner] {self._spool.job_id}: node {nid!r} finished but "
+                      f"could not be marked done in the spool and will run "
+                      f"again on a resume ({type(e).__name__}: {str(e)[:120]})")
         if self._watch is not None:
             self._watch.done(nid)
 

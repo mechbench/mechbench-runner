@@ -51,11 +51,34 @@ def adopt_legacy() -> None:
         make_owned(target, name, adopt=True)
 
 
+def _read_checkpoint(ck: Path) -> dict[str, Any]:
+    import numpy as np
+    from mechbench_schema import load_raw
+
+    meta = load_raw((ck / "state.cbor").read_bytes())
+    with np.load(ck / "weights.npz", allow_pickle=False) as f:
+        weights = {k: f[k] for k in f.files}
+    with np.load(ck / "opt.npz", allow_pickle=False) as f:
+        opt: dict[str, Any] = {k: f[k] for k in f.files}
+    opt.update(meta.get("opt_scalars") or {})
+    return {
+        "step": int(meta["step"]),
+        "weights": weights,
+        "opt_state": opt,
+        "np_rng": json.loads(meta["np_rng_json"]),
+        "mx_key": (None if meta.get("mx_key") is None
+                   else np.array(meta["mx_key"], dtype=np.uint32)),
+    }
+
+
 class JobSpool:
     def __init__(self, job_id: str) -> None:
         self.job_id = check_id("job id", job_id)
         self.root = job_dir(job_id)
         self.dropped: dict[str, int] = {}
+        self.unread: dict[str, str] = {}
+        self.unsaved: set[str] = set()
+        self.empty_reason: str | None = None
 
     def node_dir(self, nid: str) -> Path:
         return owned_dir(self.root, "node id", nid)
@@ -82,7 +105,7 @@ class JobSpool:
                       dump_canonical({"key": key, "item": item}))
 
     def checkpoint(self, nid: str, state: dict[str, Any]) -> None:
-        import mlx.core as mx
+        import numpy as np
         from mechbench_schema import dump_canonical
 
         node = self._open(nid)
@@ -90,13 +113,13 @@ class JobSpool:
         tmp = under(node, "checkpoint.tmp", what="node id", ident=nid)
         remove_owned(node, "checkpoint.tmp")
         tmp.mkdir(mode=0o700)
-        mx.save_safetensors(str(tmp / "weights.safetensors"),
-                            {k: mx.array(v) for k, v in state["weights"].items()})
-        arrays = {k: mx.array(v) for k, v in state["opt_state"].items()
+        np.savez(tmp / "weights.npz",
+                 **{k: np.asarray(v) for k, v in state["weights"].items()})
+        arrays = {k: np.asarray(v) for k, v in state["opt_state"].items()
                   if hasattr(v, "shape")}
         scalars = {k: v for k, v in state["opt_state"].items()
                    if not hasattr(v, "shape")}
-        mx.save_safetensors(str(tmp / "opt.safetensors"), arrays)
+        np.savez(tmp / "opt.npz", **arrays)
         meta = {
             "step": int(state["step"]),
             "opt_scalars": scalars,
@@ -121,14 +144,16 @@ class JobSpool:
                       dump_canonical({"fingerprint": fingerprint, "result": result}))
 
     def resume_map(self) -> dict[str, dict[str, Any]]:
-        import mlx.core as mx
-        import numpy as np
         from mechbench_schema import load_raw
 
+        self.unread = {}
+        self.empty_reason = None
         out: dict[str, dict[str, Any]] = {}
         if not self.root.is_dir():
+            self.empty_reason = "no spool for this job on this machine"
             return out
         if owner_of(self.root) != self.job_id:
+            self.empty_reason = "the spool directory is not marked as this job's"
             return out
         nodes = sorted((nid, p) for p in self.root.iterdir()
                        if p.is_dir() and (nid := owner_of(p)) is not None)
@@ -139,7 +164,11 @@ class JobSpool:
             entry: dict[str, Any] = {"fingerprint": fp_file.read_text().strip()}
             done = d / "done"
             if done.is_file():
-                rec = load_raw(done.read_bytes())
+                try:
+                    rec = load_raw(done.read_bytes())
+                except Exception as exc:  # noqa: BLE001
+                    self.unread[nid] = f"its done record: {type(exc).__name__}: {exc}"
+                    rec = None
                 if isinstance(rec, dict) and rec.get("path"):
                     entry["done"] = rec["path"]
                     out[nid] = entry
@@ -169,26 +198,21 @@ class JobSpool:
                     entry["items"] = items
             ck = d / "checkpoint"
             if (ck / "state.cbor").is_file():
-                meta = load_raw((ck / "state.cbor").read_bytes())
-                weights = {k: np.array(v) for k, v in
-                           mx.load(str(ck / "weights.safetensors")).items()}
-                opt = {k: np.array(v) for k, v in
-                       mx.load(str(ck / "opt.safetensors")).items()}
-                opt.update(meta.get("opt_scalars") or {})
-                entry["checkpoint"] = {
-                    "step": int(meta["step"]),
-                    "weights": weights,
-                    "opt_state": opt,
-                    "np_rng": json.loads(meta["np_rng_json"]),
-                    "mx_key": (None if meta.get("mx_key") is None
-                               else np.array(meta["mx_key"], dtype=np.uint32)),
-                }
+                try:
+                    entry["checkpoint"] = _read_checkpoint(ck)
+                except Exception as exc:  # noqa: BLE001
+                    self.unread[nid] = f"its checkpoint: {type(exc).__name__}: {exc}"
             if len(entry) > 1:
                 out[nid] = entry
+        if not out:
+            self.empty_reason = (
+                f"{len(nodes)} node(s) spooled, none finished, held a result, "
+                f"kept an item or saved a checkpoint" if nodes
+                else "no node had started")
         return out
 
-    def summary(self) -> dict[str, Any]:
-        m = self.resume_map()
+    def summary(self, m: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+        m = self.resume_map() if m is None else m
         reused_items = sum(len(e.get("items", {})) for e in m.values())
         done_nodes = [n for n, e in m.items() if "done" in e or "held" in e]
         step = max((e["checkpoint"]["step"] for e in m.values()

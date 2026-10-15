@@ -37,6 +37,40 @@ _None._
 
 _None._
 
+## 0.67.1 — 2026-10-14
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
+- A runner signed in with `mechbench login` honours
+  `MECHBENCH_WATCHDOG_SECONDS`; it got the 900 s default whatever the
+  environment said. `Config.from_env` builds the settings every
+  credential shares (the watchdog, the poll interval, the warm model)
+  once and passes them alike on every branch.
+- A resumed job on a machine without mlx (Linux, CUDA) reuses what its
+  spool holds: reading the spool imported `mlx.core`, the import failed,
+  and the failure was swallowed, so every resume ran every node again
+  (a finished `adapter/train` retrained from step 0 on each of nineteen
+  resumes). The spool reads and writes training checkpoints with numpy
+  alone (`weights.npz`, `opt.npz`); a checkpoint spooled by 0.67.0
+  (`.safetensors`) is not read, and its node runs again from step 0.
+- A resume says what it found. A spool that cannot be read logs why
+  ("the spool could not be read (…)"), a resume that found nothing says
+  so ("nothing to resume from: no spool for this job on this machine"),
+  and a node whose done record or checkpoint could not be read is named.
+  A node that could not be marked done, and the first checkpoint of a
+  node that could not be spooled, are logged rather than dropped.
+- `resumedFrom` is sent only when the spool gave something back, and
+  reports what was reused; a resume that reused nothing sends none, where
+  it sent `{node, reused: 0}` whether or not the spool had been read.
+
 ## 0.67.0 — 2026-10-08
 
 ### Changes that raise
