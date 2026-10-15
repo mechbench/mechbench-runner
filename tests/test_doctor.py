@@ -53,8 +53,23 @@ class TestRendering:
 
 
 class TestMachineChecks:
-    def test_python_version(self):
+    def test_python_version(self, monkeypatch):
+        from mechbench_runner import crashes
+
+        monkeypatch.setattr(crashes, "app_bundle_python", lambda: None)
         assert doctor._python().status == OK  # noqa: SLF001
+
+    def test_an_app_bundle_python_is_named_with_the_supported_install(
+            self, monkeypatch):
+        from mechbench_runner import crashes
+
+        image = ("/Library/Frameworks/Python.framework/Versions/3.11/Resources/"
+                 "Python.app/Contents/MacOS/Python")
+        monkeypatch.setattr(sys, "platform", "darwin")
+        monkeypatch.setattr(crashes, "interpreter_image", lambda: image)
+        check = doctor._python()  # noqa: SLF001
+        assert check.status == WARN
+        assert image in check.fix and "--managed-python" in check.fix
 
     def test_an_old_python_says_which_version_is_needed(self, monkeypatch):
         monkeypatch.setattr(sys, "version_info", Version(3, 9, 0, "final", 0))

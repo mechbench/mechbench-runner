@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import signal
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -20,6 +21,7 @@ class RecordingApi:
         self.jobs = jobs
         self.failed: list[str] = []
         self.interrupted: list[str] = []
+        self.messages: dict[str, str] = {}
 
     def list_jobs(self):
         return self.jobs
@@ -27,10 +29,12 @@ class RecordingApi:
     def fail_job(self, job_id, message, timeout=None):
         assert timeout is not None
         self.failed.append(job_id)
+        self.messages[job_id] = message
 
     def interrupt_job(self, job_id, message, timeout=None):
         assert timeout is not None
         self.interrupted.append(job_id)
+        self.messages[job_id] = message
 
     def get_job(self, job_id):
         for j in self.jobs:
@@ -62,6 +66,50 @@ def _runner(monkeypatch, runner_id="r_mine"):
 def job(job_id, *, status="running", claimed_by=None, updated_minutes_ago=1.0):
     return {"id": job_id, "status": status, "claimedByRunnerId": claimed_by,
             "updatedAt": _iso(updated_minutes_ago)}
+
+
+class TestAJobWhoseProcessDied:
+    def test_an_abort_fails_the_job_with_the_signal_and_the_last_output(
+            self, monkeypatch):
+        from mechbench_runner import crashes
+
+        crashes.record(-signal.SIGABRT,
+                       "libc++abi: terminating\nFatal Python error: Aborted")
+        runner = _runner(monkeypatch)
+        api = RecordingApi([job("j_crashed", claimed_by="r_mine"),
+                            job("j_theirs", claimed_by="r_other")])
+        runner._reconcile_jobs(api)
+        assert api.failed == ["j_crashed"] and api.interrupted == []
+        message = api.messages["j_crashed"]
+        assert message.startswith("the runner's process died of SIGABRT")
+        assert message.endswith("libc++abi: terminating\nFatal Python error: Aborted")
+        assert crashes.take() is None
+
+    def test_a_stop_by_signal_interrupts_and_names_it(self, monkeypatch):
+        from mechbench_runner import crashes
+
+        crashes.record(-signal.SIGTERM, "")
+        runner = _runner(monkeypatch)
+        api = RecordingApi([job("j_stopped", claimed_by="r_mine")])
+        runner._reconcile_jobs(api)
+        assert api.interrupted == ["j_stopped"] and api.failed == []
+        assert "SIGTERM" in api.messages["j_stopped"]
+
+    def test_the_note_waits_for_a_reconcile_that_reached_the_api(self, monkeypatch):
+        from mechbench_runner import crashes
+
+        crashes.record(-signal.SIGSEGV, "segfault")
+        runner = _runner(monkeypatch)
+
+        class Down(RecordingApi):
+            def list_jobs(self):
+                raise ConnectionError("offline")
+
+        runner._reconcile_jobs(Down([]))
+        api = RecordingApi([job("j_crashed", claimed_by="r_mine")])
+        runner._reconcile_jobs(api)
+        assert api.failed == ["j_crashed"]
+        assert "SIGSEGV" in api.messages["j_crashed"]
 
 
 class TestOwnClaims:

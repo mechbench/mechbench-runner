@@ -324,6 +324,15 @@ def main(argv: list[str] | None = None) -> int:
         from mechbench_runner import service as service_mod
 
         cmd = SERVICE_COMMANDS[args.cmd]
+        if cmd == "install":
+            from mechbench_runner import crashes
+
+            problem = crashes.app_python_problem()
+            if problem is not None and not crashes.allowed_app_python():
+                print(f"install-service: {problem}, then run `mechbench "
+                      f"install-service` from it. {crashes.ALLOW_APP_PYTHON_ENV}=1 "
+                      f"installs from this one anyway.", file=sys.stderr)
+                return 1
         try:
             if cmd == "install":
                 st = service_mod.install()
@@ -495,8 +504,9 @@ def main(argv: list[str] | None = None) -> int:
             install_logs()
             excepthook_to_log()
 
-        from mechbench_runner import updater
+        from mechbench_runner import crashes, updater
 
+        crashes.prepare_job_process()
         updater.take_pending_step()
 
         from mechbench_runner.job_runner import JobRunner
