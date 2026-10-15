@@ -101,6 +101,28 @@ class TestConfigPrecedence:
         assert config.runner_name == "laptop"
         assert config.from_stored_credentials is True
 
+    @pytest.mark.parametrize("source", ["env_key", "stored", "none"])
+    def test_every_source_honours_the_shared_settings(self, source, store, monkeypatch):
+        monkeypatch.setattr(credentials, "config_path", lambda: store)
+        monkeypatch.delenv("MECHBENCH_API_KEY", raising=False)
+        monkeypatch.delenv("MECHBENCH_API_URL", raising=False)
+        if source == "env_key":
+            monkeypatch.setenv("MECHBENCH_API_KEY", "mbk_from_env")
+        elif source == "stored":
+            credentials.save(
+                StoredCredentials(api_url="https://api.mechbench.ai",
+                                  api_key="mbk_stored"),
+                store,
+            )
+        monkeypatch.setenv("MECHBENCH_WATCHDOG_SECONDS", "7200")
+        monkeypatch.setenv("MECHBENCH_POLL_INTERVAL_SECONDS", "5.5")
+        monkeypatch.setenv("MECHBENCH_WARM_MODEL_ID", "gemma-3-1b-it")
+        config = Config.from_env()
+        assert config.from_stored_credentials is (source == "stored")
+        assert config.watchdog_seconds == 7200.0
+        assert config.poll_interval_seconds == 5.5
+        assert config.warm_model_id == "gemma-3-1b-it"
+
     def test_no_credentials_explains_itself(self, store, monkeypatch):
         monkeypatch.setattr(credentials, "config_path", lambda: store)
         monkeypatch.delenv("MECHBENCH_API_KEY", raising=False)

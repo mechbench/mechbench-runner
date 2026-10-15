@@ -44,11 +44,13 @@ class Config:
 
     @classmethod
     def from_env(cls) -> Config:
-        poll = float(os.environ.get("MECHBENCH_POLL_INTERVAL_SECONDS", "2.0"))
-        watchdog = float(
-            os.environ.get("MECHBENCH_WATCHDOG_SECONDS", str(DEFAULT_STALL_SECONDS))
-        )
-        warm = os.environ.get("MECHBENCH_WARM_MODEL_ID")
+        shared = {
+            "poll_interval_seconds": float(
+                os.environ.get("MECHBENCH_POLL_INTERVAL_SECONDS", "2.0")),
+            "warm_model_id": os.environ.get("MECHBENCH_WARM_MODEL_ID"),
+            "watchdog_seconds": float(os.environ.get(
+                "MECHBENCH_WATCHDOG_SECONDS", str(DEFAULT_STALL_SECONDS))),
+        }
 
         env_key = os.environ.get("MECHBENCH_API_KEY")
         if env_key:
@@ -57,9 +59,7 @@ class Config:
                     "MECHBENCH_API_URL", DEFAULT_API_URL
                 ).rstrip("/")),
                 api_key=env_key,
-                poll_interval_seconds=poll,
-                warm_model_id=warm,
-                watchdog_seconds=watchdog,
+                **shared,
             )
 
         stored = credentials.load()
@@ -73,11 +73,10 @@ class Config:
             return cls(
                 api_base_url=stored.api_url.rstrip("/"),
                 api_key=stored.api_key,
-                poll_interval_seconds=poll,
-                warm_model_id=warm,
                 runner_id=stored.runner_id,
                 runner_name=stored.name,
                 from_stored_credentials=True,
+                **shared,
             )
 
         return cls(
@@ -85,9 +84,7 @@ class Config:
                 "MECHBENCH_API_URL", DEFAULT_API_URL
             ).rstrip("/")),
             api_key=None,
-            poll_interval_seconds=poll,
-            warm_model_id=warm,
-            watchdog_seconds=watchdog,
+            **shared,
         )
 
     def require_api_key(self) -> str:

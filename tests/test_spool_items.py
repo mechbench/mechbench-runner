@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import numpy as np
 import pytest
 
@@ -83,7 +85,13 @@ class TestJobSpool:
         (sp.node_dir("gen") / "items" / "torn.cbor").write_bytes(b"\xff\x00")
         assert list(sp.resume_map()["gen"]["items"]) == ["k"]
 
-    def test_checkpoint_round_trip(self):
+    @pytest.mark.parametrize("mlx", [True, False], ids=["with mlx", "without mlx"])
+    def test_checkpoint_round_trip(self, mlx, monkeypatch):
+        if not mlx:
+            for name in [m for m in sys.modules if m == "mlx" or m.startswith("mlx.")]:
+                monkeypatch.delitem(sys.modules, name)
+            monkeypatch.setitem(sys.modules, "mlx", None)
+            monkeypatch.setitem(sys.modules, "mlx.core", None)
         sp = JobSpool("j_f")
         sp.node_start("train", "fp")
         rng = np.random.default_rng(5)

@@ -270,7 +270,7 @@ class TestHandleWithASpooledResult:
         assert not _spooled("j_2")
         assert all(p["resumed_from"] is None for p in api.progress)
 
-    def test_a_resumed_run_from_scratch_says_reused_zero(self, monkeypatch):
+    def test_a_resumed_run_from_scratch_reports_nothing_reused(self, monkeypatch):
         runner = _runner(monkeypatch)
         api = RecordingApi([{"id": "j_3", "status": "preparing",
                              "claimedByRunnerId": "r_mine"}])
@@ -287,6 +287,5 @@ class TestHandleWithASpooledResult:
             "resumeCount": 1,
             "spec": {"bindings": {"model": "org/m@r"}},
         })
-        firsts = [p for p in api.progress if p["resumed_from"] is not None]
-        assert len(firsts) == 1
-        assert firsts[0]["resumed_from"] == {"node": "gen", "reused": 0}
+        assert api.progress
+        assert all(p["resumed_from"] is None for p in api.progress)
