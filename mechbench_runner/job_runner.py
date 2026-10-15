@@ -20,7 +20,7 @@ from typing import Any
 from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
 from mechbench_schema import dump_canonical
 
-from . import gpu_watch, release_manifest
+from . import crashes, gpu_watch, release_manifest
 from . import supervisor as supervisor_mod
 from .ambient import NodeWatch, model_bearing
 from .api_client import ApiClient, ApiError
@@ -574,6 +574,7 @@ class JobRunner:
         except Exception as e:  # noqa: BLE001
             print(f"[runner] reconcile skipped ({e})")
             return
+        crash = crashes.take()
         for j in listed:
             if j.get("status") not in ("preparing", "running"):
                 continue
@@ -587,10 +588,24 @@ class JobRunner:
                 if (self.config.runner_id is None
                         or claimed_by != self.config.runner_id):
                     continue
+                if crash is not None and not crash.stopped:
+                    reason = redact(crash.job_message())
+                    try:
+                        api.fail_job(job_id, reason, timeout=15.0)
+                    except Exception as e:  # noqa: BLE001
+                        self._note_unreconciled(job_id, e)
+                        continue
+                    _clear_spool(job_id)
+                    print(f"[runner] reconciled {job_id}: failed ({reason})")
+                    self.state.emit("job.reconciled", {"id": job_id, "reason": reason})
+                    continue
                 reason = (
                     "this machine holds the claim on this job but is not "
                     "executing it — interrupted by a crash or restart; "
                     "it resumes with this process"
+                ) if crash is None else (
+                    f"this machine's runner was stopped by {crash.name} while it "
+                    f"held this job; it resumes with this process"
                 )
                 try:
                     api.interrupt_job(job_id, reason, timeout=15.0)

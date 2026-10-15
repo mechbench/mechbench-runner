@@ -37,11 +37,32 @@ _None._
 
 _None._
 
-## 0.68.0 — 2026-10-14
+## 0.68.0 — 2026-10-15
 
 ### Changes that raise
 
-_None._
+- A job whose runner process dies of a signal (an abort, a memory
+  fault, a kill) is failed, not resumed, and its error names the
+  signal and carries the process's last lines of stderr: "the runner's
+  process died of SIGABRT, an abort: native code refused to go on,
+  while it held this job; …". It was interrupted with "interrupted by
+  a crash or restart" and resumed, so a job that aborts its process
+  crashed the runner on every resume. The supervisor tees the `run`
+  child's stderr, keeps its last 40 lines, and on a death by signal
+  writes `~/.mechbench/last-crash.json`; the next `run` reads it at its
+  first reconcile that reaches the API. A stop by SIGTERM, SIGINT or
+  SIGHUP still interrupts, now naming the signal.
+- `mechbench install-service` refuses under a Python that runs as a
+  macOS app bundle (python.org's and Homebrew's framework builds,
+  `…/Python.app/Contents/MacOS/Python`), naming it and the supported
+  install, `uv tool install --managed-python mechbench`.
+  `MECHBENCH_ALLOW_APP_PYTHON=1` installs from it anyway.
+- The job process keeps MLX and torch apart: with a mechbench-compute
+  that has `backends.keep_apart`, a job that would load the torch
+  backend into a process that has loaded MLX (or the reverse) is
+  failed by name before the import, because importing MLX beside
+  nnsight aborts the process. On a Mac with the torch extra, torch
+  jobs are refused rather than run.
 
 ### Changes that alter results without raising
 
@@ -67,6 +88,18 @@ _None._
   `memory_sources`, and `memory_reason` where no sample read the
   device's memory. The format stays `mechbench.gpu-series/1`: the
   columns are additive and `unpack` reads a series without them.
+- A crash no longer brings up macOS's "Python quit unexpectedly"
+  dialog or leaves a report in `~/Library/Logs/DiagnosticReports`:
+  the supervisor, `mechbench run` and `scripts/release.py` set their
+  task's crash exception ports to none, and every child inherits it.
+  The exit status is unchanged (an abort is still -6).
+  `MECHBENCH_SYSTEM_CRASH_REPORTS=1` keeps the system's reports, for
+  a native backtrace.
+- `mechbench run` enables `faulthandler` on stderr, so a native crash
+  leaves the Python stack of every thread in the tail the job's error
+  carries.
+- `mechbench run`, `mechbench supervise` and `mechbench doctor` warn
+  by name when the Python is an app bundle; they still run.
 
 ## 0.67.1 — 2026-10-14
 

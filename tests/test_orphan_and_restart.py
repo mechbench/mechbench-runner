@@ -51,7 +51,9 @@ class TestTheSupervisorOutlivesItsChild:
         seen: dict = {}
 
         class FakePopen:
-            def __init__(self, argv, env=None):
+            stderr = None
+
+            def __init__(self, argv, env=None, stderr=None):
                 seen["env"] = env or {}
             def wait(self):
                 return EXIT_OK

@@ -73,6 +73,11 @@ def _python() -> Check:
             "python", FAIL, f"{rendered} (need 3.11+)",
             "Install Python 3.11 or newer and reinstall mechbench.",
         )
+    from . import crashes
+
+    if crashes.app_bundle_python() is not None:
+        return Check("python", WARN, f"{rendered}, an app bundle",
+                     crashes.app_python_problem())
     return Check("python", OK, rendered)
 
 

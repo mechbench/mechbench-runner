@@ -8,6 +8,7 @@ import time
 from contextlib import suppress
 from types import FrameType
 
+from . import crashes
 from .exits import EXIT_CRASH, EXIT_OK, EXIT_RESTART
 from .service import STOP_TIMEOUT_SECONDS
 
@@ -104,14 +105,23 @@ class Supervisor:
 
     def _run_child(self) -> int:
         env = {**os.environ, SUPERVISOR_PID_ENV: str(os.getpid())}
-        self._child = subprocess.Popen(self.child_argv, env=env)  # noqa: S603
+        self._child = subprocess.Popen(  # noqa: S603
+            self.child_argv, env=env, stderr=subprocess.PIPE)
+        tail = crashes.Tail(self._child.stderr)
         try:
-            return self._child.wait()
+            code = self._child.wait()
         except KeyboardInterrupt:
             return EXIT_OK
         finally:
             self._child = None
             self._reap_orphans()
+        tail.close()
+        if code < 0 and not self._stopping:
+            crash = crashes.record(code, tail.text())
+            if crash is not None:
+                print(f"[supervisor] the runner died of {crash.name}; the next "
+                      f"one reports it on the job it held, with its last output")
+        return code
 
     def _reap_orphans(self) -> None:
         # external: a container with no init — as PID 1 only we reap orphans
@@ -214,4 +224,8 @@ def main() -> int:
 
     install_logs(name="supervisor.log", max_bytes=1024 * 1024)
     excepthook_to_log()
+    crashes.keep_from_crash_reporter()
+    problem = crashes.app_python_problem()
+    if problem is not None:
+        print(f"[supervisor] warning: {problem}")
     return Supervisor().run()

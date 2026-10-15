@@ -60,6 +60,11 @@ def main() -> None:
               "CI publishes (a v<version> tag on main publishes; docs/RELEASING.md)")
         sys.exit(2)
 
+    sys.path.insert(0, str(REPO))
+    from mechbench_runner.crashes import keep_from_crash_reporter
+
+    keep_from_crash_reporter()
+
     version = re.search(
         r'^version = "([^"]+)"', (REPO / "pyproject.toml").read_text(), re.M
     )
