@@ -37,6 +37,37 @@ _None._
 
 _None._
 
+## 0.68.0 — 2026-10-14
+
+### Changes that raise
+
+_None._
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
+- On a GPU whose `nvidia-smi --query-gpu=memory.used` prints `[N/A]`
+  (the GB10 in a DGX Spark: unified memory), the GPU sampler reads the
+  device's memory from NVML (`nvmlDeviceGetMemoryInfo`, when `pynvml`
+  is importable) and otherwise from `torch.cuda.mem_get_info`, only
+  where this process already holds CUDA, so the sampler never opens a
+  context of its own. NVML as the source falls back to torch the same
+  way. Every GPU sample carries `memory_free_bytes`, `memory_source`
+  (`nvidia-smi`, `nvml`, `torch` or `null`) and `memory_reason`, which
+  names each reader that did not answer.
+- The ambient's `memory` is `null` with a `memory_reason` where nothing
+  answers, never `{}`; where a GPU reader answers it carries
+  `memory.device` (`used_bytes` and `free_bytes` spans, `sources`). The
+  GPU summary gains `memory` alike.
+- The job's GPU series gains the columns `memory_free_mib` and
+  `memory_source`; its summary gains `min_memory_free_bytes`,
+  `memory_sources`, and `memory_reason` where no sample read the
+  device's memory. The format stays `mechbench.gpu-series/1`: the
+  columns are additive and `unpack` reads a series without them.
+
 ## 0.67.1 — 2026-10-14
 
 ### Changes that raise

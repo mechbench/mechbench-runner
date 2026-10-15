@@ -202,13 +202,23 @@ class Sampler:
                     mem[k] = _span(v)
             top = sorted(self._top.values(), key=lambda p: -p["cpu"])[:3]
             states = _gpu.summarize(self._gpu_states)
+            device = states["memory"] if states else None
+            if device is not None and device["sources"]:
+                mem["device"] = device
+            reason = None
+            if not mem:
+                reason = "; ".join(
+                    ["the host's memory_pressure, sysctl and vm_stat did not answer",
+                     device["reason"] if device is not None
+                     else "no GPU is visible to nvidia-smi"])
             return {
                 **({"gpu": states} if states else {}),
                 "samples": self.samples,
                 "thermal": {"worst": worst, **({"cpu_speed_limit_min": min(self._speed)}
                                                 if self._speed else {})},
                 "gpu_utilization": _span(self._gpu),
-                "memory": mem,
+                "memory": mem or None,
+                **({"memory_reason": reason} if reason else {}),
                 "load": _span(self._load),
                 "top": [{"name": p["name"], "cpu": p["cpu"], "rss_bytes": p["rss_bytes"]}
                         for p in top],

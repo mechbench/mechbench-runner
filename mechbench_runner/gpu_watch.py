@@ -21,7 +21,8 @@ DEFAULT_INTERVAL = 1.0
 IDLE_PERCENT = 1.0
 SERIES_FORMAT = "mechbench.gpu-series/1"
 COLUMNS = ("t", "utilization_percent", "memory_used_mib", "host_available_mib",
-           "sm_clock_mhz", "temperature_c", "power_w", "reason_mask")
+           "sm_clock_mhz", "temperature_c", "power_w", "reason_mask", "memory_free_mib",
+           "memory_source")
 
 Source = Callable[[], dict[str, Any] | None]
 Clock = Callable[[], float]
@@ -69,6 +70,7 @@ class JobGpu:
         self._lock = threading.Lock()
         self.start_at = 0.0
         self.rows: list[dict[str, Any]] = []
+        self.memory_reason: str | None = None
         self.nodes: dict[str, list[float | None]] = {}
 
     @classmethod
@@ -94,7 +96,11 @@ class JobGpu:
             "temperature_c": state.get("temperature_c"),
             "power_w": state.get("power_w"),
             "reason_mask": state.get("reason_mask"),
+            "memory_free_mib": mib(state.get("memory_free_bytes")),
+            "memory_source": state.get("memory_source"),
         }
+        if state.get("memory_source") is None and state.get("memory_reason"):
+            self.memory_reason = state["memory_reason"]
         with self._lock:
             self.rows.append(row)
 
@@ -130,7 +136,8 @@ class JobGpu:
                 return None
             lo, hi = held[0] or 0.0, held[1] if held[1] is not None else self.now()
             rows = [r for r in self.rows if lo <= r["t"] <= hi]
-        return {"seconds": round(hi - lo, 3), **summarize(rows, self._interval)}
+        return {"seconds": round(hi - lo, 3),
+                **summarize(rows, self._interval, self.memory_reason)}
 
     def stop(self) -> dict[str, Any]:
         self._stop.set()
@@ -140,13 +147,15 @@ class JobGpu:
             rows = list(self.rows)
             nodes = {k: list(v) for k, v in self.nodes.items()}
         out = {"format": SERIES_FORMAT, "interval_seconds": self._interval,
-               "seconds": round(self.now(), 3), "summary": summarize(rows, self._interval),
+               "seconds": round(self.now(), 3),
+               "summary": summarize(rows, self._interval, self.memory_reason),
                "nodes": {k: {"start": v[0], "end": v[1]} for k, v in nodes.items()},
                "series": pack(rows)}
         return out
 
 
-def summarize(rows: list[dict[str, Any]], interval: float) -> dict[str, Any]:
+def summarize(rows: list[dict[str, Any]], interval: float,
+              memory_reason: str | None = None) -> dict[str, Any]:
     util = [float(r["utilization_percent"]) for r in rows
             if r.get("utilization_percent") is not None]
     used = [r["memory_used_mib"] for r in rows if r.get("memory_used_mib") is not None]
@@ -167,8 +176,18 @@ def summarize(rows: list[dict[str, Any]], interval: float) -> dict[str, Any]:
             "utilization_peak_percent": max(util),
             "idle_seconds": round(sum(1 for u in util if u < IDLE_PERCENT) * interval, 3),
         })
+    free = [r["memory_free_mib"] for r in rows if r.get("memory_free_mib") is not None]
+    sources: list[str] = []
+    for r in rows:
+        if r.get("memory_source") and r["memory_source"] not in sources:
+            sources.append(r["memory_source"])
     if used:
         out["peak_memory_used_bytes"] = max(used) * 2**20
+    if free:
+        out["min_memory_free_bytes"] = min(free) * 2**20
+    out["memory_sources"] = sources
+    if rows and not sources:
+        out["memory_reason"] = memory_reason or "no sample read the device's memory"
     if avail:
         out["min_host_available_bytes"] = min(avail) * 2**20
     if clocks:

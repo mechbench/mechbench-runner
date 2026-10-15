@@ -157,3 +157,77 @@ def test_nvml_reads_the_same_fields_and_a_refused_one_is_null():
     assert state["utilization_percent"] == 87 and state["power_w"] == pytest.approx(38.7)
     assert state["memory_used_bytes"] is None and state["sm_clock_mhz"] == 2490
     assert state["throttling"] == ["hw_thermal_slowdown"]
+
+
+class FakeNvmlMemory(FakeNvml):
+    class Memory:
+        used = 30 * 2**30
+        free = 90 * 2**30
+
+    def nvmlDeviceGetMemoryInfo(self, h):  # noqa: N802
+        return self.Memory()
+
+
+def nvml_reader(nvml):
+    return ("nvml", lambda: gpu.nvml_memory(nvml, 0))
+
+
+def test_where_nvidia_smi_says_na_the_memory_is_read_from_nvml_and_named():
+    smi = gpu.Smi(FakeSmi(state="gb10-state-busy.csv"),
+                  memory=[nvml_reader(FakeNvmlMemory()), ("torch", lambda: (1, 2))])
+    state = smi.state()
+    assert state["memory_used_bytes"] == 30 * 2**30
+    assert state["memory_free_bytes"] == 90 * 2**30
+    assert state["memory_source"] == "nvml" and state["memory_reason"] is None
+
+
+def test_where_nvml_refuses_too_torch_reads_the_device_as_a_whole():
+    smi = gpu.Smi(FakeSmi(state="gb10-state-busy.csv"),
+                  memory=[nvml_reader(FakeNvml()), ("torch", lambda: (8 * 2**30, 100 * 2**30))])
+    state = smi.state()
+    assert state["memory_source"] == "torch"
+    assert (state["memory_used_bytes"], state["memory_free_bytes"]) == (8 * 2**30, 100 * 2**30)
+
+
+def test_where_nothing_answers_the_memory_is_null_with_every_reason():
+    smi = gpu.Smi(FakeSmi(state="gb10-state-busy.csv"),
+                  memory=[nvml_reader(FakeNvml()),
+                          ("torch", lambda: "torch is not loaded in this process")])
+    state = smi.state()
+    assert state["memory_used_bytes"] is None and state["memory_source"] is None
+    assert "nvidia-smi reports memory.used as N/A" in state["memory_reason"]
+    assert "nvml did not answer (Not Supported)" in state["memory_reason"]
+    assert "torch is not loaded" in state["memory_reason"]
+    summary = gpu.summarize([state])["memory"]
+    assert summary["sources"] == [] and summary["used_bytes"] is None
+    assert "N/A" in summary["reason"]
+
+
+def test_a_discrete_gpu_keeps_nvidia_smi_as_its_source():
+    smi = gpu.Smi(FakeSmi("h100-about.csv", "h100-state-power-capped.csv"),
+                  memory=[("torch", lambda: pytest.fail("the fallback was taken"))])
+    state = smi.state()
+    assert state["memory_source"] == "nvidia-smi"
+    assert state["memory_used_bytes"] == 40211 * 2**20 and state["memory_free_bytes"] is None
+
+
+def test_nvml_as_the_source_falls_back_to_torch_and_names_it():
+    state = gpu.Nvml(FakeNvml(), memory=[("torch", lambda: (5, 6))]).state()
+    assert (state["memory_used_bytes"], state["memory_source"]) == (5, "torch")
+    state = gpu.Nvml(FakeNvmlMemory(), memory=[]).state()
+    assert state["memory_source"] == "nvml" and state["memory_free_bytes"] == 90 * 2**30
+
+
+def test_torch_is_read_only_where_this_process_already_holds_cuda(monkeypatch):
+    import sys
+    import types
+
+    monkeypatch.delitem(sys.modules, "torch", raising=False)
+    assert gpu.torch_memory() == "torch is not loaded in this process"
+    cuda = types.SimpleNamespace(is_initialized=lambda: False,
+                                 mem_get_info=lambda i: pytest.fail("CUDA was initialized"))
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(cuda=cuda))
+    assert gpu.torch_memory() == "torch has not initialized CUDA in this process"
+    cuda.is_initialized = lambda: True
+    cuda.mem_get_info = lambda i: (70 * 2**30, 120 * 2**30)
+    assert gpu.torch_memory() == (50 * 2**30, 70 * 2**30)
