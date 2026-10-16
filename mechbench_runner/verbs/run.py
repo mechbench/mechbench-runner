@@ -78,7 +78,8 @@ def run_update(ctx: Ctx, a: dict) -> Any:
     return ctx.bench().label_run(a["id"], label)
 
 
-TERMINAL = ("done", "done_with_missing", "failed", "cancelled", "interrupted")
+TERMINAL = ("done", "done_with_missing", "failed", "cancelled", "interrupted",
+            "paused")
 
 
 def run_watch(ctx: Ctx, a: dict) -> Any:

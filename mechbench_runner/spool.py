@@ -227,3 +227,13 @@ class JobSpool:
 
     def clear(self) -> None:
         remove_owned(self.root)
+
+
+def held_spools() -> list[str]:
+    try:
+        entries = list(spool_dir().iterdir())
+    except OSError:
+        return []
+    return sorted(job_id for p in entries
+                  if (job_id := owner_of(p)) is not None
+                  and not (p / "result.cbor").is_file())

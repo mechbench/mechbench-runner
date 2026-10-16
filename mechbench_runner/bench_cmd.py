@@ -11,7 +11,8 @@ from mechbench_compute import bench
 from .config import Config
 from .endings import ended_notes
 
-TERMINAL = ("done", "done_with_missing", "failed", "cancelled", "interrupted")
+TERMINAL = ("done", "done_with_missing", "failed", "cancelled", "interrupted",
+            "paused")
 
 FINISHED = ("done", "done_with_missing")
 

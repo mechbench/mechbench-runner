@@ -199,6 +199,8 @@ class LiveChannel:
             "installMethod": install_mod.detect().method,
             "selfUpdatable": install_mod.detect().upgradable,
             "capabilities": advertise(),
+            "phase": self.state.phase,
+            "paused": self.state.paused,
         }
 
     async def _send_loop(self, ws: Any) -> None:
@@ -240,6 +242,8 @@ class LiveChannel:
                 self.on_policy({"id": frame.get("id"), "version": frame.get("version")})
             return
         if kind == "welcome":
+            if isinstance(frame.get("paused"), bool):
+                self.state.hold_paused(frame["paused"])
             if self.on_live is not None:
                 self.on_live({"op": "catchup"})
             return
@@ -271,6 +275,11 @@ class LiveChannel:
             self.state.pause()
         elif name == "resume":
             self.state.resume()
+        elif name == "pause_job":
+            job_id = (frame.get("args") or {}).get("id")
+            if not self.state.request_stop(job_id if isinstance(job_id, str) else ""):
+                ack = {"v": PROTOCOL_VERSION, "type": "ack", "ok": False,
+                       "error": f"{job_id!r} is not the job this runner is running"}
         elif name == "status":
             pass
         else:
@@ -299,8 +308,19 @@ class LiveChannel:
             return {"v": PROTOCOL_VERSION, "type": "ack", "ok": False,
                     "error": "busy: a job is in flight; ask again when idle"}
 
-        from . import install as install_mod
         from . import updater
+        from .spool import held_spools
+
+        held = held_spools()
+        if held:
+            why = (f"held: this runner keeps the spool of paused or interrupted "
+                   f"work ({', '.join(held[:5])}); an update changes the compute "
+                   f"version and that work would restart from zero. Resume or "
+                   f"cancel it first")
+            print(f"[runner] update refused: {why}", flush=True)
+            return {"v": PROTOCOL_VERSION, "type": "ack", "ok": False, "error": why}
+
+        from . import install as install_mod
 
         where = install_mod.detect()
         if not where.upgradable:

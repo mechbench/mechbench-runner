@@ -94,7 +94,7 @@ def made(monkeypatch):
         held,
         op=dataclasses.replace(held.op, outputs={"extra": Output("records/record",
                                                                  collection=True)}),
-        module=SimpleNamespace(run=run))
+        module=SimpleNamespace(run=run, OP=held.module.OP))
     monkeypatch.setitem(REGISTRY.table().ops, "records/filter", fake)
     return runs
 

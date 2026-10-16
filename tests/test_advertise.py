@@ -199,7 +199,9 @@ class TestItIsSent:
 
     def test_in_hello(self):
         from mechbench_runner.channel import LiveChannel
+        from mechbench_runner.control import RunnerState
         channel = LiveChannel.__new__(LiveChannel)
+        channel.state = RunnerState(version="0", api_url="http://127.0.0.1:1")
         assert channel._hello()["capabilities"] == advertise()
 
 

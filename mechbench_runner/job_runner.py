@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import hashlib
 import inspect
 import json
@@ -17,7 +18,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Any
 
-from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec
+from mechbench_compute.protocol import ProtocolExecutor, ProtocolSpec, Stop
 from mechbench_schema import dump_canonical
 
 from . import crashes, gpu_watch, release_manifest
@@ -38,7 +39,7 @@ from .paths import limits_path, spool_dir
 from .policy import PolicyHolder, check_claim, policy_holds_live
 from .redact import redact, remember
 from .spend import SharedLimiter, SpendLedger
-from .spool import JobSpool, adopt_legacy, job_dir, make_job_dir
+from .spool import JobSpool, adopt_legacy, held_spools, job_dir, make_job_dir
 from .verification import VERIFICATION, Verification
 from .watchdog import Watchdog
 
@@ -62,6 +63,7 @@ def _presign_threshold() -> int:
 TRANSPORT_INTERRUPT_PREFIX = "the API was unreachable while storing a result"
 
 TERMINAL_SERVER_STATUS = ("done", "done_with_missing", "failed", "cancelled")
+PAUSED = "paused"
 
 
 def _spool_result(job_id: str, cbor_bytes: bytes, digest: str,
@@ -267,6 +269,8 @@ class JobRunner:
                                  accelerators=accelerators())
         self.state.limits_snapshot = self._limiter.snapshot
         self._control = ControlServer(self.state)
+        self._control.tell_server = self._tell_server
+        self._watched: set[str] = set()
         self._channel = LiveChannel(config, self.state)
         machine = config.runner_name or default_name()
         self._live = LiveHost(self._executor, self._channel.send_live,
@@ -435,6 +439,14 @@ class JobRunner:
 
                 backoff = self.config.poll_interval_seconds
 
+                if (isinstance(job, dict) and job.get("paused") is True
+                        and not job.get("id")):
+                    if not self.state.paused:
+                        print("[runner] the server holds this runner paused; "
+                              "not claiming until it is resumed", flush=True)
+                    self.state.hold_paused(True)
+                    continue
+
                 if job is None:
                     self._sleep(self.config.poll_interval_seconds)
                     continue
@@ -456,8 +468,8 @@ class JobRunner:
                 self._sweep_cache(job)
 
                 try:
-                    self._handle(api, job)
-                    self.state.job_finished(job["id"])
+                    if self._handle(api, job) != PAUSED:
+                        self.state.job_finished(job["id"])
                     self._transport_interrupts.pop(job["id"], None)
                 except Exception as exc:  # noqa: BLE001
                     message, trace = self._failure_text(exc)
@@ -478,9 +490,30 @@ class JobRunner:
             self._deprecation_warned = True
             print(f"[runner] warning: {said}", flush=True)
 
+    def _tell_server(self, op: str) -> str | None:
+        try:
+            with ApiClient(self.config) as api:
+                api.set_paused(op == "pause", timeout=15.0)
+        except Exception as exc:  # noqa: BLE001
+            said = (f"this machine is {op}d, but the server was not told ({exc}); "
+                    f"it learns the server's state when the channel reconnects")
+            print(f"[runner] {said}", flush=True)
+            return said
+        return None
+
+    @staticmethod
+    def _upgrade_hold() -> str | None:
+        held = held_spools()
+        if not held:
+            return None
+        return (f"this runner keeps the spool of paused or interrupted work "
+                f"({', '.join(held[:5])}), which would restart from zero under "
+                f"a new compute version")
+
     def _between_jobs(self, api: ApiClient) -> str | None:
         try:
-            return self._extensions.between_jobs(api, self._policy)
+            return self._extensions.between_jobs(api, self._policy,
+                                                 hold=self._upgrade_hold)
         except Exception as exc:  # noqa: BLE001
             print(f"[runner] extension upkeep skipped ({exc})")
             return None
@@ -566,6 +599,23 @@ class JobRunner:
             print(f"[runner] {job_id} delivered from spool "
                   f"({len(cbor_bytes)} CBOR bytes)")
             self.state.emit("job.delivered_late", {"id": job_id})
+        self._flush_held(api)
+
+    def _flush_held(self, api: ApiClient) -> None:
+        for job_id in held_spools():
+            if job_id == self._active_job:
+                continue
+            try:
+                status = api.get_job(job_id).get("status")
+            except ApiError as e:
+                if e.status != 404:
+                    continue
+                status = "deleted"
+            except Exception:  # noqa: BLE001
+                continue
+            if status in (*TERMINAL_SERVER_STATUS, "queued", "deleted"):
+                _clear_spool(job_id)
+                print(f"[runner] {job_id} is {status}; its spool is cleared")
 
     def _reconcile_jobs(self, api: ApiClient) -> None:
         self._flush_spool(api)
@@ -701,7 +751,7 @@ class JobRunner:
         if self.config.from_stored_credentials:
             print("[runner] Run `mechbench login` to reconnect.")
 
-    def _handle(self, api: ApiClient, job: dict[str, Any]) -> None:
+    def _handle(self, api: ApiClient, job: dict[str, Any]) -> str | None:
         job_id = check_id("job id", job["id"])
         kind = job["protocolKind"]
         if kind == VERIFICATION:
@@ -759,6 +809,7 @@ class JobRunner:
         weights_label = (
             f"Weights for {model_id.split('@')[0]}" if model_id else "Weights"
         )
+        self._watched = set()
         self._report_plan(api, job_id, [
             {"key": "weights", "label": weights_label, "status": "pending"},
             {"key": "load", "label": "Load model into memory", "status": "pending"},
@@ -771,6 +822,7 @@ class JobRunner:
 
         promoted = False
         reported_node = -1
+        stopped: Stop | None = None
 
         def report_span(nid: str, fields: dict[str, Any]) -> None:
             try:
@@ -802,13 +854,14 @@ class JobRunner:
                 extra["spent_usd"] = ledger.spent_usd
                 self.state.job_spend(ledger.spent_usd, ledger.cap_usd)
             try:
-                api.report_progress(
+                reply = api.report_progress(
                     job_id, done, total,
                     unit=_unit_for(kind),
                     status=None if promoted else "running",
                     node=node,
                     **extra,
                 )
+                self._note_pause_request(job_id, reply)
                 promoted = True
                 reported_node = node_index
                 if "spent_usd" in extra and self._spend is not None:
@@ -821,9 +874,11 @@ class JobRunner:
             run_kwargs: dict[str, Any] = {}
             if resume_map:
                 run_kwargs["resume"] = resume_map
-            if ("budget" in inspect.signature(self._executor.run).parameters
-                    and self._spend is not None):
+            accepts = inspect.signature(self._executor.run).parameters
+            if "budget" in accepts and self._spend is not None:
                 run_kwargs["budget"] = self._spend.budget
+            if "stop" in accepts:
+                run_kwargs["stop"] = self.state.stop_requested
             payload = self._executor.run(spec, on_progress=on_progress,
                                        secrets=secrets, **run_kwargs)
             if hasattr(payload, "model_dump"):
@@ -835,6 +890,8 @@ class JobRunner:
             _spool_result(job_id, cbor_bytes, digest,
                           _claim_token_of(api, job_id), missing)
             self._deliver(api, job_id, cbor_bytes, digest, missing)
+        except Stop as exc:
+            stopped = exc
         except BaseException as exc:
             self._failure = (exc, HELD_CREDENTIALS.redact(str(exc)),
                              HELD_CREDENTIALS.redact(traceback.format_exc()))
@@ -855,6 +912,43 @@ class JobRunner:
             self._release_awake()
             HELD_CREDENTIALS.clear()
             job.pop("integrations", None)
+        if stopped is None:
+            return None
+        self._paused_here(api, job_id, stopped)
+        return PAUSED
+
+    def _note_pause_request(self, job_id: str, reply: Any) -> None:
+        if isinstance(reply, Mapping) and reply.get("pauseRequested") is True:
+            self.state.request_stop(job_id)
+
+    def _paused_here(self, api: ApiClient, job_id: str, stopped: Stop) -> None:
+        reason = str(stopped)
+        print(f"[runner] {job_id} paused at a safe point ({reason}); spool kept",
+              flush=True)
+        try:
+            api.report_paused(job_id, timeout=15.0)
+        except Exception as e:  # noqa: BLE001
+            print(f"[runner] {job_id}: could not report the pause ({e}); "
+                  f"reconciliation interrupts it and it resumes here", flush=True)
+        self._let_model_go()
+        self.state.job_paused(job_id, reason)
+
+    def _let_model_go(self) -> None:
+        self._executor._model = None  # noqa: SLF001
+        self._executor._model_id = None  # noqa: SLF001
+        gc.collect()
+        try:
+            import mlx.core as mx
+
+            mx.clear_cache()
+        except Exception:  # noqa: BLE001
+            pass
+        torch = sys.modules.get("torch")
+        if torch is not None:
+            with suppress(Exception):
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+        self.state.model_released()
 
     def _start_gpu(self, job_id: str) -> gpu_watch.JobGpu | None:
         try:
@@ -896,7 +990,8 @@ class JobRunner:
         if self._spool is not None:
             with suppress(Exception):
                 self._spool.node_start(nid, fingerprint)
-        if self._watch is not None:
+        if self._watch is not None and nid not in self._watched:
+            self._watched.add(nid)
             self._watch.start(nid)
 
     def _node_span(self, nid: str, span: dict[str, Any]) -> None:
@@ -1116,7 +1211,7 @@ class JobRunner:
 
     def _report_plan(self, api: ApiClient, job_id: str, steps: list[dict]) -> None:
         try:
-            api.declare_preparing(job_id, steps)
+            self._note_pause_request(job_id, api.declare_preparing(job_id, steps))
         except Exception:  # noqa: BLE001
             pass
 

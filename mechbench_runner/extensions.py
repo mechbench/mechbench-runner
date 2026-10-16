@@ -464,12 +464,13 @@ class Extensions:
             write_installed(installed)
 
 
-    def between_jobs(self, api: Any, holder: PolicyHolder) -> str | None:
+    def between_jobs(self, api: Any, holder: PolicyHolder,
+                     hold: Callable[[], str | None] | None = None) -> str | None:
         held = holder.held
         if held is None:
             return None
         self.collect(api, held.body)
-        return self.self_upgrade(held.body)
+        return self.self_upgrade(held.body, hold=hold)
 
     def collect(self, api: Any, body: Mapping[str, Any],
                 force: bool = False) -> list[str]:
@@ -518,7 +519,8 @@ class Extensions:
         state = (manifest or {}).get("state") if isinstance(manifest, Mapping) else None
         return state == "withdrawn"
 
-    def self_upgrade(self, body: Mapping[str, Any], force: bool = False) -> str | None:
+    def self_upgrade(self, body: Mapping[str, Any], force: bool = False,
+                     hold: Callable[[], str | None] | None = None) -> str | None:
         if (body.get("upgrades") or {}).get("compute") != "auto":
             return None
         now = self.clock()
@@ -527,6 +529,10 @@ class Extensions:
             return None
         self._last_upgrade = now
         if self.manifest_url is None:
+            return None
+        why = hold() if hold is not None else None
+        if why is not None:
+            print(f"[runner] upgrades: auto, but not now: {why}", flush=True)
             return None
         where = install_mod.detect()
         if where.method == "source":

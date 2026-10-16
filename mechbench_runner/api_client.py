@@ -210,6 +210,14 @@ def advertise(installed: Path | None = None) -> dict[str, Any]:
     }
 
 
+def _reply(res: httpx.Response) -> dict[str, Any]:
+    try:
+        body = res.json()
+    except ValueError:
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
 def _body_of(res: httpx.Response) -> Any:
     try:
         return res.json()
@@ -347,7 +355,7 @@ class ApiClient:
                         node: dict | None = None,
                         resumed_from: dict | None = None,
                         spent_usd: float | None = None,
-                        span: dict | None = None) -> None:
+                        span: dict | None = None) -> dict[str, Any]:
         body: dict[str, object] = {"num": num, "den": den}
         if unit is not None:
             body["unit"] = unit
@@ -364,12 +372,13 @@ class ApiClient:
         res = self._client.patch(f"/jobs/{job_id}/progress", json=body,
                                  headers=self._job_headers(job_id))
         self._raise_for_status(res)
+        return _reply(res)
 
-    def declare_preparing(self, job_id: str, steps: list[dict]) -> None:
-        self._raise_for_status(
-            self._client.patch(f"/jobs/{job_id}/preparing", json={"steps": steps},
-                               headers=self._job_headers(job_id))
-        )
+    def declare_preparing(self, job_id: str, steps: list[dict]) -> dict[str, Any]:
+        res = self._client.patch(f"/jobs/{job_id}/preparing", json={"steps": steps},
+                                 headers=self._job_headers(job_id))
+        self._raise_for_status(res)
+        return _reply(res)
 
     def report_preparing_step(self, job_id: str, step: dict) -> None:
         self._raise_for_status(
@@ -410,6 +419,22 @@ class ApiClient:
             tok = None
         if tok:
             self.claim_tokens[job_id] = str(tok)
+
+    def report_paused(self, job_id: str, timeout: float | None = None) -> None:
+        kwargs: dict = {} if timeout is None else {"timeout": timeout}
+        res = self._client.post(f"/jobs/{job_id}/paused",
+                                headers=self._job_headers(job_id), **kwargs)
+        self._raise_for_status(res)
+        tok = _reply(res).get("claimToken")
+        if tok:
+            self.claim_tokens[job_id] = str(tok)
+
+    def set_paused(self, paused: bool, timeout: float | None = None) -> dict[str, Any]:
+        kwargs: dict = {} if timeout is None else {"timeout": timeout}
+        res = self._client.post(
+            f"/runners/me/{'pause' if paused else 'resume'}", **kwargs)
+        self._raise_for_status(res)
+        return _reply(res)
 
     def complete_job_cbor(
         self, job_id: str, cbor_bytes: bytes, content_hash: str

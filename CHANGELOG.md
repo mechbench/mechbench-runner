@@ -37,6 +37,62 @@ _None._
 
 _None._
 
+## 0.69.0 — 2026-10-16
+
+Needs mechbench-compute 0.209.0 (`ProtocolExecutor.run(stop=)`, `Stop`)
+and an API that has the pause routes (`POST /jobs/:id/paused`,
+`POST /runners/me/pause` and `/resume`).
+
+### Changes that raise
+
+- Pause stops the running job, not only new claims. A runner paused
+  from its page, by `mechbench pause`, or by a `pause_job` frame for
+  its job, or told `pauseRequested: true` in a progress or preparing
+  reply, stops the job at its next safe point (after an item is
+  spooled, or at a training checkpoint), reports it with
+  `POST /jobs/:id/paused`, keeps its spool, drops the model and frees
+  the accelerator's cache. The job's status is `paused`; it is never
+  failed and its spool is never cleared for a pause. A job that has no
+  safe point left runs to the end and completes. On Resume the job
+  comes back through `/jobs/next` with `resume: true` and runs from its
+  spool. A `pause_job` for another job is acked with an error.
+- The paused state is the server's. The runner takes it from the
+  channel's `welcome` (`paused`), from `pause` and `resume` frames, and
+  from `/jobs/next` answering `{"paused": true}`, so a runner restarted
+  while paused stays paused and claims nothing. `mechbench pause` and
+  `mechbench resume` also post `POST /runners/me/pause` or `/resume`;
+  when that fails the command prints why, and the machine's own state
+  holds until the channel reconnects.
+- `update` (the channel command) is refused with the reason in its ack
+  and the log, and `upgrades: auto` waits, while this machine keeps the
+  spool of a paused or interrupted job: the spool's fingerprints carry
+  the compute version, so an upgrade would restart that job from zero.
+- The spool of a job that is now `cancelled`, `failed`, done, queued
+  or deleted is cleared at the next reconcile, whether or not it holds
+  a finished result. Only spools with a result were looked at before,
+  so an interrupted job's spool outlived its cancellation.
+
+### Changes that alter results without raising
+
+_None._
+
+### Other
+
+- Phases `pausing` (the job is reaching its safe point) and `paused`
+  (idle, not claiming). Every runner event carries the snapshot
+  `phase` in its data, and `hello` carries `phase` and `paused`, so the
+  API's presence is right after a job ends and after a reconnect. A
+  pause emits `job.pausing` and `job.paused`; dropping the model emits
+  `model.released`.
+- `mechbench pause` / `resume` read "Stop claiming new jobs; pause the
+  current one at its next safe point." / "Start claiming jobs again;
+  the paused one first."
+- A watch (`mechbench watch`, `run watch`, `run sweep` with `--wait`)
+  returns on `paused` as it does on `interrupted`, printing the status.
+- A node whose start is announced twice (a remote wave's peer, then
+  the pipeline reaching it) keeps its first start time in the node
+  watch and the GPU series.
+
 ## 0.68.0 — 2026-10-15
 
 ### Changes that raise

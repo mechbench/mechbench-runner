@@ -9,7 +9,8 @@ from typing import Any
 from .core import Ctx, VerbError
 from .run_diff import read_json
 
-TERMINAL = ("done", "done_with_missing", "failed", "cancelled", "interrupted")
+TERMINAL = ("done", "done_with_missing", "failed", "cancelled", "interrupted",
+            "paused")
 BODY_KEYS = ("params", "inputs", "members", "grid", "label", "keep", "budgetUsd",
              "runner", "backend", "accelerator")
 

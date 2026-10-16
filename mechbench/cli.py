@@ -264,8 +264,9 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Stream events as they happen instead of printing once.",
     )
-    sub.add_parser("pause", help="Stop claiming new jobs; finish the current one.")
-    sub.add_parser("resume", help="Start claiming jobs again.")
+    sub.add_parser("pause", help="Stop claiming new jobs; pause the current one "
+                   "at its next safe point.")
+    sub.add_parser("resume", help="Start claiming jobs again; the paused one first.")
 
     restart_p = sub.add_parser(
         "restart",
@@ -538,6 +539,8 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(data, indent=2))
         else:
             print(_render(data))
+        if data.get("server_error"):
+            print(data["server_error"], file=sys.stderr)
         return 0
 
     if args.cmd == "smoke":

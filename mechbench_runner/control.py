@@ -62,6 +62,8 @@ class RunnerState:
         self._job: JobView | None = None
         self._model_id: str | None = None
         self._paused = False
+        self._stop = threading.Event()
+        self._stop_by: str | None = None
         self._exit_code: int | None = None
         self._exit_reason = ""
         self._completed = 0
@@ -84,7 +86,7 @@ class RunnerState:
                 job["elapsed_seconds"] = round(self._job.elapsed_seconds, 3)
             return {
                 **({"limits": limits} if limits else {}),
-                "phase": "paused" if self._paused and self._job is None else self._phase,
+                "phase": self._phase_now(),
                 "paused": self._paused,
                 "job": job,
                 "model_id": self._model_id,
@@ -103,10 +105,37 @@ class RunnerState:
                 "orphaned": _orphaned(),
             }
 
+    def _phase_now(self) -> str:
+        if self._job is None:
+            return "paused" if self._paused else self._phase
+        return "pausing" if self._stop.is_set() else self._phase
+
     @property
     def paused(self) -> bool:
         with self._lock:
             return self._paused
+
+    @property
+    def phase(self) -> str:
+        with self._lock:
+            return self._phase_now()
+
+    def stop_requested(self) -> bool:
+        return self._stop.is_set()
+
+    def request_stop(self, job_id: str | None = None, by: str = "job") -> bool:
+        with self._lock:
+            if self._job is None or (job_id is not None and self._job.id != job_id):
+                return False
+            if not self._stop.is_set():
+                self._stop_by = by
+                self._stop.set()
+                job = self._job.id
+            else:
+                job = None
+        if job is not None:
+            self.emit("job.pausing", {"id": job, "by": by})
+        return True
 
     def set_phase(self, phase: str) -> None:
         with self._lock:
@@ -128,10 +157,20 @@ class RunnerState:
             self._phase = "idle"
         self.emit("model.loaded", {"model_id": model_id})
 
+    def model_released(self) -> None:
+        with self._lock:
+            self._model_id = None
+        self.emit("model.released", {})
+
     def job_claimed(self, job_id: str, protocol_kind: str, model_id: str | None) -> None:
         with self._lock:
             self._job = JobView(id=job_id, protocol_kind=protocol_kind, model_id=model_id)
             self._phase = "executing"
+            self._stop_by = "runner" if self._paused else None
+            if self._paused:
+                self._stop.set()
+            else:
+                self._stop.clear()
         self.emit("job.claimed", {"id": job_id, "protocol_kind": protocol_kind,
                                   "model_id": model_id})
 
@@ -174,6 +213,14 @@ class RunnerState:
             self._phase = "idle"
         self.emit("job.failed", {"id": job_id, "message": message})
 
+    def job_paused(self, job_id: str, reason: str) -> None:
+        with self._lock:
+            self._job = None
+            self._phase = "idle"
+            self._stop.clear()
+            self._stop_by = None
+        self.emit("job.paused", {"id": job_id, "reason": reason})
+
     def job_interrupted(self, job_id: str, message: str) -> None:
         with self._lock:
             self._job = None
@@ -202,12 +249,26 @@ class RunnerState:
     def pause(self) -> None:
         with self._lock:
             self._paused = True
+            if self._job is not None and not self._stop.is_set():
+                self._stop_by = "runner"
+                self._stop.set()
         self.emit("runner.paused", {})
 
     def resume(self) -> None:
         with self._lock:
             self._paused = False
+            if self._stop_by == "runner":
+                self._stop.clear()
+                self._stop_by = None
         self.emit("runner.resumed", {})
+
+    def hold_paused(self, paused: bool) -> None:
+        if paused == self.paused:
+            return
+        if paused:
+            self.pause()
+        else:
+            self.resume()
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         with self._lock:
@@ -237,7 +298,9 @@ class RunnerState:
         with self._lock:
             loop, subs = self._loop, list(self._subscribers)
             listeners = list(self._listeners)
-        message = {"v": PROTOCOL_VERSION, "event": event, "data": data}
+            phase = self._phase_now()
+        message = {"v": PROTOCOL_VERSION, "event": event,
+                   "data": {**data, "phase": phase}}
         if loop is not None and subs:
             for q in subs:
                 with suppress(RuntimeError):
@@ -256,6 +319,8 @@ def _offer(q: asyncio.Queue[dict[str, Any]], message: dict[str, Any]) -> None:
 
 
 class ControlServer:
+    tell_server: Callable[[str], str | None] | None = None
+
     def __init__(self, state: RunnerState, path: Path | None = None) -> None:
         self._state = state
         self._path = path or socket_path()
@@ -268,6 +333,16 @@ class ControlServer:
     @property
     def path(self) -> Path:
         return self._path
+
+    async def _tell_server(self, op: str) -> str | None:
+        tell = self.tell_server
+        if tell is None:
+            return None
+        loop = asyncio.get_running_loop()
+        try:
+            return await loop.run_in_executor(None, tell, op)
+        except Exception as exc:  # noqa: BLE001
+            return str(exc)
 
     def start(self) -> None:
         encoded = len(str(self._path).encode())
@@ -365,12 +440,14 @@ class ControlServer:
                 op = request.get("op")
                 if op == "status":
                     await _send(writer, _ok(self._state.snapshot()))
-                elif op == "pause":
-                    self._state.pause()
-                    await _send(writer, _ok(self._state.snapshot()))
-                elif op == "resume":
-                    self._state.resume()
-                    await _send(writer, _ok(self._state.snapshot()))
+                elif op in ("pause", "resume"):
+                    if op == "pause":
+                        self._state.pause()
+                    else:
+                        self._state.resume()
+                    told = await self._tell_server(op)
+                    await _send(writer, _ok({**self._state.snapshot(),
+                                             **({"server_error": told} if told else {})}))
                 elif op == "subscribe":
                     if subscription is not None:
                         await _send(writer, _error("already_subscribed",
